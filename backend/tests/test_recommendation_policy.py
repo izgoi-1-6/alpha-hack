@@ -91,6 +91,19 @@ def test_unsecured_precedes_cheaper_secured_when_both_fit():
     assert [(i['product_id'], i['status']) for i in result] == [('z_unsecured', 'fits'), ('a_secured', 'fits')]
 
 
+def test_headroom_above_the_request_never_reorders_fitting_products():
+    cheaper_smaller_limit = synthetic('z_cheaper', amount_max_rub=1_500_000, annual_rate_bps=2000)  # 500k of headroom
+    dearer_larger_limit = synthetic('a_dearer', amount_max_rub=3_000_000, annual_rate_bps=2500)  # 2m of headroom
+    result = evaluate([dearer_larger_limit, cheaper_smaller_limit])
+    assert [i['status'] for i in result] == ['fits', 'fits']  # shortfall is max(0, request - limit): zero for both
+    assert [i['product_id'] for i in result] == ['z_cheaper', 'a_dearer']
+
+
+def test_a_product_that_cannot_accept_applications_never_offers_one():
+    informational = evaluate([synthetic('research_only', can_apply=False)])[0]
+    assert informational['status'] == 'fits' and informational['can_apply'] is False
+
+
 def test_lower_rate_then_product_id_break_remaining_ties():
     assert order([synthetic('a_dear', annual_rate_bps=2500), synthetic('z_cheap', annual_rate_bps=2000)]) == ['z_cheap', 'a_dear']
     assert order([synthetic('z_same'), synthetic('a_same')]) == ['a_same', 'z_same']
@@ -177,6 +190,21 @@ def test_texts_are_clean_russian_sentences_with_money_formatting():
         for result in evaluate([PRODUCTS[product]], collateral=DECLARED):
             texts = [result['payment_note'], *result['reasons'], *result['alternatives'], *[c['text'] for c in result['checks']]]
             assert all(text == text.strip() and '  ' not in text and ' ,' not in text for text in texts), texts
+
+
+def test_a_fitting_product_still_says_the_decision_comes_after_submission():
+    item = one('fitting')
+    assert item['status'] == 'fits'
+    assert any('Решение принимается после отправки заявки' in text for text in item['reasons'])
+    assert any('не предодобрение' in text for text in item['reasons'])
+
+
+def test_no_text_promises_approval_or_states_a_probability():
+    promises = ('вероятност', 'гарантир', 'будет одобрен', 'одобрено', 'шанс')
+    for need in ({}, {'collateral': DECLARED}, {'requested_amount_rub': 5_000_000}, {'purpose': 'investment'}):
+        for item in evaluate(list(PRODUCTS.values()), **need):
+            text = ' '.join([item['payment_note'], *item['reasons'], *item['alternatives'], *[c['text'] for c in item['checks']]]).lower()
+            assert not any(word in text for word in promises), (need, item['product_id'], text)
 
 
 def test_capacity_below_product_minimum_is_not_described_as_a_smaller_amount_to_consider():

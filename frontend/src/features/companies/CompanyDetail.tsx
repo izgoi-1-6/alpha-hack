@@ -17,11 +17,13 @@ export function CompanyDetail({
   busy,
   error,
   onRetry,
+  onRecommend,
 }: {
   data: CompanyResult;
   busy: boolean;
   error: string;
   onRetry: () => void;
+  onRecommend: () => void;
 }) {
   const { company: c, precheck: p } = data;
   const active = c.registry_status === "active",
@@ -63,6 +65,17 @@ export function CompanyDetail({
           </div>
         </div>
       )}
+      <div className="recommendation-entry card">
+        <div>
+          <h2>От задачи — к подходящему продукту</h2>
+          <p>
+            Сравните три демо-продукта и оцените платёж по обороту компании.
+          </p>
+        </div>
+        <button className="button primary" onClick={onRecommend}>
+          Подобрать финансирование <Icon />
+        </button>
+      </div>
       <div className="summary-grid">
         <section className="card finance-card">
           <span className="card-label">

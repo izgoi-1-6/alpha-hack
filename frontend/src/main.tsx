@@ -14,6 +14,7 @@ import { Brand, Icon, DemoBadge, Loading, ErrorNotice } from "./components";
 import { Auth } from "./features/identity/Auth";
 import { Onboarding } from "./features/companies/Onboarding";
 import { CompanyDetail } from "./features/companies/CompanyDetail";
+import { Recommendations } from "./features/recommendations/Recommendations";
 import "./styles.css";
 function App() {
   const [user, setUser] = useState<User | null>(null),
@@ -37,6 +38,7 @@ function App() {
   );
   const onboard = url.searchParams.get("view") === "onboard";
   const selectedId = url.searchParams.get("company");
+  const recommending = url.searchParams.get("view") === "recommendations";
   const captureScope = () => ({ ...generation.current });
   const isCurrent = (scope: { session: number; view: number }) =>
     scope.session === generation.current.session &&
@@ -388,11 +390,20 @@ function App() {
                   </button>
                 </div>
               )}
-              {data ? (
+              {data && recommending ? (
+                <Recommendations
+                  key={`${user.id}:${data.company.id}:${data.precheck.id}`}
+                  data={data}
+                  onBack={() => navigate(data.company.id)}
+                />
+              ) : data ? (
                 <CompanyDetail
                   data={data}
                   busy={busy}
                   error={actionError}
+                  onRecommend={() =>
+                    navigate(data.company.id, "recommendations")
+                  }
                   onRetry={() => void retry()}
                 />
               ) : (

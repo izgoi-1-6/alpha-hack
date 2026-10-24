@@ -147,3 +147,82 @@ export const errorMessage = (error: unknown) =>
   error instanceof Error
     ? error.message
     : "Не удалось выполнить действие. Повторите попытку.";
+
+export type Need = {
+  purpose:
+    | "working_capital"
+    | "business_development"
+    | "investment"
+    | "refinancing";
+  funding_pattern: "one_time" | "repeated";
+  requested_amount_rub: number;
+  term_months: number;
+  collateral: {
+    status: "unknown" | "none" | "declared";
+    type?: "real_estate" | "vehicle" | "equipment" | "inventory" | "deposit";
+    declared_value_rub?: number;
+    description?: string;
+    owner_confirmed?: boolean;
+    encumbered?: boolean;
+  } | null;
+};
+export type Product = {
+  id: string;
+  name: string;
+  instrument_type: string;
+  purposes: string[];
+  amount_min_rub: number;
+  amount_max_rub: number;
+  term_min_months: number;
+  term_max_months: number;
+  annual_rate_bps: number;
+  collateral_required: boolean;
+  collateral_ltv_bps: number | null;
+  can_apply: boolean;
+};
+export type Catalog = {
+  catalog_version: string;
+  rules_version: string;
+  notice: string;
+  products: Product[];
+  research_items: { id: string; name: string; can_apply: false }[];
+};
+export type Recommendation = {
+  product_id: string;
+  rank: number;
+  status: "fits" | "needs_info" | "does_not_fit";
+  can_apply: boolean;
+  indicative_limit_rub: number | null;
+  catalog_max_rub: number;
+  requested_amount_rub: number;
+  checks: {
+    code: string;
+    result: "passed" | "failed" | "unknown";
+    text: string;
+  }[];
+  reasons: string[];
+  alternatives: string[];
+  estimated_payment_rub: number | null;
+  payment_note: string;
+};
+export type RecommendationSnapshot = {
+  snapshot_id: string;
+  catalog_version: string;
+  rules_version: string;
+  items: Recommendation[];
+  created_at: string;
+};
+export const recommendationsApi = {
+  catalog: (signal?: AbortSignal) => request<Catalog>("/catalog", { signal }),
+  calculate: (companyId: string, need: Need, signal?: AbortSignal) =>
+    request<RecommendationSnapshot>(`/companies/${companyId}/recommendations`, {
+      method: "POST",
+      body: need,
+      signal,
+    }),
+  snapshot: (companyId: string, snapshotId: string, signal?: AbortSignal) =>
+    request<RecommendationSnapshot>(
+      `/companies/${companyId}/recommendations/${snapshotId}`,
+      { signal },
+    ),
+};

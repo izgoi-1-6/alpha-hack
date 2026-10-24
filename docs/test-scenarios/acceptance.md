@@ -15,6 +15,7 @@ All fixtures owned by `client@demo.local`; use `other@demo.local` for unauthoriz
 | missing_turnover | IP, current/previous turnover null | estimates null, can draft; raw submit 422 missing required fields; discovered submitted source gap R3 NEED_INFO; declared values → MANUAL_REVIEW |
 | registry_unavailable | registry unknown/unavailable | no fits, submission check R4 WAIT_EXTERNAL; retry recovers active → CHECKING→PREAPPROVED |
 | secured_investment | LLC, R1.5m/P1.25m/debt300k, collateral8m, investment4m/36m | score100, secured indicative/scored min(6m,4.5m,5.6m)=4.5m; R8 PREAPPROVED4m |
+| bki_missing | IP otherwise strong, successful BKI payload omits history category | R3 NEED_INFO, system trusted_source request; retry uses stored consent and recovered clean history→score100/limit2.4m→MANUAL_REVIEW, same application/assignee; client cannot supply BKI fields |
 | bki_unavailable | IP otherwise strong; BKI unavailable | no BKI in recommendations; submit WAIT_EXTERNAL; retry one call recovers → PREAPPROVED1m |
 
 `expected_check_outcome` fields are oracle labels. For missing_turnover/inactive/registry_unavailable, they describe defensive check outcomes when the check is reached, not bypassing UI/submit validation. Drivers must test both UI gating and internal check outcomes separately.
@@ -44,6 +45,7 @@ Term-loan payment at 1m/12m/23.50% rounds to94,318 RUB; revolving full-utilizati
 | A11 | HTTP+DB: idempotent officer replay one decision, stale or competing officer forbidden; preapproved/final amounts independently bounded; cancellation terminal; clients cannot manufacture BKI/history/score. |
 | A12 | HTTP+browser: baseline/guided see same fixture/catalog; events allowlisted/≤4KiB, unknown fields rejected, run/application ownership checked, server timestamps/cohort, replay dedup, held-out answers hidden; empty summary nulls. |
 | A13 | Controlled synthetic trials run three held-out tasks in both modes; compute correct/N completed, completion/N started, median server duration/N; label synthetic. No claim of human behavior or revenue uplift. |
+| A14 | HTTP+DB+process restart: submit bki_missing→system NEED_INFO with null officer_id/kind=trusted_source/source=bki/empty requested_fields; respond-info409 TRUSTED_SOURCE_REQUIRED; retry with stored consent→fresh mock clean evidence→MANUAL_REVIEW same ID/assignee, score100/limit2.4m, old evidence retained; replay no second source call/evaluation. Secured valuation review persists positive verified_value_rub on accepted current revision; restart and approve still enforce3.5m cap from verified5m, never original8m declaration. Missing/rejected/superseded valuation cannot approve. Assigned officer can reject PREAPPROVED/DOCS_UPLOADED/DOCS_REWORK with incomplete/unaccepted docs and reason; same conditions deny approve. |
 
 Use genuine PostgreSQL constraints/transactions for concurrency tests, backend for HTTP integration, and browser against live frontend/backend for UI acceptance. A test using SQLite alone is not evidence of PostgreSQL race correctness. Fixture validator only checks its own oracle, not these scenarios.
 
@@ -67,7 +69,7 @@ Original notebook/fixture requirements were 100k–3m,6–36m and OFFERED→SIGN
 | NF (14 source cases) | Retain onboarding/estimates/recovery intent; after preapproval collect docs. Old document-before-score/signing/issued expectations replaced by A06–A10 and simulated handoff. |
 | D (10 source cases) | Retain replay, idempotency, ownership, concurrency intent; adapt tokens/ETags to cookie/session and body version; partial active uniqueness excludes DRAFT/terminal. |
 
-At source research time, the original validator checked 26 core variants for internal consistency; NF14/D10 only had structural checks. Those counts are not backend passes. Task 1's temporary verification independently checks new data/math/doc coverage. Genuine integration/browser results must be added later with exact executed commands, environment, counts, failures and limits.
+At source research time, the original validator checked 26 core variants for internal consistency; NF14/D10 only had structural checks. Those counts are not backend passes. Task 1's preserved verification independently checks new data/math/doc coverage. Genuine integration/browser results must be added later with exact executed commands, environment, counts, failures and limits.
 
 ## Frozen held-out comparison protocol
 

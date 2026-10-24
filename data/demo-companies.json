@@ -356,6 +356,54 @@
         "preapproved_amount_rub": null
       },
       "expected_ui_action": "start_application"
+    },
+    {
+      "entity_type": "IP",
+      "name": "ИП «Демо БКИ без категории»",
+      "registered_at": "2022-10-24",
+      "registry_status": "active",
+      "registry_source_status": "available",
+      "turnover_source_status": "available",
+      "bki_source_status": "missing",
+      "monthly_revenue_rub": 800000,
+      "previous_monthly_revenue_rub": 680000,
+      "monthly_debt_payment_rub": 160000,
+      "credit_history": null,
+      "current_overdue_days": 0,
+      "okved": "46.90",
+      "region": "Демо-регион",
+      "legal_address": "Демонстрационный адрес, дом 1",
+      "collateral_status": "declared",
+      "collateral_value_rub": 4000000,
+      "collateral_type": "equipment",
+      "collateral_encumbered": false,
+      "financial_period_end": "2026-09-30",
+      "fixture_id": "bki_missing",
+      "id": "35eb88e3-4f33-5164-8463-836d038c7f37",
+      "owner_user_id": "f7ea2cb0-ba6f-58e0-8ff0-eeb309794eff",
+      "inn": "990000000901",
+      "need": {
+        "purpose": "working_capital",
+        "funding_pattern": "one_time",
+        "requested_amount_rub": 1000000,
+        "term_months": 12
+      },
+      "recovery": {
+        "retry_bki_source_status": "available",
+        "retry_credit_history": "clean",
+        "retry_current_overdue_days": 0,
+        "expected_status": "MANUAL_REVIEW",
+        "expected_score": 100,
+        "expected_scored_limit_rub": 2400000
+      },
+      "expected_check_outcome": {
+        "product_id": "alfa_term_loan_unsecured",
+        "score": null,
+        "risk": null,
+        "status": "NEED_INFO",
+        "preapproved_amount_rub": null
+      },
+      "expected_ui_action": "start_application"
     }
   ],
   "held_out_tasks": [

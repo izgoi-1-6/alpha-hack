@@ -3,6 +3,7 @@ from sqlalchemy import create_engine, pool
 from app.config import settings
 from app.db import Base
 from app import models  # Register model metadata for migrations.
+from app.recommendations import models as recommendation_models
 
 config=context.config
 target_metadata=Base.metadata

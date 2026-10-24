@@ -6,6 +6,7 @@ from .db import engine
 from .errors import install_error_handlers
 from .identity import router as auth_router, check_origin, Db
 from .companies import router as companies_router
+from .recommendations.router import router as recommendations_router
 
 app=FastAPI(title='Кредитный маршрут · демо',version='0.1.0',dependencies=[Depends(check_origin)])
 app.state.engine=engine
@@ -13,6 +14,7 @@ app.add_middleware(CORSMiddleware,allow_origins=[settings.ui_origin],allow_crede
 install_error_handlers(app)
 app.include_router(auth_router,prefix='/api/v1')
 app.include_router(companies_router,prefix='/api/v1')
+app.include_router(recommendations_router,prefix='/api/v1')
 
 @app.middleware('http')
 async def private_headers(request, call_next):

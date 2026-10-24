@@ -2,7 +2,7 @@
 
 Russian business-finance demo built with React/TypeScript/Vite, FastAPI, SQLAlchemy/Alembic and PostgreSQL 17. All company/source data is synthetic. No real registry, bank, BKI, SMS or payment calls are made.
 
-The implemented vertical slice includes registration, session login/logout, role-separated demo access, persisted company onboarding, versioned consents, source results and idempotent source retry. Recommendation, application, officer decision and document workflows are subsequent milestones.
+The implemented vertical slice includes registration, session login/logout, role-separated demo access, persisted company onboarding, versioned consents, source results and idempotent source retry, plus the preliminary financing calculator: a versioned demo product catalog, explained ranking, an amount/term calculator with indicative payments and immutable saved recommendation snapshots (no BKI request, scoring or approval promise). Application, officer decision and document workflows are subsequent milestones.
 
 ## Local development
 

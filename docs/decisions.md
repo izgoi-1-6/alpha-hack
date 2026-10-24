@@ -20,3 +20,17 @@ Authority: [canonical contract](superpowers/specs/2026-10-24-credit-route-design
 | Optional controlled comparison has server-side frozen answer key, synthetic cohort by default | Key committed before engine outcomes. Counts/denominators are technical observations, not proof of real-user or revenue uplift. Financial benefit is a separate editable formula. |
 
 Production pricing, banking/legal conditions, real data permissions, calibrated risk and abuse/file security operations remain future work; no implementation task should silently widen the demo to those integrations.
+
+## Task 3 rulings (recommendations)
+
+Reversible implementation choices made while building the preliminary calculator; the canonical contract above still governs.
+
+| Ruling | Reason and consequence |
+|---|---|
+| An unconfirmed registry blocks `can_apply` and any `fits`, but the indicative limit and payment stay visible | The contract nulls a payment only when it is unknown or incompatible, and says turnover may be known while the registry is unknown. An inactive company is incompatible and gets no payment. |
+| A missing payment always carries its reason in `payment_note` | Null alone reads as an error; the note names the gap (inactive company, incompatible parameters, unknown turnover or collateral, estimate below the product minimum). |
+| Every economic number is read from the product policy (revenue multiple, collateral LTV, minimum draw, rates) | A policy change in a new catalog version must change estimates without a code edit; snapshots keep the versions they were computed under. |
+| Revolving interest uses integer ceiling arithmetic, term-loan annuities use Decimal half up | A rounded monthly rate can push an exact whole-ruble interest total up by one; the annuity has no exact-integer boundary. |
+| «Обычный каталог» is the baseline: the same server figures in fixed catalog order, with no rank, status, reasons, alternatives or criteria | The later comparison needs identical data with guidance removed; the display mode is local UI state until Task 7 assigns it per run. |
+| The UI archive list hides the three research entries that reuse a supported product id | They share an id with a live demo product but carry different unverified parameters; the API still returns all nine with `can_apply=false`. |
+| One snapshot is saved per calculator edit (after a 300 ms debounce) | The contract wants a saved snapshot id for each estimate; there is no pruning or rate limit in the demo. |

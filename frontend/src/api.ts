@@ -100,7 +100,7 @@ export async function request<T>(
   return response.status === 204 ? (undefined as T) : response.json();
 }
 export const api = {
-  me: () => request<{ user: User }>("/auth/me"),
+  me: (signal?: AbortSignal) => request<{ user: User }>("/auth/me", { signal }),
   login: (email: string, password: string) =>
     request<{ user: User }>("/auth/login", {
       method: "POST",
@@ -112,13 +112,16 @@ export const api = {
       body: { email, password, display_name },
     }),
   logout: () => request<void>("/auth/logout", { method: "POST", body: {} }),
-  companies: () => request<{ items: Company[]; total: number }>("/companies"),
-  company: (id: string) => request<CompanyResult>("/companies/" + id),
-  fixtures: () =>
-    request<{ items: Fixture[]; total: number }>("/demo/fixtures"),
-  consents: () =>
+  companies: (signal?: AbortSignal) =>
+    request<{ items: Company[]; total: number }>("/companies", { signal }),
+  company: (id: string, signal?: AbortSignal) =>
+    request<CompanyResult>("/companies/" + id, { signal }),
+  fixtures: (signal?: AbortSignal) =>
+    request<{ items: Fixture[]; total: number }>("/demo/fixtures", { signal }),
+  consents: (signal?: AbortSignal) =>
     request<{ items: ConsentDocument[] }>(
       "/consents/documents?stage=onboarding",
+      { signal },
     ),
   onboard: (inn: string, consents: ConsentDocument[]) =>
     request<CompanyResult>("/companies", {

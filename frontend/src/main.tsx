@@ -29,122 +29,187 @@ function App() {
     [busy, setBusy] = useState(false),
     [menu, setMenu] = useState(false),
     [url, setUrl] = useState(() => new URL(window.location.href));
-  const retryKey = useRef<string | null>(null);
+  const generation = useRef({ session: 0, view: 0 });
+  const readController = useRef<AbortController | null>(null);
+  const retryAttempts = useRef(
+    new Map<string, { key: string; version: number }>(),
+  );
   const onboard = url.searchParams.get("view") === "onboard";
   const selectedId = url.searchParams.get("company");
+  const captureScope = () => ({ ...generation.current });
+  const isCurrent = (scope: { session: number; view: number }) =>
+    scope.session === generation.current.session &&
+    scope.view === generation.current.view;
+
+  function invalidateView() {
+    generation.current.view += 1;
+    readController.current?.abort();
+    readController.current = null;
+    setBusy(false);
+    setLoading(false);
+  }
+  function changeAccount(nextUser: User | null) {
+    generation.current.session += 1;
+    invalidateView();
+    retryAttempts.current.clear();
+    setUser(nextUser);
+    setCompanies([]);
+    setFixtures([]);
+    setConsents([]);
+    setData(null);
+    setLoadError("");
+    setActionError("");
+    setMenu(false);
+    if (!nextUser) {
+      const next = new URL(window.location.href);
+      next.search = "";
+      window.history.replaceState({}, "", next);
+      setUrl(next);
+    }
+  }
+  function changeView(next: URL) {
+    invalidateView();
+    setData(null);
+    setLoadError("");
+    setActionError("");
+    setLoading(true);
+    setUrl(next);
+    setMenu(false);
+  }
   function navigate(id?: string, view?: string) {
     const next = new URL(window.location.href);
     next.search = "";
     if (id) next.searchParams.set("company", id);
     if (view) next.searchParams.set("view", view);
     window.history.pushState({}, "", next);
-    setUrl(next);
-    setMenu(false);
-    setActionError("");
-    retryKey.current = null;
+    changeView(next);
   }
   useEffect(() => {
-    const fn = () => setUrl(new URL(window.location.href));
+    const fn = () => changeView(new URL(window.location.href));
     window.addEventListener("popstate", fn);
     return () => window.removeEventListener("popstate", fn);
   }, []);
   async function boot() {
+    const scope = captureScope();
+    const controller = new AbortController();
+    readController.current?.abort();
+    readController.current = controller;
+    const active = () => isCurrent(scope) && !controller.signal.aborted;
     setBooting(true);
     setBootError("");
     try {
-      setUser((await api.me()).user);
+      const result = await api.me(controller.signal);
+      if (!active()) return;
+      changeAccount(result.user);
+      setBooting(false);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) setUser(null);
+      if (!active()) return;
+      if (e instanceof ApiError && e.status === 401) changeAccount(null);
       else setBootError(message(e));
-    } finally {
       setBooting(false);
     }
   }
   useEffect(() => {
     void boot();
+    return () => readController.current?.abort();
   }, []);
-  function handleError(e: unknown) {
-    if (e instanceof ApiError && e.status === 401) {
-      setUser(null);
-      setLoadError("");
-    } else setLoadError(message(e));
-  }
   async function loadWorkspace() {
     if (!user || user.role !== "CLIENT") return;
+    const scope = captureScope();
+    const controller = new AbortController();
+    readController.current?.abort();
+    readController.current = controller;
+    const active = () => isCurrent(scope) && !controller.signal.aborted;
     setLoading(true);
     setLoadError("");
     try {
       const [list, fs, cs] = await Promise.all([
-        api.companies(),
-        api.fixtures().catch((e) => {
+        api.companies(controller.signal),
+        api.fixtures(controller.signal).catch((e) => {
           if (e instanceof ApiError && e.status === 404)
             return { items: [] as Fixture[], total: 0 };
           throw e;
         }),
-        api.consents(),
+        api.consents(controller.signal),
       ]);
+      if (!active()) return;
+      const id = selectedId ?? (!onboard ? list.items[0]?.id : undefined);
+      const result = id ? await api.company(id, controller.signal) : null;
+      if (!active()) return;
       setCompanies(list.items);
       setFixtures(fs.items);
       setConsents(cs.items);
-      const id = selectedId ?? (!onboard ? list.items[0]?.id : undefined);
-      if (id) setData(await api.company(id));
-      else setData(null);
+      setData(result);
     } catch (e) {
-      handleError(e);
+      if (!active()) return;
+      if (e instanceof ApiError && e.status === 401) changeAccount(null);
+      else setLoadError(message(e));
     } finally {
-      setLoading(false);
+      if (active()) setLoading(false);
     }
   }
   useEffect(() => {
     void loadWorkspace();
-  }, [user, selectedId, onboard]);
+    return () => readController.current?.abort();
+  }, [user, url]);
   async function logout() {
+    // Logout belongs to the session even if navigation happens while it completes.
+    invalidateView();
+    const scope = captureScope();
     setBusy(true);
     setActionError("");
     try {
       await api.logout();
-      setUser(null);
-      setData(null);
-      navigate();
+      if (scope.session === generation.current.session) changeAccount(null);
     } catch (e) {
-      setActionError(message(e));
+      if (isCurrent(scope)) setActionError(message(e));
     } finally {
-      setBusy(false);
+      if (isCurrent(scope)) setBusy(false);
     }
   }
   async function addCompany(inn: string) {
+    const scope = captureScope();
     setBusy(true);
     setActionError("");
     try {
-      const r = await api.onboard(inn, consents);
-      setData(r);
-      navigate(r.company.id);
+      const result = await api.onboard(inn, consents);
+      if (!isCurrent(scope)) return;
+      navigate(result.company.id);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) setUser(null);
+      if (!isCurrent(scope)) return;
+      if (e instanceof ApiError && e.status === 401) changeAccount(null);
       else setActionError(message(e));
     } finally {
-      setBusy(false);
+      if (isCurrent(scope)) setBusy(false);
     }
   }
   async function retry() {
     if (!data) return;
+    const scope = captureScope();
+    const companyId = data.company.id;
+    // A lost response may have committed. Keep both body revision and key with its
+    // original company across navigation so a later retry replays that command.
+    const attempt = retryAttempts.current.get(companyId) ?? {
+      key: crypto.randomUUID(),
+      version: data.company.version,
+    };
+    retryAttempts.current.set(companyId, attempt);
     setBusy(true);
     setActionError("");
-    retryKey.current ??= crypto.randomUUID();
     try {
-      setData(
-        await api.retry(
-          data.company.id,
-          data.company.version,
-          retryKey.current,
-        ),
-      );
-      retryKey.current = null;
+      const result = await api.retry(companyId, attempt.version, attempt.key);
+      if (
+        scope.session === generation.current.session &&
+        retryAttempts.current.get(companyId) === attempt
+      )
+        retryAttempts.current.delete(companyId);
+      if (isCurrent(scope)) setData(result);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) setUser(null);
+      if (!isCurrent(scope)) return;
+      if (e instanceof ApiError && e.status === 401) changeAccount(null);
       else setActionError(message(e));
     } finally {
-      setBusy(false);
+      if (isCurrent(scope)) setBusy(false);
     }
   }
   if (booting)
@@ -161,15 +226,7 @@ function App() {
         <ErrorNotice error={bootError} onRetry={() => void boot()} />
       </div>
     );
-  if (!user)
-    return (
-      <Auth
-        onAuth={(u) => {
-          setUser(u);
-          setActionError("");
-        }}
-      />
-    );
+  if (!user) return <Auth onAuth={changeAccount} />;
   return (
     <div className="workspace">
       <aside className={"sidebar " + (menu ? "open" : "")}>

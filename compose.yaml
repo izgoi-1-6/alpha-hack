@@ -1,0 +1,41 @@
+name: credit-route
+services:
+  db:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: credit_route
+      POSTGRES_USER: credit_route
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-credit_route_local}
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - credit_route_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U credit_route -d credit_route']
+      interval: 3s
+      timeout: 3s
+      retries: 15
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://credit_route:${POSTGRES_PASSWORD:-credit_route_local}@db:5432/credit_route
+      UI_ORIGIN: ${UI_ORIGIN:-http://localhost:5173}
+      DEMO_MODE: ${DEMO_MODE:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    ports:
+      - '127.0.0.1:8000:8000'
+    depends_on:
+      db:
+        condition: service_healthy
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - '127.0.0.1:5173:80'
+    depends_on:
+      - api
+volumes:
+  credit_route_data:

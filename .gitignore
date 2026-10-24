@@ -21,3 +21,11 @@ coverage/
 
 # Logs
 *.log
+
+# Python and private runtime data
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.sqlite*
+playwright-artifacts/

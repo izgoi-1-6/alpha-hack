@@ -1,0 +1,8 @@
+.git
+.superpowers
+.worktrees
+**/.venv
+**/node_modules
+**/__pycache__
+**/dist
+.env

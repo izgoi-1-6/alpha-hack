@@ -22,11 +22,14 @@ test("recommendation calculator: ranking, capacity, payment, alternatives and im
   await expect(page.locator(line)).toContainText("30 000 ₽");
   await page.locator(term).getByText("Все критерии соответствия").click();
   await expect(page.locator(term)).toContainText("Продукт доступен ИП и ООО");
+  // The pinned need panel is capped at the window height, so capture the full page in a tall window.
+  await page.setViewportSize({ width: 1440, height: 1500 });
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: artifacts + "/task-3-recommendations-desktop.png",
     fullPage: true,
   });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByLabel("По мере необходимости").check();
   await expect(page.locator("article").first()).toHaveAttribute(
     "data-product-id",
@@ -126,6 +129,89 @@ test("mobile calculator, accessible slider and declared collateral", async ({
   );
   await expect(page.locator("article")).toHaveCount(0);
 });
+for (const viewport of [
+  { width: 1440, height: 800 },
+  { width: 1366, height: 768 },
+]) {
+  test(`laptop ${viewport.width}x${viewport.height}: the pinned need panel scrolls inside itself and the collateral flow stays reachable by keyboard`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await open(page);
+    const panel = page.locator(".need-panel");
+    const settled = () =>
+      expect(page.locator(".recommendation-results")).toHaveAttribute(
+        "aria-busy",
+        "false",
+      );
+    const pageScroll = () => page.evaluate(() => Math.round(window.scrollY));
+    const focusedIsFullyVisible = () =>
+      expect(page.locator(":focus")).toBeInViewport({ ratio: 1 });
+
+    // Scroll the results until the panel is pinned to the top of the window. It has to fit the window
+    // (the form is taller than a laptop screen) and scroll inside itself.
+    await page.evaluate(() => window.scrollTo(0, 700));
+    await settled();
+    const pinned = (await panel.boundingBox())!;
+    expect(pinned.y).toBeGreaterThanOrEqual(0);
+    expect(pinned.y + pinned.height).toBeLessThanOrEqual(viewport.height);
+    expect(
+      await panel.evaluate((el) => el.scrollHeight > el.clientHeight),
+    ).toBe(true);
+
+    // Keyboard focus moving into controls below the fold scrolls the panel, not the page.
+    const before = await pageScroll();
+    await page.getByLabel("Сумма, ₽", { exact: true }).focus();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await expect(page.getByLabel("Срок, месяцев")).toBeFocused();
+    await focusedIsFullyVisible();
+    await page.keyboard.press("Tab");
+    await expect(page.getByLabel("Есть ли залог?")).toBeFocused();
+    await focusedIsFullyVisible();
+    expect(await pageScroll()).toBe(before);
+
+    // Declare a pledge entirely from the keyboard; every new control must be revealed as focus reaches it.
+    await page.getByLabel("Есть ли залог?").selectOption("declared");
+    await page.keyboard.press("Tab");
+    await expect(page.getByLabel("Тип залога")).toBeFocused();
+    await focusedIsFullyVisible();
+    await page.keyboard.press("Tab");
+    await expect(page.getByLabel("Заявленная стоимость, ₽")).toBeFocused();
+    await focusedIsFullyVisible();
+    await page.keyboard.type("4000000");
+    await page.keyboard.press("Tab");
+    await expect(page.getByLabel("Описание залога")).toBeFocused();
+    await focusedIsFullyVisible();
+    await page.keyboard.type("Демо склад");
+    await page.keyboard.press("Tab");
+    await expect(
+      page.getByLabel("Подтверждаю собственность на залог"),
+    ).toBeFocused();
+    await focusedIsFullyVisible();
+    await page.keyboard.press("Space");
+    await page.keyboard.press("Tab");
+    await expect(page.getByLabel("Есть обременение")).toBeFocused();
+    await focusedIsFullyVisible();
+
+    // The secured card reflects the declaration, and the panel is still pinned inside the window.
+    await settled();
+    await expect(
+      page.getByLabel("Подтверждаю собственность на залог"),
+    ).toBeChecked();
+    const secured = page.locator('[data-product-id="alfa_term_loan_secured"]');
+    await expect(secured).toContainText("Соответствует потребности");
+    await expect(secured).toContainText("2 400 000 ₽");
+    await expect(secured).toContainText("140 031 ₽");
+    const after = (await panel.boundingBox())!;
+    expect(after.y).toBeGreaterThanOrEqual(0);
+    expect(after.y + after.height).toBeLessThanOrEqual(viewport.height);
+    expect(await panel.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    await page.screenshot({
+      path: `${artifacts}/task-3-fix1-laptop-${viewport.width}x${viewport.height}.png`,
+    });
+  });
+}
 test("late calculation cannot overwrite edited need or navigate across company views", async ({
   page,
 }) => {

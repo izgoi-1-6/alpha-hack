@@ -1606,7 +1606,15 @@ dd {
 .need-panel {
   padding: 28px;
   position: sticky;
-  top: 100px;
+  top: 24px;
+  /* The form is taller than a laptop window (about 1,500px with a declared pledge): stay pinned and scroll
+     inside the panel instead of running off the bottom of the window. The top bar scrolls away, so only a
+     margin is reserved above and below. */
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-padding: 24px 0;
 }
 .need-panel h2 {
   font-size: 23px;
@@ -1980,6 +1988,8 @@ dd {
   }
   .need-panel {
     position: static;
+    max-height: none;
+    overflow: visible;
   }
   .product-metrics {
     grid-template-columns: 1fr 1fr;

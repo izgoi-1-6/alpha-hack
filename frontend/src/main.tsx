@@ -31,6 +31,7 @@ function App() {
     [url, setUrl] = useState(() => new URL(window.location.href));
   const generation = useRef({ session: 0, view: 0 });
   const readController = useRef<AbortController | null>(null);
+  const bootController = useRef<AbortController | null>(null);
   const retryAttempts = useRef(
     new Map<string, { key: string; version: number }>(),
   );
@@ -50,6 +51,8 @@ function App() {
   }
   function changeAccount(nextUser: User | null) {
     generation.current.session += 1;
+    bootController.current?.abort();
+    bootController.current = null;
     invalidateView();
     retryAttempts.current.clear();
     setUser(nextUser);
@@ -92,9 +95,12 @@ function App() {
   async function boot() {
     const scope = captureScope();
     const controller = new AbortController();
-    readController.current?.abort();
-    readController.current = controller;
-    const active = () => isCurrent(scope) && !controller.signal.aborted;
+    // Identity restoration belongs to the session, independent of company history.
+    bootController.current?.abort();
+    bootController.current = controller;
+    const active = () =>
+      scope.session === generation.current.session &&
+      !controller.signal.aborted;
     setBooting(true);
     setBootError("");
     try {
@@ -111,7 +117,7 @@ function App() {
   }
   useEffect(() => {
     void boot();
-    return () => readController.current?.abort();
+    return () => bootController.current?.abort();
   }, []);
   async function loadWorkspace() {
     if (!user || user.role !== "CLIENT") return;

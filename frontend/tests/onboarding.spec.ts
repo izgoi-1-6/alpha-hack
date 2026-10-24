@@ -75,8 +75,8 @@ test("mobile registration, explicit consents, source recovery, reload, errors an
     .getByRole("button", { name: "Создать аккаунт", exact: true })
     .click();
   await page
+    .getByRole("main")
     .getByRole("button", { name: "Добавить компанию", exact: true })
-    .last()
     .click();
   await expect(
     page.getByRole("button", { name: "Добавить и проверить" }),
@@ -369,4 +369,49 @@ test("company retry retains its replay body and key after navigation and a lost 
   ).toBeEnabled();
   expect(commands).toHaveLength(2);
   expect(commands[1]).toEqual(commands[0]);
+});
+
+test("history navigation during delayed auth restoration finishes boot on the current company", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Демо-клиент", exact: true }).click();
+  const companyA = "e230a446-129b-570f-b450-3cd8f7ddc8e5";
+  await page
+    .getByLabel("Ваша компания", { exact: true })
+    .selectOption(companyA);
+  await expect(
+    page.getByRole("heading", { name: "ООО «Демо Сильный бизнес»" }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Ваша компания", { exact: true })
+    .selectOption({ label: "ООО «Демо Неактивный бизнес» · 9900000049" });
+  await expect(
+    page.getByRole("heading", { name: "ООО «Демо Неактивный бизнес»" }),
+  ).toBeVisible();
+  let release!: () => void;
+  let started!: () => void;
+  let delivered!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  const pending = new Promise<void>((resolve) => (started = resolve));
+  const completed = new Promise<void>((resolve) => (delivered = resolve));
+  await page.route("**/api/v1/auth/me", async (route) => {
+    const response = await route.fetch();
+    started();
+    await held;
+    await route.fulfill({ response });
+    delivered();
+  });
+  await page.reload();
+  await pending;
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`company=${companyA}$`));
+  release();
+  await completed;
+  await expect(
+    page.getByRole("heading", { name: "ООО «Демо Сильный бизнес»" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Ваша компания", { exact: true })).toHaveValue(
+    companyA,
+  );
 });

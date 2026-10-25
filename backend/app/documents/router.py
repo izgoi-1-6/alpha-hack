@@ -4,9 +4,10 @@ role-scoped; review is the assignee's).
 
 Upload order: authentication, ownership (404, before any byte is read; the read transaction then ends, so streaming
 holds no pooled connection), the streamed body into a private staging file (413 while reading, 422 form errors), file
-validation (415/422), then commands.run_command with the upload's digest at the time the body has arrived: locks and
-lazy expiry, idempotency replay, expired refusal, version, state, checklist rules, and the file moved into place after
-its row is flushed. The staging file is removed whatever happens.
+validation (415/422), then commands.run_command with the upload's digest at the time the body has arrived (the clock
+from the `get_clock` dependency, called then): locks and lazy expiry, idempotency replay, expired refusal, version,
+state, checklist rules, and the file moved into place after its row is flushed. The staging file is removed whatever
+happens.
 """
 from collections.abc import Callable
 from datetime import datetime
@@ -17,7 +18,7 @@ from ..applications import commands
 from ..applications.lifecycle import get_application, get_owned_application, lock_owned_application, require_application
 from ..applications.router import run_command as run_owner_command
 from ..applications.views import public_application
-from ..clock import request_clock
+from ..clock import get_clock
 from ..idempotency import IdempotencyKey
 from ..identity import ClientUser, CurrentUser, Db, Now
 from ..schemas import VersionInput
@@ -27,7 +28,7 @@ from .storage import DocumentStorage, get_storage
 
 router = APIRouter(prefix='/applications', tags=['documents'])
 Storage = Annotated[DocumentStorage, Depends(get_storage)]
-RequestClock = Annotated[Callable[[], datetime], Depends(request_clock)]
+Clock = Annotated[Callable[[], datetime], Depends(get_clock)]
 DOWNLOAD_HEADERS = {'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
                     'Content-Security-Policy': "default-src 'none'; sandbox"}
 
@@ -39,7 +40,7 @@ def read_documents(application_id: str, user: ClientUser, db: Db, now: Now):
 
 
 @router.post('/{application_id}/documents', status_code=201)
-def upload_document(application_id: str, request: Request, user: ClientUser, db: Db, clock: RequestClock,
+def upload_document(application_id: str, request: Request, user: ClientUser, db: Db, clock: Clock,
                     storage: Storage, idempotency_key: IdempotencyKey):
     require_application(db, application_id, owner_id=user.id)
     db.commit()  # ends the read-only transaction: the body streams without holding a connection

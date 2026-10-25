@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 import pytest
 from sqlalchemy import select, update
-from app.clock import utc_now
+from app.clock import get_clock, utc_now
 from app.models import Company, Precheck
 from application_oracle import BY_INN
 from recommendation_oracle import FIXTURES
@@ -43,9 +43,11 @@ class Clock:
 
 @pytest.fixture
 def clock(client):
-    """Pins the request clock to the fixture business date, so onboarded companies score at 2026-10-24."""
+    """Pins the request clock to the fixture business date, so onboarded companies score at 2026-10-24. The same clock
+    serves `Now` and `get_clock` (a time an upload reads once its body has arrived)."""
     fixed = Clock(FIXED_NOW)
     client.app.dependency_overrides[utc_now] = fixed
+    client.app.dependency_overrides[get_clock] = lambda: fixed
     return fixed
 
 

@@ -2,6 +2,8 @@
 
 Policy: [canonical spec](../superpowers/specs/2026-10-24-credit-route-design.md). Inputs in `data/demo-companies.json` are frozen at business date 2026-10-24; app wall time is injectable/current. The expectations below predate application implementation. They are test specifications, not claims that backend/browser tests ran.
 
+> Revision note (2026-10-25, Task 8): products now come from `data/credit_catalog.json` and `data/demo-policy.json` (spec «Product policy and recommendations»); revision Task 9 recomputes the numbers below. Already superseded: the research archive and its six informational IDs (A03 now refuses the overlay and unknown ids), the funding pattern in the need, the three held-out comparison tasks (removed with the dropped Task 7), and the three-product bounds (the catalog's are in the spec's effective-terms table). `secured_investment` now asks for business development; its outcome is unchanged. Fixtures are `demo-fixtures-v2` with ten companies, including `gov_manufacturer`.
+
 ## Fixture outcomes
 
 All fixtures owned by `client@demo.local`; use `other@demo.local` for unauthorized reads. Officer is `officer@demo.local`. Synthetic password `DemoCredit2026!`; never use these accounts outside local demo.

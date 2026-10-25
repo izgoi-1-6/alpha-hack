@@ -1,16 +1,17 @@
 from datetime import date, datetime
-import hashlib
 import json
 from pathlib import Path
-from typing import Annotated, Literal
-from fastapi import APIRouter, Header, Request
+from typing import Literal
+from fastapi import APIRouter, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from . import idempotency
 from .clock import iso_utc
 from .config import settings
 from .errors import ApiError
+from .idempotency import IdempotencyKey
 from .identity import Db, Now, ClientUser
-from .models import Company, Precheck, Consent, IdempotencyRecord
+from .models import Company, Precheck, Consent
 from .schemas import CompanyInput, VersionInput
 
 DATA_PATH = Path(__file__).resolve().parents[2] / 'data' / 'demo-companies.json'
@@ -97,15 +98,10 @@ def onboard(data: CompanyInput, user: ClientUser, db: Db, now: Now):
 def read_company(company_id: str, user: ClientUser, db: Db):
     return company_result(db,get_owned_company(db,company_id,user.id))
 
-@router.post('/companies/{company_id}/precheck/retry')
-def retry_precheck(company_id: str, data: VersionInput, request: Request, user: ClientUser, db: Db, now: Now, idempotency_key: Annotated[str,Header(min_length=1,max_length=128)]):
-    company=get_owned_company(db,company_id,user.id,for_update=True)
-    digest=hashlib.sha256(json.dumps(data.model_dump(),sort_keys=True,separators=(',',':')).encode()).hexdigest()
-    previous=db.scalar(select(IdempotencyRecord).where(IdempotencyRecord.actor_id==user.id,IdempotencyRecord.method=='POST',IdempotencyRecord.path==request.url.path,IdempotencyRecord.key==idempotency_key))
-    if previous:
-        if previous.request_hash != digest: raise ApiError(409,'IDEMPOTENCY_CONFLICT','Ключ уже использован с другими данными')
-        return previous.response_body
-    if data.version != company.version: raise ApiError(409,'VERSION_CONFLICT','Компания уже обновлена. Обновите страницу.')
+def recover_precheck(db: Session, company: Company, now: datetime) -> Precheck:
+    """One registry/turnover recovery lookup: the fixture's `recovery` block replaces the unavailable or missing
+    source values, a new precheck is appended and the company version increments once. The caller holds the company
+    row lock. Shared by the company precheck retry and an application's retry-check."""
     source=dict(SOURCES[company.inn])
     recovery=source.get('recovery',{})
     if recovery.get('retry_registry_source_status'):
@@ -118,8 +114,14 @@ def retry_precheck(company_id: str, data: VersionInput, request: Request, user: 
     company.registry_status=source['registry_status']
     company.version+=1
     company.updated_at=now
-    append_precheck(db,company,source,now)
-    result=company_result(db,company)
-    db.add(IdempotencyRecord(actor_id=user.id,method='POST',path=request.url.path,key=idempotency_key,request_hash=digest,response_status=200,response_body=result,resource_id=company.id,created_at=now))
-    db.flush()
-    return result
+    return append_precheck(db,company,source,now)
+
+@router.post('/companies/{company_id}/precheck/retry')
+def retry_precheck(company_id: str, data: VersionInput, request: Request, user: ClientUser, db: Db, now: Now, idempotency_key: IdempotencyKey):
+    company=get_owned_company(db,company_id,user.id,for_update=True)
+    scope=idempotency.scope_of(request,user.id,idempotency_key,data)
+    replayed=idempotency.replay(db,scope)
+    if replayed is not None: return replayed
+    if data.version != company.version: raise ApiError(409,'VERSION_CONFLICT','Компания уже обновлена. Обновите страницу.')
+    recover_precheck(db,company,now)
+    return idempotency.remember(db,scope,company_result(db,company),now=now,resource_id=company.id)

@@ -9,13 +9,18 @@ class ApiError(Exception):
         self.status, self.code, self.message = status, code, message
         self.fields, self.details = fields, details
 
+def error_response(status: int, code: str, message: str, *, fields: dict | None = None, details: dict | None = None) -> JSONResponse:
+    """The standard error body. Returning it (instead of raising) lets the request transaction commit, e.g. to keep a
+    lazily recorded expiry while the command itself is refused."""
+    error = {'code': code, 'message': message}
+    if fields: error['fields'] = fields
+    if details: error['details'] = details
+    return JSONResponse({'error': error}, status_code=status)
+
 def install_error_handlers(app):
     @app.exception_handler(ApiError)
     async def api_error(_request: Request, exc: ApiError):
-        error = {'code': exc.code, 'message': exc.message}
-        if exc.fields: error['fields'] = exc.fields
-        if exc.details: error['details'] = exc.details
-        return JSONResponse({'error': error}, status_code=exc.status)
+        return error_response(exc.status, exc.code, exc.message, fields=exc.fields, details=exc.details)
 
     @app.exception_handler(RequestValidationError)
     async def validation(_request: Request, exc: RequestValidationError):

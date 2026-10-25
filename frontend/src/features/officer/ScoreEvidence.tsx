@@ -83,10 +83,50 @@ export function ReviewAmounts({
           label="Предварительно одобрено"
           tone="preapproved"
           value={rub(application.preapproved_amount_rub)}
-          note={`Не окончательное решение.${application.preapproval_expires_at ? ` Срок документов — до ${formatDate(application.preapproval_expires_at)}` : ""}`}
+          note={
+            application.final_amount_rub !== null
+              ? "Решение до проверки документов."
+              : `Не окончательное решение.${application.preapproval_expires_at ? ` Срок документов — до ${formatDate(application.preapproval_expires_at)}` : ""}`
+          }
         />
       )}
+      <FinalAmounts application={application} />
     </div>
+  );
+}
+
+/** The document phase: the inclusive final range from accepted evidence (or why it is refused), then the decision. */
+function FinalAmounts({ application }: { application: StaffApplication }) {
+  const terms = application.final_approval;
+  return (
+    <>
+      {terms &&
+        (terms.blocked_by ? (
+          <Amount
+            label="Допустимая итоговая сумма"
+            value="Недоступно"
+            tone="blocked"
+            note={keepAmountsTogether(terms.blocked_by.message)}
+          />
+        ) : (
+          terms.amount_min_rub !== null &&
+          terms.amount_max_rub !== null && (
+            <Amount
+              label="Допустимая итоговая сумма"
+              value={`до ${rub(terms.amount_max_rub)}`}
+              note={`от ${rub(terms.amount_min_rub)} до меньшего из предварительно одобренной суммы и лимита по проверенным документам${terms.verified_limit_rub !== null ? ` (${rub(terms.verified_limit_rub)})` : ""}, границы включительно.`}
+            />
+          )
+        ))}
+      {application.final_amount_rub !== null && (
+        <Amount
+          label="Итоговая сумма (демо-решение)"
+          tone="approved"
+          value={rub(application.final_amount_rub)}
+          note="Окончательное решение демо: деньги не перечисляются, договор не подписывается."
+        />
+      )}
+    </>
   );
 }
 

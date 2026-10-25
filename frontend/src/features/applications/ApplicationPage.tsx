@@ -5,9 +5,11 @@ import {
   applicationsApi,
   ConsentDocument,
   Dialog,
+  DocumentChecklist,
   errorMessage,
   HistoryItem,
 } from "../../api";
+import { documentsApi } from "../documents/documentsApi";
 import { ErrorNotice, Icon, Loading } from "../../components";
 import { CancelAction } from "./CancelAction";
 import { CommandAttempts } from "./commands";
@@ -30,9 +32,18 @@ type Loaded =
       history: HistoryItem[];
       /** Field descriptors for answering an open information request, else null. */
       dialog: Dialog | null;
+      /** The document checklist from preapproval on (read-only once the application is closed), else null. */
+      documents: DocumentChecklist | null;
     }
   /** A draft whose product policy was withdrawn: the dialog answers 409 RECOMMENDATION_STALE. */
   | { kind: "stale"; application: Application };
+
+/** A withdrawn product makes the dialog answer 409 RECOMMENDATION_STALE; the status page then shows no answer form. */
+const withoutStaleDialog = (error: unknown) => {
+  if (error instanceof ApiError && error.code === "RECOMMENDATION_STALE")
+    return null;
+  throw error;
+};
 
 /**
  * `?application=<id>`: the wizard while the application is a DRAFT, its status and timeline otherwise. Reads are
@@ -44,6 +55,7 @@ export function ApplicationPage({
   onOpenList,
   onOpenApplication,
   onRecommend,
+  onOpenHandoff,
   onLeaveGuard,
   onUnauthorized,
 }: {
@@ -52,6 +64,8 @@ export function ApplicationPage({
   onOpenList: () => void;
   onOpenApplication: (id: string) => void;
   onRecommend: (companyId: string) => void;
+  /** Opens the local Alfa-Business demo page of an approved application. */
+  onOpenHandoff: (path: string) => void;
   /** The wizard registers how to leave it; the App consults it before any navigation. */
   onLeaveGuard: (guard: LeaveGuard | null) => void;
   onUnauthorized: () => void;
@@ -79,13 +93,24 @@ export function ApplicationPage({
   async function read(signal: AbortSignal): Promise<Loaded> {
     const { application } = await applicationsApi.get(applicationId, signal);
     if (application.status !== "DRAFT") {
-      const [{ items }, dialog] = await Promise.all([
+      const [{ items }, dialog, documents] = await Promise.all([
         applicationsApi.history(applicationId, signal),
         application.allowed_actions.includes("respond_info")
-          ? applicationsApi.dialog(applicationId, signal)
+          ? applicationsApi
+              .dialog(applicationId, signal)
+              .catch(withoutStaleDialog)
+          : null,
+        application.document_summary
+          ? documentsApi.checklist(applicationId, signal)
           : null,
       ]);
-      return { kind: "status", application, history: items, dialog };
+      return {
+        kind: "status",
+        application,
+        history: items,
+        dialog,
+        documents,
+      };
     }
     try {
       const [dialog, documents] = await Promise.all([
@@ -187,12 +212,14 @@ export function ApplicationPage({
         application={loaded.application}
         history={loaded.history}
         dialog={loaded.dialog}
+        documents={loaded.documents}
         attempts={attempts}
         reload={() => load()}
         announce={announce}
         focusOnMount={submittedHere}
         onOpenList={onOpenList}
         onRecommend={onRecommend}
+        onOpenHandoff={onOpenHandoff}
         onUnauthorized={onUnauthorized}
       />
     );

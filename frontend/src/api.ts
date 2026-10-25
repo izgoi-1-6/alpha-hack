@@ -81,23 +81,32 @@ export async function request<T>(
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError")
       throw error;
-    throw new ApiError(
-      0,
-      "NETWORK_ERROR",
-      "Нет связи с сервером. Проверьте подключение и повторите попытку.",
-    );
+    throw networkError();
   }
-  if (!response.ok) {
-    const data = await response.json().catch(() => null);
-    throw new ApiError(
+  if (!response.ok)
+    throw responseError(
       response.status,
-      data?.error?.code ?? "HTTP_ERROR",
-      data?.error?.message ?? "Не удалось выполнить запрос. Повторите попытку.",
-      data?.error?.fields,
-      data?.error?.details,
+      await response.json().catch(() => null),
     );
-  }
   return response.status === 204 ? (undefined as T) : response.json();
+}
+/** No response at all: the outcome of a command is unknown. */
+export const networkError = () =>
+  new ApiError(
+    0,
+    "NETWORK_ERROR",
+    "Нет связи с сервером. Проверьте подключение и повторите попытку.",
+  );
+/** An API refusal `{error:{code,message,fields?,details?}}`, or a generic one when the body is not that shape. */
+export function responseError(status: number, data: unknown) {
+  const error = (data as { error?: Partial<ApiError> } | null)?.error;
+  return new ApiError(
+    status,
+    error?.code ?? "HTTP_ERROR",
+    error?.message ?? "Не удалось выполнить запрос. Повторите попытку.",
+    error?.fields,
+    error?.details,
+  );
 }
 export const api = {
   me: (signal?: AbortSignal) => request<{ user: User }>("/auth/me", { signal }),

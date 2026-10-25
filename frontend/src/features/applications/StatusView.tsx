@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { Application, applicationsApi, Dialog, HistoryItem } from "../../api";
+import {
+  Application,
+  applicationsApi,
+  Dialog,
+  DocumentChecklist as Checklist,
+  HistoryItem,
+} from "../../api";
 import { DemoBadge, Icon } from "../../components";
+import { DocumentChecklist } from "../documents/DocumentChecklist";
+import { HandoffAction } from "../documents/HandoffAction";
 import { Amount } from "./Amount";
 import { CancelAction } from "./CancelAction";
 import { CommandAttempts } from "./commands";
 import {
-  documentList,
   formatDate,
   formatDateTime,
   keepAmountsTogether,
@@ -25,7 +32,7 @@ function officerDecision(application: Application, history: HistoryItem[]) {
   const last = history[history.length - 1];
   return last?.actor_role === "officer" &&
     last.to_status === application.status &&
-    ["R12", "FINAL_REJECTED"].includes(last.reason_code)
+    ["R12", "FINAL_REJECTED", "FINAL_APPROVED"].includes(last.reason_code)
     ? last
     : null;
 }
@@ -47,13 +54,13 @@ function explanation(application: Application, byOfficer: boolean) {
     case "MANUAL_REVIEW":
       return "Заявку рассмотрит кредитный специалист: решение и возможная сумма определятся после проверки. Пока это не одобрение.";
     case "PREAPPROVED":
-      return `${nextStep(application)}: ${documentList(application.product.required_documents)}. Загрузка документов появится на следующем этапе демо. Предварительное одобрение — не окончательное решение: итоговую сумму подтвердит специалист после проверки документов.`;
+      return `${nextStep(application)}: загрузите их ниже и отправьте комплект на проверку. Предварительное одобрение — не окончательное решение: итоговую сумму подтвердит специалист после проверки документов.`;
     case "DOCS_UPLOADED":
-      return "Документы переданы на проверку кредитному специалисту.";
+      return "Комплект документов у кредитного специалиста. Если какой-то документ понадобится заменить, заявка вернётся к вам с причиной; иначе специалист примет окончательное решение.";
     case "DOCS_REWORK":
-      return "Часть документов нужно заменить.";
+      return "Специалист отклонил документ — причина указана ниже. Замените его и отправьте комплект снова: срок предварительного одобрения при этом не продлевается.";
     case "APPROVED":
-      return "Это демонстрационное решение: деньги не перечисляются, договор не подписывается.";
+      return "Это демонстрационное решение: деньги не перечисляются, договор не подписывается. Итоговая сумма показана ниже рядом с запрошенной и предварительно одобренной.";
     case "REJECTED":
       return byOfficer
         ? "Решение принял кредитный специалист — его комментарий ниже. Можно подобрать другой продукт или изменить параметры."
@@ -71,24 +78,30 @@ export function StatusView({
   application,
   history,
   dialog,
+  documents,
   attempts,
   reload,
   announce,
   focusOnMount,
   onOpenList,
   onRecommend,
+  onOpenHandoff,
   onUnauthorized,
 }: {
   application: Application;
   history: HistoryItem[];
   /** The questionnaire contract, loaded only while an information request can be answered. */
   dialog: Dialog | null;
+  /** The document checklist once the application reached the document phase, else null. */
+  documents: Checklist | null;
   attempts: CommandAttempts;
   reload: () => Promise<unknown>;
   announce: (text: string) => void;
   focusOnMount: boolean;
   onOpenList: () => void;
   onRecommend: (companyId: string) => void;
+  /** Opens the local Alfa-Business demo page (a path the server returned). */
+  onOpenHandoff: (path: string) => void;
   onUnauthorized: () => void;
 }) {
   const command = useCommand(attempts, onUnauthorized);
@@ -194,6 +207,14 @@ export function StatusView({
             </span>
           </div>
         )}
+        {application.status === "APPROVED" && (
+          <HandoffAction
+            application={application}
+            attempts={attempts}
+            onOpen={onOpenHandoff}
+            onUnauthorized={onUnauthorized}
+          />
+        )}
         {(actions.includes("retry_check") ||
           actions.includes("cancel") ||
           terminal) && (
@@ -258,17 +279,34 @@ export function StatusView({
             label="Предварительно одобрено"
             tone="preapproved"
             value={rub(application.preapproved_amount_rub)}
-            note={`Это не окончательное решение и не обещание выдачи.${application.preapproval_expires_at ? ` Действует до ${formatDate(application.preapproval_expires_at)}` : ""}`}
+            note={
+              application.final_amount_rub !== null
+                ? "Решение до проверки документов; итоговая сумма — отдельно."
+                : `Это не окончательное решение и не обещание выдачи.${application.preapproval_expires_at ? ` Действует до ${formatDate(application.preapproval_expires_at)}` : ""}`
+            }
           />
         )}
         {application.final_amount_rub !== null && (
           <Amount
             label="Итоговая сумма (демо-решение)"
+            tone="approved"
             value={rub(application.final_amount_rub)}
-            note="Демонстрационное решение: деньги не перечисляются."
+            note="Демонстрационное решение: деньги не перечисляются, договор не подписывается."
           />
         )}
       </div>
+
+      {documents && (
+        <DocumentChecklist
+          application={application}
+          checklist={documents}
+          attempts={attempts}
+          reload={reload}
+          announce={announce}
+          onSubmitted={() => setFocusRequest((n) => n + 1)}
+          onUnauthorized={onUnauthorized}
+        />
+      )}
 
       <div className="status-layout">
         <section

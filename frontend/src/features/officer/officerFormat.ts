@@ -77,113 +77,97 @@ export const PHASE: Record<OfficerDecision["phase"], string> = {
   final: "окончательный",
 };
 
-type RequestableField = { path: string; label: string };
-
 /**
- * Answers an officer may ask the client about, by questionnaire stage: the server's `info_requests.OFFICER_PATHS`
- * (every answer outside the stage-2 need, which is fixed at submission). The pledge is requested as a whole and only
- * for the secured product. Labels are the questionnaire's own, so the client sees the same words.
+ * The questionnaire's labels by answer path, in the client's own words: the server's stage descriptors, and pledge
+ * details as the client's answer form names them. Unknown paths fall back to the path itself.
  */
-export const REQUESTABLE: {
-  title: string;
-  securedOnly?: boolean;
-  fields: RequestableField[];
-}[] = [
-  {
-    title: "Компания",
-    fields: [
-      {
-        path: "company_confirmed",
-        label: "Сведения о компании из демо-реестра верны",
-      },
-      { path: "actual_address", label: "Фактический адрес" },
-      { path: "actual_activity", label: "Фактическая деятельность" },
-    ],
-  },
-  {
-    title: "Залог",
-    securedOnly: true,
-    fields: [{ path: "collateral", label: "Залог: все сведения" }],
-  },
-  {
-    title: "Бизнес и финансы",
-    fields: [
-      {
-        path: "monthly_revenue_rub",
-        label: "Среднемесячная выручка за текущий период, ₽",
-      },
-      {
-        path: "previous_monthly_revenue_rub",
-        label: "Среднемесячная выручка за предыдущий период, ₽",
-      },
-      {
-        path: "financial_period_end",
-        label: "Дата окончания отчётного периода",
-      },
-      { path: "tax_regime", label: "Налоговый режим" },
-      { path: "employees", label: "Число сотрудников" },
-      { path: "seasonal", label: "Выручка зависит от сезона" },
-    ],
-  },
-  {
-    title: "Обязательства",
-    fields: [
-      {
-        path: "monthly_debt_payment_rub",
-        label: "Ежемесячные платежи по действующим кредитам и лизингу, ₽",
-      },
-      { path: "tax_debt_rub", label: "Налоговая задолженность, ₽" },
-      { path: "legal_proceedings", label: "Есть судебные разбирательства" },
-      { path: "obligations_note", label: "Комментарий к обязательствам" },
-    ],
-  },
-  {
-    title: "Руководитель и владельцы",
-    fields: [
-      {
-        path: "representative_name",
-        label: "ФИО представителя (синтетические данные)",
-      },
-      {
-        path: "representative_authority_confirmed",
-        label: "Подтверждение полномочий представителя",
-      },
-      {
-        path: "beneficial_owners_confirmed",
-        label: "Подтверждение сведений о владельцах",
-      },
-    ],
-  },
-  {
-    title: "Проверка",
-    fields: [
-      {
-        path: "accuracy_confirmed",
-        label: "Подтверждение достоверности анкеты",
-      },
-    ],
-  },
-];
-
-const OTHER_LABELS: Record<string, string> = {
+const ANSWER_LABELS: Record<string, string> = {
+  company_confirmed: "Сведения о компании из демо-реестра верны",
+  actual_address: "Фактический адрес",
+  actual_activity: "Фактическая деятельность",
   purpose: "Цель финансирования",
   funding_pattern: "Как используются деньги",
   requested_amount_rub: "Сумма, ₽",
   term_months: "Срок, мес.",
-  collateral: "Залог",
+  collateral: "Залог: все сведения",
   "collateral.status": "Залог: статус",
-  "collateral.type": "Залог: тип",
-  "collateral.declared_value_rub": "Залог: заявленная стоимость",
-  "collateral.description": "Залог: описание",
-  "collateral.owner_confirmed": "Залог: подтверждение собственности",
-  "collateral.encumbered": "Залог: обременение",
+  "collateral.type": "Тип залога",
+  "collateral.declared_value_rub": "Заявленная стоимость залога, ₽",
+  "collateral.description": "Описание залога",
+  "collateral.owner_confirmed": "Собственность на залог подтверждена",
+  "collateral.encumbered": "Есть обременение",
+  monthly_revenue_rub: "Среднемесячная выручка за текущий период, ₽",
+  previous_monthly_revenue_rub: "Среднемесячная выручка за предыдущий период, ₽",
+  financial_period_end: "Дата окончания отчётного периода",
+  tax_regime: "Налоговый режим",
+  employees: "Число сотрудников",
+  seasonal: "Выручка зависит от сезона",
+  monthly_debt_payment_rub:
+    "Ежемесячные платежи по действующим кредитам и лизингу, ₽",
+  tax_debt_rub: "Налоговая задолженность, ₽",
+  legal_proceedings: "Есть судебные разбирательства",
+  obligations_note: "Комментарий к обязательствам",
+  representative_name: "ФИО представителя (синтетические данные)",
+  representative_authority_confirmed:
+    "Подтверждаю полномочия представителя (демо, без проверки документов)",
+  beneficial_owners_confirmed:
+    "Сведения о владельцах указаны верно (демо, это не согласие поручителя)",
+  accuracy_confirmed: "Подтверждаю, что сведения анкеты верны",
 };
-const LABELS = new Map<string, string>([
-  ...REQUESTABLE.flatMap((group) =>
-    group.fields.map((field) => [field.path, field.label] as [string, string]),
-  ),
-  ...Object.entries(OTHER_LABELS),
-]);
+
+/** The questionnaire stage each answer belongs to, as the request form groups them (the pledge on its own). */
+const STAGE_OF = new Map<string, string>(
+  (
+    [
+      ["Компания", ["company_confirmed", "actual_address", "actual_activity"]],
+      ["Залог", ["collateral"]],
+      [
+        "Бизнес и финансы",
+        [
+          "monthly_revenue_rub",
+          "previous_monthly_revenue_rub",
+          "financial_period_end",
+          "tax_regime",
+          "employees",
+          "seasonal",
+        ],
+      ],
+      [
+        "Обязательства",
+        [
+          "monthly_debt_payment_rub",
+          "tax_debt_rub",
+          "legal_proceedings",
+          "obligations_note",
+        ],
+      ],
+      [
+        "Руководитель и владельцы",
+        [
+          "representative_name",
+          "representative_authority_confirmed",
+          "beneficial_owners_confirmed",
+        ],
+      ],
+      ["Проверка", ["accuracy_confirmed"]],
+    ] as [string, string[]][]
+  ).flatMap(([title, names]) => names.map((name) => [name, title] as [string, string])),
+);
 
 /** The questionnaire label of any answer path an information request may name. */
-export const answerLabel = (path: string) => LABELS.get(path) ?? path;
+export const answerLabel = (path: string) => ANSWER_LABELS[path] ?? path;
+
+/**
+ * The paths an officer may request, from the server's `requestable_fields` and in its order, grouped by questionnaire
+ * stage; a pledge detail (`collateral.<key>`) sits with the pledge. An unknown path is offered under its own name.
+ */
+export function requestableGroups(paths: string[]) {
+  const groups: { title: string; fields: { path: string; label: string }[] }[] = [];
+  for (const path of paths) {
+    const title = STAGE_OF.get(path.split(".")[0]) ?? "Другие сведения";
+    let group = groups.find((entry) => entry.title === title);
+    if (!group) groups.push((group = { title, fields: [] }));
+    group.fields.push({ path, label: answerLabel(path) });
+  }
+  return groups;
+}

@@ -61,6 +61,8 @@ export function Icon({
         <path d="M12 11v6M12 7h.01" />
       </>
     ),
+    download: <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />,
+    upload: <path d="M12 16V5M7 10l5-5 5 5M5 20h14" />,
   };
   return (
     <svg

@@ -3,16 +3,36 @@ import { ApplicationStatus } from "../../api";
 import { parseInteger } from "../applications/fields";
 import { keepAmountsTogether, rub } from "../applications/format";
 import { Preapproval } from "./officerApi";
-import { REQUESTABLE } from "./officerFormat";
+import { requestableGroups } from "./officerFormat";
 
 /** Field messages of the last refused command of this form (the server's `fields`). */
-type FieldMessages = Record<string, string>;
+export type FieldMessages = Record<string, string>;
 
-const describedBy = (...ids: (string | false | undefined)[]) =>
+export const describedBy = (...ids: (string | false | undefined)[]) =>
   ids.filter(Boolean).join(" ") || undefined;
 
+/**
+ * An amount prefilled to the server's upper bound. Until the officer edits it, it follows a changed bound (a reload
+ * after another tab's command), so a stale figure is never sent unnoticed; once edited, the typed value stays.
+ */
+export function useBoundAmount(bound: number | null) {
+  const text = (value: number | null) => (value !== null ? String(value) : "");
+  const [amount, setAmount] = useState(text(bound));
+  const [edited, setEdited] = useState(false);
+  const [seen, setSeen] = useState(bound);
+  if (bound !== seen) {
+    setSeen(bound);
+    if (!edited) setAmount(text(bound));
+  }
+  const change = (value: string) => {
+    setEdited(true);
+    setAmount(value);
+  };
+  return [amount, change] as const;
+}
+
 /** A decision reason or question: 1–2000 characters after trimming, stored in the history the client reads. */
-function ReasonField({
+export function ReasonField({
   id,
   label,
   hint,
@@ -66,9 +86,7 @@ export function PreapproveForm({
   fields: FieldMessages;
   onSubmit: (amount: number, reason: string) => void;
 }) {
-  const [amount, setAmount] = useState(
-    preapproval.amount_max_rub !== null ? String(preapproval.amount_max_rub) : "",
-  );
+  const [amount, setAmount] = useBoundAmount(preapproval.amount_max_rub);
   const [reason, setReason] = useState("");
   const parsed = parseInteger(amount);
   const amountError = parsed.error ?? fields.amount_rub;
@@ -137,21 +155,22 @@ export function PreapproveForm({
   );
 }
 
-/** Requestable answers by stage (never the stage-2 need) and the question the client will answer. */
+/** The server's requestable answers by stage (never the stage-2 need) and the question the client will answer. */
 export function RequestInfoForm({
-  secured,
+  paths,
   busy,
   fields,
   onSubmit,
 }: {
-  secured: boolean;
+  /** The staff detail's `requestable_fields`. */
+  paths: string[];
   busy: boolean;
   fields: FieldMessages;
   onSubmit: (paths: string[], question: string) => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [question, setQuestion] = useState("");
-  const groups = REQUESTABLE.filter((group) => !group.securedOnly || secured);
+  const groups = requestableGroups(paths);
   const ordered = groups
     .flatMap((group) => group.fields.map((field) => field.path))
     .filter((path) => selected.includes(path));
@@ -251,7 +270,7 @@ export function RejectForm({
       <p className="field-note">
         {preliminary
           ? "Отказ до этапа документов по результатам рассмотрения."
-          : "Отказ на этапе документов: полный комплект или принятые документы для него не нужны."}{" "}
+          : "На этапе документов отказать можно при любом состоянии комплекта: загружать или принимать документы для этого не нужно."}{" "}
         Заявка закроется, клиент увидит причину.
       </p>
       <ReasonField

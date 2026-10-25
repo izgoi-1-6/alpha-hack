@@ -96,6 +96,15 @@ export function commandProblem(error: unknown): CommandProblem {
     case "INFO_REQUEST_OPEN":
     case "MANDATORY_STOP":
     case "LIMIT_NOT_COMPUTABLE":
+    // The document phase: the packet or a document is no longer in the state the screen showed.
+    case "DOCUMENT_ACCEPTED":
+    case "DOCUMENT_NOT_CURRENT":
+    case "DOCUMENT_NOT_FOUND":
+    case "DOCUMENTS_INCOMPLETE":
+    case "DOCUMENT_NOT_REVIEWABLE":
+    case "DOCUMENTS_NOT_ACCEPTED":
+    case "COLLATERAL_INSUFFICIENT":
+    case "LIMIT_BELOW_MINIMUM":
       return problem("status", error.message);
     case "VALIDATION_ERROR":
     case "CORRECTION_REQUIRED":
@@ -104,6 +113,9 @@ export function commandProblem(error: unknown): CommandProblem {
     case "ANSWER_NOT_REQUESTED":
     case "NEED_FIELDS_LOCKED":
     case "AMOUNT_OUT_OF_BOUNDS":
+    case "DOCUMENT_TYPE_NOT_ALLOWED":
+    case "VERIFIED_VALUE_REQUIRED":
+    case "VERIFIED_VALUE_NOT_ALLOWED":
       return problem("fields", error.message, error.fields ?? {});
     default:
       return problem("other", error.message);

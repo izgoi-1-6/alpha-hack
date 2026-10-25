@@ -4,25 +4,51 @@ import { CommandAttempts, CommandProblem } from "../applications/commands";
 import { rub, STATUS } from "../applications/format";
 import { useCommand } from "../applications/useCommand";
 import { PreapproveForm, RejectForm, RequestInfoForm } from "./DecisionForms";
-import { officerApi, StaffApplication } from "./officerApi";
+import { FinalApproveForm } from "./FinalApproveForm";
+import { officerApi, StaffAction, StaffApplication } from "./officerApi";
 
-type Decision = "preapprove" | "request_info" | "reject";
+type Decision = "preapprove" | "approve" | "request_info" | "reject";
 const CHOICES: { action: Decision; label: string }[] = [
   { action: "preapprove", label: "Одобрение" },
+  { action: "approve", label: "Одобрение" },
   { action: "request_info", label: "Запрос сведений" },
   { action: "reject", label: "Отказ" },
 ];
+/** The staff action behind each command name, to tell whether its form is still offered after a reload. */
+const ACTION_OF: Record<string, StaffAction> = {
+  preapprove: "preapprove",
+  approve: "approve",
+  "request-info": "request_info",
+  reject: "reject",
+};
 const TERMINAL = ["APPROVED", "REJECTED", "CANCELLED", "EXPIRED"];
 
-function problemText(problem: CommandProblem) {
+/** `form`: whether the refused decision's form is still offered after the reload (null for the claim). */
+function problemText(problem: CommandProblem, form: "offered" | "gone" | null) {
   switch (problem.kind) {
     case "network":
       return "Нет связи с сервером. Команда могла уже выполниться: повторите её — повтор с тем же ключом не создаст второе решение.";
     case "version":
-      return "Заявка изменилась после загрузки страницы: мы показали актуальную версию. Введённые данные сохранены — проверьте их и отправьте снова.";
+      return (
+        "Заявка изменилась после загрузки страницы: мы показали актуальную версию." +
+        (form === "offered"
+          ? " Введённые данные сохранены — проверьте их и отправьте снова."
+          : form === "gone"
+            ? " Это решение сейчас недоступно."
+            : "")
+      );
     default:
       return problem.message;
   }
+}
+
+/** For the assignee: where the document phase stands when no final decision is open yet. */
+function phaseNote(application: StaffApplication) {
+  if (application.status === "PREAPPROVED")
+    return "Клиент собирает комплект документов: проверка начнётся, когда он его отправит.";
+  if (application.status === "DOCS_REWORK")
+    return "Клиент заменяет отклонённый документ: проверка продолжится, когда он снова отправит комплект.";
+  return null;
 }
 
 /** Why there is nothing to do right now, when the server offers no action to this officer. */
@@ -39,12 +65,14 @@ function idleNote(application: StaffApplication, mine: boolean) {
 }
 
 /**
- * Claim and the preliminary decisions, offered only as the server's staff `allowed_actions` say. One command runs at
- * a time; its result is announced, and the page reloads. The forms stay mounted across a reload, so a version
- * conflict keeps what the officer typed; a lost response keeps the idempotency key for the repeat.
+ * Claim and the decisions — preliminary in review, final in the document phase — offered only as the server's staff
+ * `allowed_actions` say (document reviews have their own panel). One command runs at a time; its result is
+ * announced, and the page reloads. The forms stay mounted across a reload, so a version conflict keeps what the
+ * officer typed while the form is still offered; a lost response keeps the idempotency key for the repeat.
  */
 export function DecisionPanel({
   application,
+  requestableFields,
   userId,
   attempts,
   reload,
@@ -53,6 +81,8 @@ export function DecisionPanel({
   onUnauthorized,
 }: {
   application: StaffApplication;
+  /** The staff detail's `requestable_fields`: what an information request may ask for. */
+  requestableFields: string[];
   userId: string;
   attempts: CommandAttempts;
   reload: () => Promise<unknown>;
@@ -72,7 +102,9 @@ export function DecisionPanel({
     choices[0]?.action;
   const mine = application.assignee?.id === userId;
   const busy = !!command.busy;
-  const blocked = application.preapproval?.blocked_by;
+  const blocked =
+    application.preapproval?.blocked_by ?? application.final_approval?.blocked_by;
+  const note = mine ? phaseNote(application) : null;
   const fieldsOf = (name: string) =>
     command.problem && lastCommand === name ? command.problem.fields : {};
 
@@ -139,6 +171,7 @@ export function DecisionPanel({
           </button>
         </div>
       )}
+      {note && <p className="field-note">{note}</p>}
       {mine && blocked && (
         <div className="notice caution">
           <Icon name="info" />
@@ -183,10 +216,30 @@ export function DecisionPanel({
           />
         </div>
       )}
+      {allowed.includes("approve") && application.final_approval && (
+        <div id="decision-approve" hidden={active !== "approve"}>
+          <FinalApproveForm
+            finalApproval={application.final_approval}
+            preapprovedAmount={application.preapproved_amount_rub}
+            busy={busy}
+            fields={fieldsOf("approve")}
+            onSubmit={(amount, reason) => {
+              const body = { version, amount_rub: amount, reason };
+              void run(
+                "approve",
+                body,
+                (key) => officerApi.approve(application.id, body, key),
+                (next) =>
+                  `Заявка окончательно одобрена на ${rub(next.final_amount_rub ?? amount)} (демонстрационное решение).`,
+              );
+            }}
+          />
+        </div>
+      )}
       {allowed.includes("request_info") && (
         <div id="decision-request_info" hidden={active !== "request_info"}>
           <RequestInfoForm
-            secured={!!application.product.collateral_required}
+            paths={requestableFields}
             busy={busy}
             fields={fieldsOf("request-info")}
             onSubmit={(paths, question) => {
@@ -224,7 +277,14 @@ export function DecisionPanel({
         <div className="notice error" role="alert">
           <Icon name="info" />
           <span>
-            {problemText(command.problem)}
+            {problemText(
+              command.problem,
+              !ACTION_OF[lastCommand]
+                ? null
+                : allowed.includes(ACTION_OF[lastCommand])
+                  ? "offered"
+                  : "gone",
+            )}
             {command.problem.code === "ASSIGNMENT_REQUIRED" &&
               allowed.includes("claim") &&
               " Возьмите заявку в работу кнопкой выше."}

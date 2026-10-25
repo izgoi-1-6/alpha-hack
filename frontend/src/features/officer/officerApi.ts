@@ -179,4 +179,24 @@ export const officerApi = {
     "preapprove",
   ),
   reject: command<{ version: number; reason: string }>("reject"),
+  /** DOCS_UPLOADED, the assignee: the final amount within `final_approval`'s bounds. */
+  approve: command<{ version: number; amount_rub: number; reason: string }>(
+    "approve",
+  ),
+  /** Accepts or rejects the current, unreviewed revision; an accepted valuation carries the verified value. */
+  reviewDocument: (
+    id: string,
+    documentId: string,
+    body: {
+      version: number;
+      decision: "accept" | "reject";
+      reason: string;
+      verified_value_rub?: number;
+    },
+    key: string,
+  ) =>
+    request<{ document: StaffDocument; application: StaffApplication }>(
+      `${officerPath(id)}/documents/${encodeURIComponent(documentId)}/review`,
+      { method: "POST", body, idempotencyKey: key },
+    ),
 };

@@ -135,15 +135,6 @@ export const STATUS: Record<
 export const statusLabel = (status: ApplicationStatus) =>
   STATUS[status]?.label ?? status;
 
-const DOCUMENTS: Record<string, string> = {
-  BANK_STATEMENT: "банковская выписка",
-  FINANCIAL_REPORT: "финансовая отчётность",
-  COLLATERAL_OWNERSHIP: "право собственности на залог",
-  COLLATERAL_VALUATION: "оценка залога",
-};
-export const documentList = (codes: string[] | undefined) =>
-  (codes ?? []).map((code) => DOCUMENTS[code] ?? code).join(", ");
-
 /** One short next step per state, used by the list rows and the status page. */
 export function nextStep(application: Application): string {
   const request = application.open_info_request;
@@ -162,8 +153,8 @@ export function nextStep(application: Application): string {
       return "Дождитесь решения кредитного специалиста";
     case "PREAPPROVED":
       return application.preapproval_expires_at
-        ? `Подготовьте документы до ${formatDate(application.preapproval_expires_at)}`
-        : "Подготовьте документы";
+        ? `Документы нужны до ${formatDate(application.preapproval_expires_at)}`
+        : "Загрузите документы";
     case "DOCS_UPLOADED":
       return "Дождитесь проверки документов";
     case "DOCS_REWORK":

@@ -21,6 +21,8 @@ import {
 } from "./features/applications/ApplicationPage";
 import { MyApplications } from "./features/applications/MyApplications";
 import { CommandAttempts } from "./features/applications/commands";
+import { handoffIdOf } from "./features/documents/HandoffAction";
+import { HandoffPage } from "./features/documents/HandoffPage";
 import { NoAccess } from "./features/officer/NoAccess";
 import {
   OfficerQueue,
@@ -63,7 +65,9 @@ function App() {
   const recommending = url.searchParams.get("view") === "recommendations";
   const applicationList = url.searchParams.get("view") === "applications";
   const applicationId = url.searchParams.get("application");
-  const inApplications = applicationList || !!applicationId;
+  // The one pathname route: the local Alfa-Business demo page of an approved application.
+  const handoffId = handoffIdOf(url.pathname);
+  const inApplications = applicationList || !!applicationId || !!handoffId;
   const queueView = url.searchParams.get("view") === "queue";
   const officer = user?.role === "CREDIT_OFFICER";
   if (officer && queueView)
@@ -99,6 +103,7 @@ function App() {
     setMenu(false);
     if (!nextUser) {
       const next = new URL(window.location.href);
+      next.pathname = "/";
       next.search = "";
       window.history.replaceState({}, "", next);
       shownUrl.current = next.href;
@@ -134,12 +139,21 @@ function App() {
     params: Record<string, string> = {},
   ) {
     const next = new URL(window.location.href);
+    next.pathname = "/";
     next.search = "";
     if (id) next.searchParams.set("company", id);
     if (view) next.searchParams.set("view", view);
     if (application) next.searchParams.set("application", application);
     for (const [name, value] of Object.entries(params))
       next.searchParams.set(name, value);
+    afterLeaving(() => {
+      window.history.pushState({}, "", next);
+      changeView(next);
+    });
+  }
+  /** Opens an in-app path (the demo hand-off page) through the same leave guard as `navigate`. */
+  function openPath(path: string) {
+    const next = new URL(path, window.location.origin);
     afterLeaving(() => {
       window.history.pushState({}, "", next);
       changeView(next);
@@ -386,15 +400,17 @@ function App() {
           </button>
           <span className="breadcrumbs">
             Бизнес <span>/</span>{" "}
-            {officer
-              ? applicationId
-                ? "Рассмотрение заявки"
-                : "Очередь заявок"
-              : onboard
-                ? "Новая компания"
-                : inApplications
-                  ? "Мои заявки"
-                  : "Мои компании"}
+            {handoffId
+              ? "Альфа-Бизнес (демо)"
+              : officer
+                ? applicationId
+                  ? "Рассмотрение заявки"
+                  : "Очередь заявок"
+                : onboard
+                  ? "Новая компания"
+                  : inApplications
+                    ? "Мои заявки"
+                    : "Мои компании"}
           </span>
           <div className="topbar-right">
             <DemoBadge />
@@ -404,7 +420,13 @@ function App() {
         <main className="main-content">
           {officer && actionError && <ErrorNotice error={actionError} />}
           {officer ? (
-            applicationId ? (
+            handoffId ? (
+              <NoAccess
+                text="Страница перехода в Альфа-Бизнес (демо) открывается только владельцу одобренной заявки."
+                action="Перейти к очереди заявок"
+                onAction={() => navigate(undefined, "queue")}
+              />
+            ) : applicationId ? (
               <ReviewPage
                 key={`${user.id}:${applicationId}`}
                 applicationId={applicationId}
@@ -451,6 +473,14 @@ function App() {
               error={loadError}
               onRetry={() => void loadWorkspace()}
             />
+          ) : handoffId ? (
+            <HandoffPage
+              key={`${user.id}:${handoffId}`}
+              applicationId={handoffId}
+              onOpenApplication={(id) => navigate(undefined, undefined, id)}
+              onOpenList={() => navigate(undefined, "applications")}
+              onUnauthorized={() => changeAccount(null)}
+            />
           ) : applicationId ? (
             <ApplicationPage
               key={`${user.id}:${applicationId}`}
@@ -461,6 +491,7 @@ function App() {
               onRecommend={(companyId) =>
                 navigate(companyId, "recommendations")
               }
+              onOpenHandoff={openPath}
               onLeaveGuard={(guard) => {
                 leaveGuard.current = guard;
               }}

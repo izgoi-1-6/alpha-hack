@@ -6,6 +6,7 @@ import { formatDate, productName, STATUS } from "../applications/format";
 import { Timeline } from "../applications/Timeline";
 import { DecisionsPanel, InfoRequestsPanel } from "./CaseRecord";
 import { DecisionPanel } from "./DecisionPanel";
+import { DocumentReview } from "./DocumentReview";
 import { officerApi, StaffDetail, StaffHistoryItem } from "./officerApi";
 import { shortId } from "./officerFormat";
 import { EvaluationsPanel, ReviewAmounts, ScorePanel } from "./ScoreEvidence";
@@ -141,6 +142,18 @@ export function ReviewPage({
         <ReviewAmounts application={application} />
         <div className="review-layout">
           <div className="review-column">
+            {application.document_summary && (
+              <DocumentReview
+                documents={detail.documents}
+                notice={detail.document_notice}
+                application={application}
+                userId={userId}
+                attempts={attempts}
+                reload={load}
+                announce={announce}
+                onUnauthorized={onUnauthorized}
+              />
+            )}
             <ScorePanel evaluation={detail.evaluations.at(-1)} />
             <SourcesPanel evidence={detail.source_evidence} />
             <FinancePanel finance={detail.source_evidence.finance} />
@@ -149,6 +162,7 @@ export function ReviewPage({
           <div className="review-column">
             <DecisionPanel
               application={application}
+              requestableFields={detail.requestable_fields}
               userId={userId}
               attempts={attempts}
               reload={load}

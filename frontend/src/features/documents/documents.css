@@ -1,0 +1,352 @@
+/* The document phase: the customer's checklist, the officer's document review and the demo hand-off page.
+   Text stays at 12px or larger, interactive targets at 44px or taller, and every status colour is paired with text.
+   Builds on applications.css (fields, pills, confirmations, amount tiles). */
+
+.documents-card {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 22px;
+  min-width: 0;
+}
+.documents-card .panel-title h2 {
+  font-size: 20px;
+}
+.documents-notice {
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 820px;
+}
+.documents-deadline {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fbf1df;
+  color: #6f4a0c;
+}
+.documents-deadline svg {
+  margin-top: 1px;
+}
+.documents-card > .notice {
+  margin: 0;
+}
+.documents-review {
+  display: grid;
+  gap: 12px;
+}
+.documents-review .panel-note,
+.documents-review > .field-note {
+  margin: 0;
+}
+.documents-summary {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.requirement-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.requirement {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+.requirement-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.requirement-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #f1eeee;
+  color: #4b454d;
+}
+.requirement-title {
+  flex: 1;
+  min-width: 0;
+}
+.requirement-title h3 {
+  font-size: 15px;
+  line-height: 1.4;
+}
+.requirement-title h3:focus {
+  outline: none;
+}
+.requirement-title h3:focus-visible {
+  outline: 3px solid #e5322b66;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.requirement-title p {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.requirement-status {
+  font-size: 12px;
+}
+
+.document-file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  min-width: 0;
+}
+.requirement-file {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f6f4f4;
+}
+.document-file-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+.document-file-name {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.document-file-facts {
+  font-size: 12px;
+  color: var(--muted);
+}
+.document-file-facts code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #4b454d;
+}
+.download-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 4px;
+  color: #a52a24;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.download-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.download-link:focus-visible {
+  outline: 3px solid #e5322b66;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.review-note {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.review-note.rejected {
+  background: #fff1f0;
+  color: #8e221d;
+}
+.review-note.accepted {
+  background: #f5fbf7;
+  color: #216e42;
+}
+
+.requirement-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.requirement-actions .button {
+  min-height: 44px;
+  font-size: 13px;
+}
+.upload-state {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: #4b454d;
+}
+.upload-state progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--red);
+}
+.upload-error {
+  margin: 0;
+}
+.upload-error p {
+  margin: 0;
+}
+.upload-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin-top: 6px;
+}
+.upload-error-actions .button {
+  min-height: 44px;
+  font-size: 13px;
+}
+.upload-error-actions .text-button {
+  min-height: 44px;
+}
+.upload-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #216e42;
+}
+.requirement .cancel-confirm h4 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.requirement-history summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4b454d;
+}
+.requirement-history ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.requirement-history li {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  border-top: 1px solid #f0ecec;
+  padding-top: 8px;
+  font-size: 13px;
+}
+.requirement-history li .document-file {
+  justify-self: stretch;
+}
+
+.documents-submit {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.documents-submit > p:first-child {
+  font-size: 14px;
+}
+.documents-submit > .button {
+  justify-self: start;
+}
+.documents-submit .notice {
+  margin: 0;
+}
+
+/* The approved application's hand-off and the demo page */
+.handoff-action {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.handoff-action .field-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.handoff-page {
+  min-width: 0;
+}
+.handoff-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+.handoff-card {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 22px;
+  border-left: 3px solid var(--red);
+}
+.handoff-card h2 {
+  font-size: 20px;
+}
+.handoff-card > p {
+  font-size: 14px;
+  max-width: 760px;
+}
+.handoff-facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+.handoff-facts li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.handoff-facts svg {
+  color: #6c6770;
+  margin-top: 2px;
+}
+.handoff-page .amounts {
+  grid-template-columns: minmax(0, 380px);
+}
+.amount.approved {
+  border-color: #b9dcc7;
+  background: #eef8f2;
+}
+
+@media (max-width: 760px) {
+  .requirement {
+    padding: 14px;
+  }
+  .requirement-head {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  /* The title takes the line beside the icon; the status pill sits under it, aligned with the title. */
+  .requirement-title {
+    flex: 1 1 calc(100% - 50px);
+  }
+  .requirement-status {
+    margin-left: 50px;
+  }
+  .requirement-actions .button,
+  .documents-submit > .button,
+  .handoff-action > .button {
+    width: 100%;
+  }
+  .handoff-heading {
+    flex-direction: column;
+    gap: 12px;
+  }
+}

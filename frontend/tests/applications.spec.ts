@@ -202,7 +202,7 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
   await expect(preapproved).toContainText("2 000 000 ₽");
   await expect(preapproved).toContainText("не окончательное решение");
   await expect(page.locator(".status-next")).toContainText(
-    "Подготовьте документы",
+    "Документы нужны до",
   );
 
   const timeline = page.getByRole("list", { name: "История заявки" });

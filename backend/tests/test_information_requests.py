@@ -5,7 +5,6 @@ officer, trusted-source refusals, the customer's view of officer actions and ter
 Scores and limits come from application_oracle and the spec's literal numbers, not from the code under test.
 """
 import json
-from uuid import uuid4
 import pytest
 import application_oracle as oracle
 from application_helpers import FIXED_NOW, LINE, TERM, bki_calls, cancel, clock, draft, history, read, rows, submitted

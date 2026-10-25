@@ -8,8 +8,8 @@ import json
 import re
 from pathlib import Path
 import pytest
-from application_helpers import (LINE, TERM, bki_calls, clock, complete, create, draft, history, patch_answers, read,
-                                 retry, snapshot_for, submit, submitted)
+from application_helpers import (LINE, bki_calls, clock, complete, draft, history, patch_answers, read, retry, submit,
+                                 submitted)
 from officer_helpers import claimed, detail, ok, officer, request_info, respond
 from test_identity_company import client, create_company, register, verify
 

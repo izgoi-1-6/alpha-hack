@@ -6,8 +6,8 @@ requestable by an officer, and pinned from their sources at submission. An unava
 Expected values come from the raw fixture file (recommendation_oracle.FIXTURES), never from the code under test.
 """
 import pytest
-from application_helpers import (FIXED_NOW, TERM, bki_calls, clock, complete, draft, history, patch_answers, read, retry,
-                                 rows, submit, submitted)
+from application_helpers import (FIXED_NOW, bki_calls, clock, complete, draft, history, patch_answers, read, retry, rows,
+                                 submit, submitted)
 from officer_helpers import claimed, decisions, detail, ok, officer, refused, request_info, respond
 from recommendation_oracle import FIXTURES
 from test_identity_company import client

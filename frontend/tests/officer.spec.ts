@@ -168,6 +168,14 @@ test("A06 medium review: claim → information request → the client answers on
   await secondDecision.getByRole("button", { name: "Запрос сведений" }).click();
   // The stage-2 need is fixed after submission and is never offered.
   await expect(secondDecision.getByLabel("Сумма, ₽", { exact: true })).toHaveCount(0);
+  // The picker lists the server's requestable paths in the questionnaire's own words; no pledge for this product.
+  const requestable = (await staffDetail(second, id)).requestable_fields as string[];
+  await expect(secondDecision.locator(".request-fields .check-row")).toHaveCount(requestable.length);
+  await expect(secondDecision.getByLabel("Подтверждаю, что сведения анкеты верны")).toBeVisible();
+  await expect(
+    secondDecision.getByLabel("Подтверждаю полномочия представителя (демо, без проверки документов)"),
+  ).toBeVisible();
+  await expect(secondDecision.getByText(/Залог/)).toHaveCount(0);
   await secondDecision
     .getByLabel("Ежемесячные платежи по действующим кредитам и лизингу, ₽")
     .check();
@@ -179,6 +187,23 @@ test("A06 medium review: claim → information request → the client answers on
     second.getByRole("region", { name: "Запросы сведений" }),
   ).toContainText("Открыт");
   await second.close();
+
+  // A dialog read refused as stale (a withdrawn product; answered once by the route) leaves the status page intact.
+  await page.route(/\/api\/v1\/applications\/[^/]+\/dialog$/, (route) =>
+    route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: { code: "RECOMMENDATION_STALE", message: "Условия продукта изменились." },
+      }),
+    }),
+  { times: 1 });
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Нужны дополнительные сведения" }),
+  ).toBeVisible();
+  await expect(page.getByRole("list", { name: "История заявки" })).toBeVisible();
+  await expect(page.getByRole("form", { name: "Ответ на запрос" })).toHaveCount(0);
 
   // The client sees the question and answers exactly the requested field.
   await page.reload();

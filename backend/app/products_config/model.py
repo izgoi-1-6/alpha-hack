@@ -40,6 +40,10 @@ class ProductConfig:
     def region_key(self, text: str) -> str:
         return normalize_region(text, self.region_normalization)
 
+    def region_in(self, region: str, allowed) -> bool:
+        """Whether a region is one of `allowed`, both sides normalised by the policy's steps."""
+        return self.region_key(region) in {self.region_key(name) for name in allowed}
+
     def public(self) -> dict:
         """The GET /catalog body."""
         return {'catalog_version': self.catalog_version, 'rules_version': self.rules_version, 'key_rate': self.key_rate,

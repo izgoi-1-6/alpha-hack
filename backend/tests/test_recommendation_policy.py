@@ -144,6 +144,13 @@ def test_revolving_payment_is_the_ceiling_of_full_utilization_interest():
                full_utilization_interest_rub(amount, 2300)
 
 
+def test_an_interest_free_rate_repays_the_amount_in_equal_parts():
+    item = one('free', TERM, changes={'annual_rate_bps': 0}, amount=1_000_000)
+    assert item['estimated_payment_rub'] == annuity_rub(1_000_000, 0, 36) == 27_778  # 1m / 36, half up
+    line = one('free_line', LINE, changes={'annual_rate_bps': 0})
+    assert line['estimated_payment_rub'] == 0
+
+
 def test_a_preferential_rate_labels_its_payment_with_the_period():
     item = one('psk_working_capital', amount=2_000_000)
     assert item['estimated_payment_rub'] == annuity_rub(2_000_000, 1700, 36)

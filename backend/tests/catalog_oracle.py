@@ -43,18 +43,28 @@ def formula_rate(formula: str) -> Fraction:
     return Fraction(text)
 
 
+def two_digit_class(text: str) -> bool:
+    """`text` starts with exactly two digits that are not the start of a subclass (`47.11`, `47,11`)."""
+    if len(text) < 2 or not text[:2].isdigit():
+        return False
+    after = text[2:3]
+    return not after.isdigit() and not (after in ('.', ',') and text[3:4].isdigit())
+
+
 def okved_classes(entries: list[str]) -> set[int]:
-    """Two-digit classes named by entries that start with `NN` or `NN–NN` (en dash or hyphen)."""
+    """Two-digit classes named by entries that start with `NN` or `NN–NN` (en dash or hyphen); a subclass is not one."""
     classes = set()
     for entry in entries:
         head = entry.strip()
-        if len(head) < 2 or not head[:2].isdigit() or (len(head) > 2 and head[2].isdigit()):
+        if not two_digit_class(head):
             continue
         start = end = int(head[:2])
         rest = head[2:].lstrip()
         if rest[:1] in ('–', '-'):
             tail = rest[1:].lstrip()
-            if len(tail) >= 2 and tail[:2].isdigit() and (len(tail) == 2 or not tail[2].isdigit()):
+            if tail[:1].isdigit():
+                if not two_digit_class(tail):
+                    continue  # a range ending in a subclass is no class range
                 end = int(tail[:2])
         classes.update(range(start, end + 1))
     return classes

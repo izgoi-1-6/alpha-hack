@@ -153,6 +153,10 @@ def test_okved_parse_sets_per_product(shipped):
     (['производство и продажа подакцизных товаров (кроме ОКВЭД 55, 56)'], [], ['производство и продажа подакцизных товаров (кроме ОКВЭД 55, 56)']),
     (['470 — не класс', 'ОКВЭД 47', '4 — одна цифра'], [], ['470 — не класс', 'ОКВЭД 47', '4 — одна цифра']),
     (['64 — 66 банки'], ['64'], []),  # an em dash separates the description; it is never a range
+    # A subclass names part of a class, so it is a condition to confirm, never a ban on the whole class.
+    (['47.11 — торговля в неспециализированных магазинах'], [], ['47.11 — торговля в неспециализированных магазинах']),
+    (['64–66.19 — часть финансовых услуг'], [], ['64–66.19 — часть финансовых услуг']),
+    (['47,11 торговля', '47. Торговля'], ['47'], ['47,11 торговля']),
 ])
 def test_okved_entries_count_only_with_a_leading_code_or_range(entries, classes, unparsed):
     assert okved_deny(entries) == (classes, unparsed)
@@ -342,7 +346,7 @@ CASES = [
     ('unknown collateral mode', None, lambda p: p['products']['alfa_universal_limit'].update(collateral_mode='maybe'),
      "policy.products.alfa_universal_limit.collateral_mode: unknown value 'maybe'"),
     ('non-integer priority', None, lambda p: p['products']['psk_borderline'].update(priority='high'),
-     'policy.products.psk_borderline.priority: must be an integer'),
+     'policy.products.psk_borderline.priority: must be an integer, got "high"'),
     ('incomplete ranking table', None, lambda p: drop(p['ranking']['collateral_burden'], 'optional'),
      "policy.ranking.collateral_burden: missing 'optional'"),
     ('slider misses a product minimum', None, lambda p: p['amount_slider'].update(min_rub=400_000),
@@ -363,6 +367,116 @@ CASES = [
      "policy.region_normalization[3]: unsupported step 'transliterate'"),
     ('non-positive estimate term', None, lambda p: p.update(payment_estimate_term_months=0),
      'policy.payment_estimate_term_months: must be a positive integer'),
+    # Fix round 1: mistyped numbers must fail the check instead of reaching a recommendation.
+    ('amount maximum as a string', lambda c: item(c, 'alfa_term_loan_unsecured')['amount'].update(max='30000000'), None,
+     'items[alfa_term_loan_unsecured].amount.max: must be a positive integer, got "30000000"'),
+    ('fractional amount maximum', lambda c: item(c, 'alfa_term_loan_unsecured')['amount'].update(max=30000000.5), None,
+     'items[alfa_term_loan_unsecured].amount.max: must be a positive integer, got 30000000.5'),
+    ('zero amount minimum', lambda c: item(c, 'alfa_term_loan_unsecured')['amount'].update(min=0), None,
+     'items[alfa_term_loan_unsecured].amount.min: must be a positive integer, got 0'),
+    ('negative term maximum', lambda c: item(c, 'alfa_term_loan_unsecured')['term'].update(max_months=-5), None,
+     'items[alfa_term_loan_unsecured].term.max_months: must be a positive integer, got -5'),
+    ('string term minimum', lambda c: item(c, 'alfa_term_loan_secured')['term'].update(min_months='12'), None,
+     'items[alfa_term_loan_secured].term.min_months: must be a positive integer, got "12"'),
+    ('unsecured cap as a string', lambda c: item(c, 'alfa_universal_limit')['amount'].update(max_unsecured='20000000'), None,
+     'items[alfa_universal_limit].amount.max_unsecured: must be a positive integer or null, got "20000000"'),
+    ('tranche minimum as a string', lambda c: item(c, 'alfa_revolving_line_unsecured')['amount'].update(tranche_min='50000'), None,
+     'items[alfa_revolving_line_unsecured].amount.tranche_min: must be a positive integer or null, got "50000"'),
+    ('string default minimum', None, lambda p: p['defaults'].update(amount_min_rub='300000'),
+     'policy.defaults.amount_min_rub: must be a positive integer, got "300000"'),
+    ('zero default term', None, lambda p: p['defaults'].update(term_min_months=0),
+     'policy.defaults.term_min_months: must be a positive integer, got 0'),
+    ('fractional default maximum', None, lambda p: p['defaults'].update(amount_max_rub_if_null=2000000000.5),
+     'policy.defaults.amount_max_rub_if_null: must be a positive integer, got 2000000000.5'),
+    ('base documents removed', None, lambda p: drop(p['defaults'], 'base_documents'),
+     'policy.defaults.base_documents: at least one document type is required'),
+    ('base documents empty', None, lambda p: p['defaults'].update(base_documents=[]),
+     'policy.defaults.base_documents: at least one document type is required'),
+    ('collateral documents without the valuation', None, lambda p: p['defaults'].update(collateral_documents=['COLLATERAL_OWNERSHIP']),
+     'policy.defaults.collateral_documents: must include COLLATERAL_VALUATION, whose verified value bounds a secured final approval'),
+    ('a document type listed twice', None, lambda p: p['defaults'].update(base_documents=['BANK_STATEMENT', 'BANK_STATEMENT']),
+     "policy.defaults.base_documents[1]: duplicate document type 'BANK_STATEMENT'"),
+    ('documents not a list', None, lambda p: p['defaults'].update(collateral_documents='COLLATERAL_VALUATION'),
+     'policy.defaults.collateral_documents: must be a list of document types'),
+    ('annuity over an unlimited term', lambda c: item(c, 'alfa_term_loan_unsecured')['term'].update(unlimited=True, min_months=None, max_months=None),
+     None, 'items[alfa_term_loan_unsecured].term.unlimited: an annuity payment needs a term'),
+    ('unlimited flag not a boolean', lambda c: item(c, 'alfa_factoring')['term'].update(unlimited='no'), None,
+     'items[alfa_factoring].term.unlimited: must be true or false'),
+    ('non-positive per-product amount', None, lambda p: p['products']['alfa_factoring'].update(amount_min_rub=0),
+     'policy.products.alfa_factoring.amount_min_rub: must be a positive integer, got 0'),
+    ('unknown per-product setting', None, lambda p: p['products']['alfa_factoring'].update(foo=1),
+     'policy.products.alfa_factoring.foo: unknown setting'),
+    # Fix round 1: malformed shapes are reported, never raised.
+    ('non-numeric key rate', lambda c: c['params']['key_rate'].update(value_percent='abc'), None,
+     'params.key_rate.value_percent: must be a number, got "abc"'),
+    ('key rate below a basis point', lambda c: c['params']['key_rate'].update(value_percent=14.005), None,
+     'params.key_rate.value_percent: 14.005 is not a whole number of basis points'),
+    ('key rate not an object', lambda c: c['params'].update(key_rate=14), None, 'params.key_rate: must be an object'),
+    ('key rate section missing', lambda c: drop(c['params'], 'key_rate'), None, 'params.key_rate: missing'),
+    ('a card without an id', lambda c: drop(item(c, 'alfa_factoring'), 'id'), None, 'items[7].id: missing'),
+    ('an item that is not an object', lambda c: c['items'].append('loan'), None, 'items[12]: must be an object'),
+    ('items not a list', lambda c: c.update(items={}), None, 'items: must be a list'),
+    ('enums not an object', lambda c: c.update(enums=[]), None, 'enums: must be an object'),
+    ('enum values not a list', lambda c: c['enums'].update(kind='product'), None, 'enums.kind: must be a list'),
+    ('enums missing', lambda c: drop(c, 'enums'), None, 'enums: missing'),
+    ('items missing', lambda c: drop(c, 'items'), None, 'items: missing'),
+    ('a display that is not an object', lambda c: item(c, 'alfa_factoring').update(display='card'), None,
+     'items[alfa_factoring].display: must be an object'),
+    ('a per-product setting that is not an object', None, lambda p: p['products'].update(alfa_factoring=5),
+     'policy.products.alfa_factoring: must be an object'),
+    ('a policy section of the wrong type', None, lambda p: p.update(defaults=[]), 'policy.defaults: must be an object'),
+    ('a badge setting that is not an object', None, lambda p: p['overlay_badges'].update(zont_corpmsp='x'),
+     'policy.overlay_badges.zont_corpmsp: must be an object'),
+    ('slider bands that are not objects', None, lambda p: p['amount_slider'].update(snap=[1, 2]),
+     'policy.amount_slider.snap: bands need ascending up_to_rub and positive step_rub'),
+    ('malformed entry', lambda c: drop(item(c, 'alfa_factoring'), 'rate'), None, "items[alfa_factoring]: malformed entry (KeyError: 'rate')"),
+    # Fix round 1: the remaining checker branches.
+    ('rate type a card cannot use', lambda c: item(c, 'alfa_factoring')['rate'].update(type='schedule'), None,
+     "items[alfa_factoring].rate.type: 'schedule' is not supported for a card product"),
+    ('formula rate without a formula', lambda c: item(c, 'psk_invest_subsidy')['rate']['periods'][0].update(rate_formula=None), None,
+     'items[psk_invest_subsidy].rate.periods[0].rate_formula: missing for a formula rate'),
+    ('rate percent as a string', lambda c: item(c, 'alfa_term_loan_unsecured')['rate']['periods'][0].update(rate_percent='23.5'), None,
+     'items[alfa_term_loan_unsecured].rate.periods[0].rate_percent: must be a number, got "23.5"'),
+    ('negative rate', lambda c: item(c, 'alfa_term_loan_unsecured')['rate']['periods'][0].update(rate_percent=-1.0), None,
+     'items[alfa_term_loan_unsecured].rate.periods[0].rate_percent: must not be negative, got -1.0'),
+    ('preferential end as a string', lambda c: item(c, 'psk_working_capital')['rate']['periods'][0].update(to_month='12'), None,
+     'items[psk_working_capital].rate.periods[0].to_month: must be a positive integer or null, got "12"'),
+    ('formula not a text', lambda c: item(c, 'psk_borderline')['rate']['periods'][0].update(rate_formula=14), None,
+     'items[psk_borderline].rate.periods[0].rate_formula: must be a text, got 14'),
+    ('an overlay shown as a card', lambda c: item(c, 'zont_corpmsp')['display'].update(**{'as': 'card'}), None,
+     'items[zont_corpmsp].display.as: an overlay renders as badge_on_card'),
+    ('an overlay without badge text', lambda c: item(c, 'zont_corpmsp')['display'].update(headline=None), None,
+     'items[zont_corpmsp].display.headline: missing badge text'),
+    ('unknown applyable kind', None, lambda p: p['applyable_kinds'].append('loan'), "policy.applyable_kinds[2]: unknown kind 'loan'"),
+    ('no applyable kind', None, lambda p: p.update(applyable_kinds=[]), 'policy.applyable_kinds: at least one kind is required'),
+    ('no card products', lambda c: [entry['display'].update(**{'as': 'badge_on_card'}) for entry in c['items'] if entry['kind'] != 'overlay'],
+     None, "items: no card product of the policy's applyable kinds"),
+    ('missing required default', None, lambda p: drop(p['defaults'], 'low_risk_revenue_multiple'),
+     'policy.defaults.low_risk_revenue_multiple: missing'),
+    ('non-positive required default', None, lambda p: p['defaults'].update(collateral_ltv_bps=0),
+     'policy.defaults.collateral_ltv_bps: must be a positive integer, got 0'),
+    ('slider scale', None, lambda p: p['amount_slider'].update(scale='linear'), "policy.amount_slider.scale: unsupported value 'linear'"),
+    ('slider minimum above its maximum', None, lambda p: p['amount_slider'].update(min_rub=3_000_000_000),
+     'policy.amount_slider: min_rub and max_rub must be positive integers, min below max'),
+    ('slider bands out of order', None, lambda p: p['amount_slider']['snap'].reverse(),
+     'policy.amount_slider.snap: bands need ascending up_to_rub and positive step_rub'),
+    ('slider preset out of range', None, lambda p: p['amount_slider']['presets_rub'].append(3_000_000_000),
+     'policy.amount_slider.presets_rub[7]: 3000000000 is outside 300000–2000000000'),
+    # Fix round 1: catalog vocabulary and eligibility shapes.
+    ('status typo', lambda c: item(c, 'alfa_factoring').update(status='actve'), None, "items[alfa_factoring].status: unknown value 'actve'"),
+    ('display typo', lambda c: item(c, 'alfa_factoring')['display'].update(**{'as': 'cards'}), None,
+     "items[alfa_factoring].display.as: unknown value 'cards'"),
+    ('missing name', lambda c: item(c, 'alfa_factoring').update(name=' '), None, 'items[alfa_factoring].name: missing'),
+    ('no purposes', lambda c: item(c, 'alfa_factoring').update(purposes=[]), None,
+     'items[alfa_factoring].purposes: at least one purpose is required'),
+    ('collateral flag not a boolean', lambda c: item(c, 'alfa_factoring')['collateral'].update(required='no'), None,
+     'items[alfa_factoring].collateral.required: must be true, false or null'),
+    ('registry flag not a boolean', lambda c: item(c, 'alfa_goscredit_zont')['eligibility'].update(msp_registry_required='yes'), None,
+     'items[alfa_goscredit_zont].eligibility.msp_registry_required: must be true or false'),
+    ('regions not a list', lambda c: item(c, 'psk_borderline')['eligibility'].update(regions_allow='Курская область'), None,
+     'items[psk_borderline].eligibility.regions_allow: must be a list of texts'),
+    ('OKVED entries not texts', lambda c: item(c, 'alfa_goscredit_zont')['eligibility'].update(okved_deny_main=[64]), None,
+     'items[alfa_goscredit_zont].eligibility.okved_deny_main: must be a list of texts'),
 ]
 
 
@@ -385,6 +499,17 @@ def test_unreadable_files_report_their_role(tmp_path):
     with pytest.raises(ConfigError) as caught:
         load_config(tmp_path / 'absent.json', policy_path)
     assert caught.value.errors[0].startswith('catalog: cannot read')
+    catalog_path.write_text('[]', encoding='utf-8')
+    with pytest.raises(ConfigError) as caught:
+        load_config(catalog_path, policy_path)
+    assert caught.value.errors == ['catalog: the file must hold a JSON object']
+
+
+@pytest.mark.parametrize('okved,expected', [('46.90', '46'), ('47', '47'), ('  25.62', '25'), ('4690', None), ('ОКВЭД 46', None),
+                                            ('', None), (None, None)])
+def test_a_company_okved_code_gives_its_two_digit_class(okved, expected):
+    from app.products_config import okved_class  # the one helper the recommendation checks and badges share
+    assert okved_class(okved) == expected
 
 
 def test_every_error_is_collected_not_just_the_first(tmp_path):
@@ -435,3 +560,68 @@ def test_the_app_refuses_to_start_with_a_broken_catalog(tmp_path):
     result = run_python('-c', 'import app.main', env={'CREDIT_CATALOG_PATH': str(catalog_path)})
     assert result.returncode != 0
     assert 'items[alfa_factoring].amount: min 3000000000 is above max 2000000000' in result.stderr
+
+
+def test_slider_presets_are_optional(tmp_path):
+    policy = deepcopy(SOURCE_POLICY)
+    del policy['amount_slider']['presets_rub']
+    assert load_config(*write_pair(tmp_path, policy=policy)).amount_slider['presets_rub'] == []
+
+
+BAD_VALUES = ['x', '', -1, 0, 1.5, None, {}, [], True, 10**15]
+CATALOG_SCOPE = ('alfa_term_loan_unsecured', 'alfa_revolving_line_unsecured', 'alfa_universal_limit', 'alfa_factoring',
+                 'psk_working_capital', 'zont_corpmsp')
+SAMPLE_COMPANIES = [
+    {'registry_status': 'active', 'entity_type': 'LLC', 'msp_registry': True, 'region': 'Москва', 'okved': '46.90'},
+    {'registry_status': 'unknown', 'entity_type': 'IP', 'msp_registry': None, 'region': 'Курская область', 'okved': '47.11'},
+]
+
+
+def paths_of(value, path=()):
+    """Every container and leaf path inside a JSON value (the value itself first)."""
+    yield path
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            yield from paths_of(inner, path + (key,))
+    elif isinstance(value, list):
+        for index, inner in enumerate(value):
+            yield from paths_of(inner, path + (index,))
+
+
+def replaced(data, path, value):
+    copy = deepcopy(data)
+    target = copy
+    for step in path[:-1]:
+        target = target[step]
+    target[path[-1]] = value
+    return copy
+
+
+@pytest.mark.parametrize('which', ['catalog', 'policy'])
+def test_no_single_mistyped_value_passes_the_check_and_then_breaks_a_recommendation(tmp_path, which):
+    """Each value of the policy, and of six representative catalog items and the key rate, replaced in turn by a
+    mistyped one: the load either fails with ConfigError or gives a configuration that serialises and recommends."""
+    from app.recommendations.service import recommend
+    if which == 'catalog':
+        indexes = [index for index, entry in enumerate(SOURCE_CATALOG['items']) if entry['id'] in CATALOG_SCOPE]
+        paths = [('items', index) + inner for index in indexes for inner in paths_of(SOURCE_CATALOG['items'][index])]
+        paths += [('params',) + inner for inner in paths_of(SOURCE_CATALOG['params'])]
+    else:
+        paths = [inner for inner in paths_of(SOURCE_POLICY) if inner]
+    loaded = refused = 0
+    for path in paths:
+        for bad in BAD_VALUES:
+            catalog = replaced(SOURCE_CATALOG, path, bad) if which == 'catalog' else None
+            policy = replaced(SOURCE_POLICY, path, bad) if which == 'policy' else None
+            try:
+                config = load_config(*write_pair(tmp_path, catalog, policy))
+            except ConfigError:
+                refused += 1
+                continue
+            loaded += 1
+            json.dumps(config.public())
+            for company in SAMPLE_COMPANIES:
+                for amount in (300_000, 25_000_000):
+                    items = recommend(company, {'monthly_revenue_rub': 800_000}, {'requested_amount_rub': amount}, config)
+                    json.dumps(items)
+    assert refused > loaded > 0  # most mistyped values are refused; harmless ones (texts, notes) still load

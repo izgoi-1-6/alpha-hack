@@ -7,7 +7,7 @@ Credit history, scoring and approval odds are out of scope: an estimate is an up
 preapproval. Every number comes from the configuration.
 """
 from decimal import Decimal, ROUND_HALF_UP, localcontext
-import re
+from ..products_config.rules import okved_class
 
 STATUS_ORDER = {'fits': 0, 'needs_info': 1, 'does_not_fit': 2}
 ENTITY_NAMES = {'IP': 'ИП', 'LLC': 'ООО'}
@@ -21,7 +21,6 @@ ELIGIBILITY = ('entity_type', 'msp_registry', 'region', 'okved', 'program_status
 NOTICE = 'Предварительная оценка по обороту, не предодобрение. БКИ не запрашивалось.'
 FITS_NOTE = 'Сумма укладывается в предварительные условия продукта. Решение принимается после отправки заявки.'
 GUARANTOR_NOTE = 'Доля учредителя не означает согласия на поручительство. Поручители на этом этапе не оцениваются.'
-OKVED_CLASS = re.compile(r'\s*(\d{2})(?!\d)')
 
 
 def rub(value: int) -> str:
@@ -37,17 +36,13 @@ def check(code: str, result: str, text: str) -> dict:
     return {'code': code, 'result': result, 'text': text}
 
 
-def main_class(okved: str | None) -> str | None:
-    match = OKVED_CLASS.match(okved or '')
-    return match.group(1) if match else None
-
-
 def annuity(amount: int, bps: int, months: int) -> int:
-    """Indicative term-loan payment: Decimal annuity rounded half up."""
+    """Indicative term-loan payment: Decimal annuity rounded half up (an interest-free rate repays A/n a month)."""
     with localcontext() as ctx:
         ctx.prec = 40
         rate = Decimal(bps) / Decimal(120000)
-        return int((Decimal(amount) * rate / (1 - (1 + rate) ** -months)).to_integral_value(rounding=ROUND_HALF_UP))
+        payment = Decimal(amount) / months if bps == 0 else Decimal(amount) * rate / (1 - (1 + rate) ** -months)
+        return int(payment.to_integral_value(rounding=ROUND_HALF_UP))
 
 
 def full_utilization_interest(amount: int, bps: int) -> int:
@@ -92,7 +87,7 @@ def region_check(product: dict, region: str | None, config) -> dict:
         return check('region', 'passed', 'Ограничений по региону нет.')
     if region is None:
         return check('region', 'unknown', 'Нужно подтвердить регион регистрации компании.')
-    if config.region_key(region) in {config.region_key(name) for name in allowed}:
+    if config.region_in(region, allowed):
         return check('region', 'passed', f'Регион регистрации подходит: {region.strip()}.')
     return check('region', 'failed', f"Продукт доступен в регионах: {', '.join(allowed)}.")
 
@@ -101,7 +96,7 @@ def okved_check(product: dict, okved: str | None) -> dict:
     denied = product['eligibility']['okved_denied_classes']
     if not denied:
         return check('okved', 'passed', 'Ограничений по основному ОКВЭД нет.')
-    found = main_class(okved)
+    found = okved_class(okved)
     if found is None:
         return check('okved', 'unknown', 'Нужно подтвердить основной ОКВЭД компании.')
     if found in denied:
@@ -256,10 +251,9 @@ def badges_of(company: dict, product: dict, config) -> list[dict]:
         if company['entity_type'] not in overlay['entity_types']:
             continue
         region = company.get('region')
-        if eligibility['regions_allow'] and (region is None or config.region_key(region) not in
-                                             {config.region_key(name) for name in eligibility['regions_allow']}):
+        if eligibility['regions_allow'] and (region is None or not config.region_in(region, eligibility['regions_allow'])):
             continue
-        okved = main_class(company.get('okved'))
+        okved = okved_class(company.get('okved'))
         if eligibility['okved_denied_classes'] and product['id'] not in overlay['okved_exempt_products'] \
                 and (okved is None or okved in eligibility['okved_denied_classes']):
             continue

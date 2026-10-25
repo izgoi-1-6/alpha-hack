@@ -14,7 +14,7 @@ slider checks), items (catalog items to runtime products and overlays), loader (
 """
 from .loader import load_config
 from .model import DEFAULT_CATALOG_PATH, DEFAULT_POLICY_PATH, ConfigError, ProductConfig, configured_paths
-from .rules import PURPOSES, normalize_region, okved_deny, parse_rate_formula
+from .rules import PURPOSES, normalize_region, okved_class, okved_deny, parse_rate_formula
 
 __all__ = ['DEFAULT_CATALOG_PATH', 'DEFAULT_POLICY_PATH', 'PURPOSES', 'ConfigError', 'ProductConfig', 'configured_paths',
-           'load_config', 'normalize_region', 'okved_deny', 'parse_rate_formula']
+           'load_config', 'normalize_region', 'okved_class', 'okved_deny', 'parse_rate_formula']

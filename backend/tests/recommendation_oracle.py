@@ -21,7 +21,7 @@ STATUS_ORDER = {'fits': 0, 'needs_info': 1, 'does_not_fit': 2}
 def annuity_rub(amount: int, annual_bps: int, months: int) -> int:
     """A*r/(1-(1+r)^-n) with r=bps/120000, rounded half up, in exact rational arithmetic."""
     rate = Fraction(annual_bps, 120000)
-    exact = amount * rate / (1 - (1 + rate) ** -months)
+    exact = Fraction(amount, months) if rate == 0 else amount * rate / (1 - (1 + rate) ** -months)
     return int(exact + Fraction(1, 2))  # exact > 0, so truncating x+1/2 is round-half-up
 
 
@@ -41,8 +41,9 @@ def company_of(fixture: dict) -> dict:
 
 
 def main_class(okved: str | None) -> int | None:
+    """The two-digit class of a company's main OKVED code (`46.90` → 46; `4690` names no class)."""
     text = (okved or '').strip()
-    return int(text[:2]) if len(text) >= 2 and text[:2].isdigit() else None
+    return int(text[:2]) if len(text) >= 2 and text[:2].isdigit() and not text[2:3].isdigit() else None
 
 
 def indicative_limit(product: dict, revenue: int | None) -> int | None:

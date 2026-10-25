@@ -3,6 +3,7 @@ import {
   AnswerValue,
   Application,
   applicationsApi,
+  Collateral,
   ConsentDocument,
   Dialog,
   FieldDescriptor,
@@ -15,14 +16,19 @@ import {
   FieldDraft,
   fromDraft,
   hasAnswer,
+  locate,
   sameAnswer,
   toDraft,
 } from "./fields";
 import { formatTime, productName, STATUS } from "./format";
 import { ReviewStage } from "./ReviewStage";
 import { idOf, StageField } from "./StageFields";
+import { UnsavedFieldsDialog } from "./UnsavedFieldsDialog";
 import { useCommand } from "./useCommand";
 import { DraftSummary, Stepper } from "./WizardChrome";
+
+/** Resolves true once the open questionnaire may be left: its edits saved, or the customer chose to drop a value. */
+export type LeaveGuard = () => Promise<boolean>;
 
 const STAGE_INTRO: Record<number, string> = {
   1: "Подтвердите сведения из демо-реестра и укажите, где и чем фактически занимается бизнес.",
@@ -43,7 +49,9 @@ const focusFirst = (paths: string[]) =>
 /**
  * The six saved stages of a DRAFT. The server's dialog decides the fields, completion and blockers; this component
  * owns the local edits of the open stage. Every stage change saves those edits with the current version, so a reload
- * resumes at the saved stage. A stale version reloads and keeps the unsaved edits on screen.
+ * resumes at the saved stage. A stale version reloads and keeps the unsaved edits on screen. Leaving the questionnaire
+ * (any App navigation, browser history, logout) goes through the registered leave guard, which saves the open stage
+ * first; a value that cannot be saved is never dropped without the customer's explicit choice.
  */
 export function Wizard({
   application,
@@ -55,6 +63,7 @@ export function Wizard({
   onOpenList,
   onOpenApplication,
   onRecalculate,
+  registerLeaveGuard,
   onUnauthorized,
 }: {
   application: Application;
@@ -67,6 +76,7 @@ export function Wizard({
   onOpenList: () => void;
   onOpenApplication: (id: string) => void;
   onRecalculate: (companyId: string) => void;
+  registerLeaveGuard: (guard: LeaveGuard | null) => void;
   onUnauthorized: () => void;
 }) {
   const [stage, setStage] = useState(dialog.current_stage);
@@ -76,6 +86,10 @@ export function Wizard({
   const [saving, setSaving] = useState(false);
   const [saveProblem, setSaveProblem] = useState<CommandProblem | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [prompt, setPrompt] = useState<
+    { path: string; label: string; message: string }[] | null
+  >(null);
+  const answerPrompt = useRef<((proceed: boolean) => void) | null>(null);
   const submission = useCommand(attempts, onUnauthorized);
   const alive = submission.alive;
   const heading = useRef<HTMLHeadingElement>(null);
@@ -156,21 +170,62 @@ export function Wizard({
     );
   }
 
-  /** Saves the open stage's changed answers and the stage pointer; resolves to the fresh dialog. */
-  async function save(target: number): Promise<Dialog | null> {
+  /** The open stage's changed answers; values that cannot be saved are reported and, if dropped, left as saved. */
+  function collect(dropInvalid: boolean) {
     const patch: Record<string, AnswerValue> = {};
     const found: Record<string, string> = {};
     for (const field of current.fields) {
       if (!(field.name in edits)) continue;
+      const saved = dialog.answers[field.name];
       const parsed = fromDraft(field, edits[field.name]);
+      const invalid = Object.keys(parsed.errors);
       Object.assign(found, parsed.errors);
-      if (
-        !Object.keys(parsed.errors).length &&
-        !sameAnswer(field, parsed.value, dialog.answers[field.name])
-      )
-        patch[field.name] = parsed.value;
+      let value = parsed.value;
+      if (invalid.length) {
+        if (!dropInvalid || field.type !== "collateral") continue;
+        // A pledge keeps its valid details; an unsaveable detail keeps its saved value.
+        const kept: Collateral =
+          saved && typeof saved === "object" ? saved : {};
+        value = { ...(value as Collateral) };
+        for (const path of invalid) {
+          const key = path.split(".")[1] as keyof Collateral;
+          (value as Record<string, unknown>)[key] = kept[key] ?? null;
+        }
+      }
+      if (!sameAnswer(field, value, saved)) patch[field.name] = value;
     }
-    if (Object.keys(found).length) {
+    return { patch, found };
+  }
+
+  /** Lets the customer choose between fixing unsaveable values and moving on without them. */
+  function ask(found: Record<string, string>) {
+    return new Promise<boolean>((resolve) => {
+      answerPrompt.current = resolve;
+      setPrompt(
+        Object.entries(found).map(([path, message]) => ({
+          path,
+          message,
+          label: locate(dialog.stages, path).label,
+        })),
+      );
+    });
+  }
+  function settlePrompt(proceed: boolean) {
+    const resolve = answerPrompt.current;
+    answerPrompt.current = null;
+    setPrompt(null);
+    resolve?.(proceed);
+  }
+  // A questionnaire that disappears with the question open has not been left by choice.
+  useEffect(() => () => answerPrompt.current?.(false), []);
+
+  /** Saves the open stage's changed answers and the stage pointer; resolves to the fresh dialog. */
+  async function save(
+    target: number,
+    dropInvalid = false,
+  ): Promise<Dialog | null> {
+    const { patch, found } = collect(dropInvalid);
+    if (!dropInvalid && Object.keys(found).length) {
       setErrors((previous) => ({ ...previous, ...found }));
       setSaveProblem({
         kind: "fields",
@@ -208,10 +263,29 @@ export function Wizard({
     return fresh;
   }
 
+  /** Saves before a stage change or leaving; an unsaveable value is fixed or explicitly left out first. */
+  async function move(target: number): Promise<Dialog | null> {
+    const { found } = collect(false);
+    if (!Object.keys(found).length) return save(target);
+    setErrors((previous) => ({ ...previous, ...found }));
+    const proceed = await ask(found);
+    if (!alive.current) return null;
+    if (!proceed) {
+      setSaveProblem({
+        kind: "fields",
+        message: "Исправьте отмеченные поля, чтобы сохранить шаг.",
+        fields: found,
+      });
+      focusFirst(Object.keys(found));
+      return null;
+    }
+    return save(target, true);
+  }
+
   async function go(target: number, highlight = false) {
     if (busy || target === stage || target < 1 || target > total) return;
     const leaving = stage;
-    const fresh = await save(target);
+    const fresh = await move(target);
     if (!fresh || !alive.current) return;
     setVisited((previous) => [
       ...new Set([...previous, leaving, ...(highlight ? [target] : [])]),
@@ -222,12 +296,18 @@ export function Wizard({
     announce(`Сохранено. Шаг ${target} из ${total}: ${title}.`);
   }
 
-  /** The back link keeps the open stage's edits: they are saved before the list opens. */
-  async function leave() {
-    if (busy) return;
-    if (unsaved && !(await save(stage))) return;
-    if (alive.current) onOpenList();
+  /** The leave guard: nothing to keep, or the open stage saved (an unsaveable value fixed or knowingly left out). */
+  async function confirmLeave() {
+    if (busy || prompt) return false;
+    if (!unsaved) return true;
+    return (await move(stage)) !== null;
   }
+  const guard = useRef(confirmLeave);
+  guard.current = confirmLeave;
+  useEffect(() => {
+    registerLeaveGuard(() => guard.current());
+    return () => registerLeaveGuard(null);
+  }, []);
 
   async function submit(documents: ConsentDocument[]) {
     if (busy) return;
@@ -274,7 +354,7 @@ export function Wizard({
       <button
         type="button"
         className="back-button"
-        onClick={() => void leave()}
+        onClick={onOpenList}
         disabled={busy}
       >
         ← Мои заявки
@@ -294,7 +374,7 @@ export function Wizard({
           <p className="save-state">
             {savedAt
               ? `Черновик сохранён в ${formatTime(savedAt)}`
-              : "Ответы сохраняются при переходе между шагами"}
+              : "Ответы сохраняются при переходе между шагами и при выходе"}
           </p>
         </div>
       </div>
@@ -407,6 +487,13 @@ export function Wizard({
           }
         />
       </div>
+      {prompt && (
+        <UnsavedFieldsDialog
+          fields={prompt}
+          onStay={() => settlePrompt(false)}
+          onProceed={() => settlePrompt(true)}
+        />
+      )}
     </div>
   );
 }

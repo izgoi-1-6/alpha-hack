@@ -10,12 +10,15 @@ export function CancelAction({
   attempts,
   reload,
   announce,
+  onCancelled,
   onUnauthorized,
 }: {
   application: Pick<Application, "id" | "version">;
   attempts: CommandAttempts;
   reload: () => Promise<unknown>;
   announce: (text: string) => void;
+  /** Runs after the cancelled application has been reloaded (e.g. to move focus to the new status). */
+  onCancelled?: () => void;
   onUnauthorized: () => void;
 }) {
   const command = useCommand(attempts, onUnauthorized);
@@ -50,6 +53,7 @@ export function CancelAction({
     if (result.ok) {
       announce("Заявка отменена.");
       await reload();
+      onCancelled?.();
     } else if (["version", "status"].includes(result.problem.kind))
       await reload();
   }

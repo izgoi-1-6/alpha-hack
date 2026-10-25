@@ -15,7 +15,10 @@ import { Auth } from "./features/identity/Auth";
 import { Onboarding } from "./features/companies/Onboarding";
 import { CompanyDetail } from "./features/companies/CompanyDetail";
 import { Recommendations } from "./features/recommendations/Recommendations";
-import { ApplicationPage } from "./features/applications/ApplicationPage";
+import {
+  ApplicationPage,
+  LeaveGuard,
+} from "./features/applications/ApplicationPage";
 import { MyApplications } from "./features/applications/MyApplications";
 import { CommandAttempts } from "./features/applications/commands";
 import "./styles.css";
@@ -41,6 +44,10 @@ function App() {
   );
   // Application command keys, kept per session across navigation like the company retry above.
   const commandAttempts = useRef<CommandAttempts>(new Map());
+  // An open questionnaire may hold unsaved edits: every way out (links, history, logout) asks it first.
+  const leaveGuard = useRef<LeaveGuard | null>(null);
+  const leaving = useRef(false);
+  const shownUrl = useRef(window.location.href);
   const onboard = url.searchParams.get("view") === "onboard";
   const selectedId = url.searchParams.get("company");
   const recommending = url.searchParams.get("view") === "recommendations";
@@ -66,6 +73,7 @@ function App() {
     invalidateView();
     retryAttempts.current.clear();
     commandAttempts.current.clear();
+    leaving.current = false;
     setUser(nextUser);
     setCompanies([]);
     setFixtures([]);
@@ -78,11 +86,13 @@ function App() {
       const next = new URL(window.location.href);
       next.search = "";
       window.history.replaceState({}, "", next);
+      shownUrl.current = next.href;
       setUrl(next);
     }
   }
   function changeView(next: URL) {
     invalidateView();
+    shownUrl.current = next.href;
     setData(null);
     setLoadError("");
     setActionError("");
@@ -90,17 +100,38 @@ function App() {
     setUrl(next);
     setMenu(false);
   }
+  /** Runs `proceed` once the open questionnaire has saved its edits or the customer chose to leave. */
+  function afterLeaving(proceed: () => void, stay: () => void = () => {}) {
+    const guard = leaveGuard.current;
+    if (!guard) return proceed();
+    if (leaving.current) return stay();
+    leaving.current = true;
+    void guard().then((ok) => {
+      leaving.current = false;
+      if (ok) proceed();
+      else stay();
+    });
+  }
   function navigate(id?: string, view?: string, application?: string) {
     const next = new URL(window.location.href);
     next.search = "";
     if (id) next.searchParams.set("company", id);
     if (view) next.searchParams.set("view", view);
     if (application) next.searchParams.set("application", application);
-    window.history.pushState({}, "", next);
-    changeView(next);
+    afterLeaving(() => {
+      window.history.pushState({}, "", next);
+      changeView(next);
+    });
   }
   useEffect(() => {
-    const fn = () => changeView(new URL(window.location.href));
+    const fn = () => {
+      const next = new URL(window.location.href);
+      // The browser has already moved; staying in the questionnaire puts its address back.
+      afterLeaving(
+        () => changeView(next),
+        () => window.history.pushState({}, "", shownUrl.current),
+      );
+    };
     window.addEventListener("popstate", fn);
     return () => window.removeEventListener("popstate", fn);
   }, []);
@@ -301,7 +332,7 @@ function App() {
           <button
             aria-label="Выйти из аккаунта"
             title="Выйти"
-            onClick={() => void logout()}
+            onClick={() => afterLeaving(() => void logout())}
             disabled={busy}
           >
             <Icon name="logout" />
@@ -390,6 +421,9 @@ function App() {
               onRecommend={(companyId) =>
                 navigate(companyId, "recommendations")
               }
+              onLeaveGuard={(guard) => {
+                leaveGuard.current = guard;
+              }}
               onUnauthorized={() => changeAccount(null)}
             />
           ) : applicationList ? (

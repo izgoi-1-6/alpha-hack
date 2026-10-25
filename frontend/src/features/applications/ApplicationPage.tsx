@@ -13,7 +13,8 @@ import { CancelAction } from "./CancelAction";
 import { CommandAttempts } from "./commands";
 import { productName } from "./format";
 import { StatusView } from "./StatusView";
-import { Wizard } from "./Wizard";
+import { LeaveGuard, Wizard } from "./Wizard";
+export type { LeaveGuard } from "./Wizard";
 import "./applications.css";
 
 type Loaded =
@@ -38,6 +39,7 @@ export function ApplicationPage({
   onOpenList,
   onOpenApplication,
   onRecommend,
+  onLeaveGuard,
   onUnauthorized,
 }: {
   applicationId: string;
@@ -46,6 +48,8 @@ export function ApplicationPage({
   onOpenList: () => void;
   onOpenApplication: (id: string) => void;
   onRecommend: (companyId: string) => void;
+  /** The wizard registers how to leave it; the App consults it before any navigation. */
+  onLeaveGuard: (guard: LeaveGuard | null) => void;
   onUnauthorized: () => void;
 }) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -164,6 +168,7 @@ export function ApplicationPage({
         onOpenList={onOpenList}
         onOpenApplication={onOpenApplication}
         onRecalculate={onRecommend}
+        registerLeaveGuard={onLeaveGuard}
         onUnauthorized={onUnauthorized}
       />
     );

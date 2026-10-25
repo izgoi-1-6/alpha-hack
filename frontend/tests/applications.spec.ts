@@ -327,6 +327,9 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
   await expect(requested).toContainText("2 000 000 ₽");
   await expect(indicative).toContainText("2 400 000 ₽");
   await expect(indicative).toContainText("не предложение");
+  await expect(page.locator(".result-meta")).toContainText(
+    "Расчёт демо-скоринга — не предложение",
+  );
   await expect(preapproved).toContainText("2 000 000 ₽");
   await expect(preapproved).toContainText("не окончательное решение");
   await expect(page.locator(".status-next")).toContainText(
@@ -453,6 +456,16 @@ test("unavailable demo BKI: lost submit and retry responses replay their keys; W
   await expect(
     page.getByRole("button", { name: "Повторить проверку" }),
   ).toHaveCount(0);
+
+  // Cancelling from the status page moves focus to the new status heading.
+  await page.getByRole("button", { name: "Отменить заявку" }).click();
+  await page
+    .getByLabel("Причина отмены")
+    .fill("Проверка отмены после одобрения");
+  await page.getByRole("button", { name: "Да, отменить заявку" }).click();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Заявка отменена" }),
+  ).toBeFocused();
 });
 
 test("My Applications lists every application with status and next step; cancel asks for confirmation", async ({
@@ -535,6 +548,108 @@ test("My Applications lists every application with status and next step; cancel 
     await page.request.get(`/api/v1/applications/${termId}`)
   ).json();
   expect(application.status).toBe("CANCELLED");
+});
+
+test("open-stage edits are saved when leaving through the sidebar or the browser history", async ({
+  page,
+}) => {
+  await registerClient(page);
+  await onboard(page, "Сильный бизнес");
+  await openRecommendations(page);
+  const id = await startDraft(page, termCard);
+  const reopen = async () => {
+    await page
+      .locator(".sidebar")
+      .getByRole("button", { name: "Мои заявки" })
+      .click();
+    await page.locator(".application-row").getByRole("link").click();
+    await expectStage(page, 1, "Компания");
+  };
+
+  // A sidebar destination: the edit is saved before the company page opens.
+  await page.getByLabel("Фактический адрес").fill("Демо-город, ул. Боковая, 3");
+  await page
+    .locator(".sidebar")
+    .getByRole("button", { name: "Мои компании" })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "ООО «Демо Сильный бизнес»" }),
+  ).toBeVisible();
+  await reopen();
+  await expect(page.getByLabel("Фактический адрес")).toHaveValue(
+    "Демо-город, ул. Боковая, 3",
+  );
+
+  // Browser Back: saved as well; Forward reopens the application.
+  await page
+    .getByLabel("Фактическая деятельность")
+    .fill("Розничная торговля (демо)");
+  await page.goBack();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Мои заявки" }),
+  ).toBeVisible();
+  await page.goForward();
+  await expectStage(page, 1, "Компания");
+  await expect(page.getByLabel("Фактическая деятельность")).toHaveValue(
+    "Розничная торговля (демо)",
+  );
+  const { application } = await (
+    await page.request.get(`/api/v1/applications/${id}`)
+  ).json();
+  expect(application.answers.actual_address).toBe("Демо-город, ул. Боковая, 3");
+  expect(application.answers.actual_activity).toBe("Розничная торговля (демо)");
+  expect(application.current_stage).toBe(1);
+});
+
+test("a value that cannot be saved is never dropped silently: stay and fix, or leave without that field", async ({
+  page,
+}) => {
+  await registerClient(page);
+  await onboard(page, "Сильный бизнес");
+  await openRecommendations(page);
+  const id = await startDraft(page, termCard);
+  await fillCompanyStage(page);
+  await saveAndContinue(page);
+  await expectStage(page, 2, "Параметры");
+  const amount = page.getByLabel("Сумма, ₽");
+  const prompt = page.getByRole("dialog", {
+    name: "Это значение нельзя сохранить",
+  });
+  await amount.fill("2 000 000 руб");
+  await page.getByLabel("Срок, мес.").fill("18");
+
+  // Stage Back: the customer chooses to stay; the value and the other edit are kept.
+  await page.getByRole("button", { name: "← Назад" }).click();
+  await expect(prompt).toContainText("Сумма, ₽");
+  await prompt.getByRole("button", { name: "Остаться и исправить" }).click();
+  await expect(prompt).toHaveCount(0);
+  await expectStage(page, 2, "Параметры");
+  await expect(amount).toHaveValue("2 000 000 руб");
+  await expect(amount).toBeFocused();
+
+  // Browser Back asks the same question; staying puts the application address back.
+  await page.goBack();
+  await prompt.getByRole("button", { name: "Остаться и исправить" }).click();
+  await expect(page).toHaveURL(new RegExp(`application=${id}`));
+  await expectStage(page, 2, "Параметры");
+  await expect(amount).toHaveValue("2 000 000 руб");
+
+  // Leaving without that field still saves the valid edit.
+  await page
+    .locator(".sidebar")
+    .getByRole("button", { name: "Мои заявки" })
+    .click();
+  await prompt
+    .getByRole("button", { name: "Перейти, не сохраняя это поле" })
+    .click();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Мои заявки" }),
+  ).toBeVisible();
+  const { application } = await (
+    await page.request.get(`/api/v1/applications/${id}`)
+  ).json();
+  expect(application.answers.term_months).toBe(18);
+  expect(application.answers.requested_amount_rub).toBe(1500000);
 });
 
 test("a save from an outdated tab gets the stale-version reply: the page reloads, says so and keeps the unsaved edit", async ({
@@ -773,16 +888,16 @@ for (const viewport of [
     ).toBeVisible();
     await expectNoHorizontalOverflow(page);
     await expectTouchTargets(page);
-    if (viewport.name === "mobile") {
-      await page.setViewportSize({ width: 360, height: 780 });
-      await expectNoHorizontalOverflow(page);
-      await page.setViewportSize(viewport);
-    }
+    // Captured before any resize: a full-page capture right after a resize can repeat the first screen.
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({
       path: `${artifacts}/task-4b-status-${viewport.name}.png`,
       fullPage: true,
     });
+    if (viewport.name === "mobile") {
+      await page.setViewportSize({ width: 360, height: 780 });
+      await expectNoHorizontalOverflow(page);
+    }
     expect((await history(page, id)).at(-1)?.to_status).toBe("PREAPPROVED");
   });
 }

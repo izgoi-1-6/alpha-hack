@@ -221,6 +221,7 @@ export function StatusView({
                 attempts={attempts}
                 reload={reload}
                 announce={announce}
+                onCancelled={() => setFocusRequest((n) => n + 1)}
                 onUnauthorized={onUnauthorized}
               />
             )}
@@ -304,7 +305,13 @@ export function StatusView({
                 {evaluation.scored_limit_rub !== null && (
                   <div>
                     <dt>Расчётный лимит по проверке</dt>
-                    <dd>{rub(evaluation.scored_limit_rub)}</dd>
+                    <dd>
+                      {rub(evaluation.scored_limit_rub)}
+                      <small>
+                        Расчёт демо-скоринга — не предложение и не решение
+                        банка.
+                      </small>
+                    </dd>
                   </div>
                 )}
                 <div>

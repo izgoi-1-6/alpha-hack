@@ -697,6 +697,55 @@
   border-top: 1px solid #f0ecec;
   padding: 9px 0;
 }
+.result-meta dd small {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* Unsaveable values: stay and fix, or move on without them */
+.unsaved-dialog {
+  width: min(480px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 18px 48px #1c1a1d33;
+  color: #1c1a1d;
+}
+.unsaved-dialog::backdrop {
+  background: #1c1a1d66;
+}
+.unsaved-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #a22520;
+}
+.unsaved-dialog h2 {
+  font-size: 19px;
+  color: #1c1a1d;
+}
+.unsaved-dialog ul {
+  margin: 14px 0 8px;
+  padding-left: 18px;
+  font-size: 14px;
+  display: grid;
+  gap: 6px;
+}
+.unsaved-dialog p {
+  font-size: 14px;
+  color: var(--muted);
+}
+.unsaved-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+.unsaved-dialog-actions .button {
+  flex: 1 1 180px;
+}
 .timeline {
   list-style: none;
   margin: 18px 0 0;
@@ -900,8 +949,13 @@
     flex-direction: column;
     gap: 2px;
   }
-  .review dd {
+  .review dd,
+  .result-meta dd {
     text-align: left;
+  }
+  .result-meta > div {
+    flex-direction: column;
+    gap: 2px;
   }
   .amount strong {
     font-size: 26px;

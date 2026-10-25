@@ -289,7 +289,8 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
   await page.screenshot({ path: `${artifacts}/task-6b-approved.png`, fullPage: true });
 
   await page.getByRole("button", { name: "Перейти в Альфа-Бизнес (демо)" }).click();
-  await expect(page).toHaveURL(new RegExp(`/demo/alfa-business/${id}$`));
+  // The address bar shows the hand-off path right after the origin, with no demo segment.
+  await expect(page).toHaveURL(new RegExp(`^https?://[^/]+/alfa-business/${id}$`));
   await expect(page.getByRole("heading", { level: 1, name: "Альфа-Бизнес (демо)" })).toBeVisible();
   const handoff = page.locator("main");
   await expect(handoff).toContainText("имитация");
@@ -305,12 +306,12 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
   expect(new URL(page.url()).pathname).toBe("/");
 
   // An officer at the customer's hand-off address is refused; so is another client, for the page and the files.
-  await officer.goto(`/demo/alfa-business/${id}`);
+  await officer.goto(`/alfa-business/${id}`);
   await expect(officer.getByRole("heading", { level: 1, name: "Нет доступа" })).toBeVisible();
   const downloadUrl = stored.download_url as string;
   await page.getByRole("button", { name: "Выйти из аккаунта" }).click();
   await registerClient(page, "docs-other");
-  await page.goto(`/demo/alfa-business/${id}`);
+  await page.goto(`/alfa-business/${id}`);
   await expect(page.getByRole("heading", { level: 1, name: "Страница недоступна" })).toBeVisible();
   await expect(page.locator("main")).not.toContainText("Сильный бизнес");
   await page.goto(`/?application=${id}`);
@@ -344,7 +345,7 @@ test("secured product: four documents, the valuation is accepted only with a ver
   await expect(page.getByRole("heading", { level: 1, name: "Документы на проверке" })).toBeVisible();
 
   // Before the final decision the hand-off address explains that it is not available yet.
-  await page.goto(`/demo/alfa-business/${id}`);
+  await page.goto(`/alfa-business/${id}`);
   await expect(page.getByRole("heading", { level: 1, name: "Переход пока недоступен" })).toBeVisible();
   await page.getByRole("button", { name: "Открыть заявку" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Документы на проверке" })).toBeVisible();
@@ -394,7 +395,7 @@ test("secured product: four documents, the valuation is accepted only with a ver
   await expect(statusPill(officer)).toHaveText("Одобрена (демо)");
 
   // Direct navigation to the hand-off address now shows the simulation; the customer sees the verified value.
-  await page.goto(`/demo/alfa-business/${id}`);
+  await page.goto(`/alfa-business/${id}`);
   await expect(page.getByRole("heading", { level: 1, name: "Альфа-Бизнес (демо)" })).toBeVisible();
   await expect(page.locator("main")).toContainText("3 500 000 ₽");
   await page.goto(`/?application=${id}`);
@@ -508,6 +509,6 @@ test("packet edits: browser checks, server refusals on the row, a lost upload re
   await expect(page.locator(".status-next")).toContainText(reason);
   await expect(card.getByRole("button", { name: /Загрузить файл|Заменить файл|Удалить файл|Отправить комплект/ })).toHaveCount(0);
   await expect(report.getByRole("link", { name: "Скачать файл «Отчёт.png»" })).toBeVisible();
-  await page.goto(`/demo/alfa-business/${id}`);
+  await page.goto(`/alfa-business/${id}`);
   await expect(page.getByRole("heading", { level: 1, name: "Переход пока недоступен" })).toBeVisible();
 });

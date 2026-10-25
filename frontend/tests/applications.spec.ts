@@ -140,7 +140,7 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
   // Two separate consents, unchecked by default, with their exact versions; submission is blocked without them.
   await expect(processingConsent(page)).not.toBeChecked();
   await expect(bkiConsent(page)).not.toBeChecked();
-  await expect(page.getByText("Версия demo-consent-v2")).toHaveCount(2);
+  await expect(page.getByText("Версия consent-v2")).toHaveCount(2);
   const submit = page.getByRole("button", { name: "Отправить заявку" });
   await expect(submit).toBeDisabled();
   await page.getByLabel("Подтверждаю, что сведения анкеты верны").check();

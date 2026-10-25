@@ -4,8 +4,8 @@ import { CommandAttempts } from "../applications/commands";
 import { useCommand } from "../applications/useCommand";
 import { documentsApi } from "./documentsApi";
 
-/** The only address the link may open: the stand's own demo page for this application. */
-export const HANDOFF_PATH = /^\/demo\/alfa-business\/([^/?#]+)$/;
+/** The only address the link may open: the stand's own hand-off page for this application. */
+export const HANDOFF_PATH = /^\/alfa-business\/([^/?#]+)$/;
 
 /** The application id of a hand-off page address, or null for any other path (a malformed escape stays as typed). */
 export function handoffIdOf(pathname: string) {

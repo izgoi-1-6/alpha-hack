@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0",
-  "rules_version": "demo-rules-v2",
+  "rules_version": "rules-v2",
   "is_synthetic": true,
-  "description": "Демонстрационные правила решения поверх data/credit_catalog.json. Каталог главнее: политика только заполняет пустые (null) поля каталога и может ужесточать его условия, но не ослаблять их. Проверка: python -m app.products_config check.",
+  "description": "Правила решения поверх data/credit_catalog.json. Каталог главнее: политика только заполняет пустые (null) поля каталога и может ужесточать его условия, но не ослаблять их. Проверка: python -m app.products_config check.",
   "entity_types": {
     "ИП": "IP",
     "ЮЛ": "LLC"

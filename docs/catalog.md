@@ -5,7 +5,7 @@ The app's loan products come from two files, validated together when the API sta
 | File | Holds | Version |
 |---|---|---|
 | `data/credit_catalog.json` | Product facts: amounts, terms, rates, purposes, eligibility, display texts. A copy of the user's `credit_catalog_updated.json` with the planned additions. | `catalog_version` (`2026-10-25.1`) |
-| `data/demo-policy.json` | Demo decision rules and fallbacks for catalog nulls; ranking, payment models, slider, badges. | `rules_version` (`demo-rules-v2`) |
+| `data/demo-policy.json` | Demo decision rules and fallbacks for catalog nulls; ranking, payment models, slider, badges. | `rules_version` (`rules-v2`) |
 
 The catalog is authoritative. The policy fills a catalog `null` and may tighten a stated value, never weaken it. `data/catalog.research.json` is history only; nothing reads it. The paths can be overridden with `CREDIT_CATALOG_PATH` and `DEMO_POLICY_PATH`.
 
@@ -17,7 +17,7 @@ cd backend
 .venv/bin/python -m app.products_config check --catalog /tmp/c.json --policy ../data/demo-policy.json
 ```
 
-It prints `OK: catalog 2026-10-25.1+<sha8>, rules demo-rules-v2+<sha8>, 11 products, 1 overlay`, or every problem with its path and exit code 1, for example:
+It prints `OK: catalog 2026-10-25.1+<sha8>, rules rules-v2+<sha8>, 11 products, 1 overlay`, or every problem with its path and exit code 1, for example:
 
 ```
 Config errors (2) in ../data/credit_catalog.json / ../data/demo-policy.json:

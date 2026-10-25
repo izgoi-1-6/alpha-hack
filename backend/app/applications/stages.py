@@ -250,7 +250,8 @@ def issues(answers: dict, product: dict, company: dict, secured: bool, *, regist
 
 def describe(field: dict, product: dict, evidence: dict, answers: dict, owned: dict) -> dict | None:
     """A field descriptor for the dialog, or None for a stage-2 field the product does not ask. A source-owned field is
-    `read_only` with its source (name, status, value)."""
+    `read_only` with its source (name, status, value), `required: false` and no `must_be_true`: the client gives
+    nothing for it."""
     described = dict(field)
     name = field['name']
     if name == 'purpose':
@@ -271,7 +272,9 @@ def describe(field: dict, product: dict, evidence: dict, answers: dict, owned: d
         described['source'] = {'name': 'turnover', 'status': entry['source_status'], 'value': entry['source']}
         described['origin'] = entry['origin']
     if name in owned:
-        described.update(read_only=True, source=owned[name])
+        # Nothing is asked of the client (R3 skips it): no requirement flags, only the source's value.
+        described.update(read_only=True, source=owned[name], required=False)
+        described.pop('must_be_true', None)
     return described
 
 

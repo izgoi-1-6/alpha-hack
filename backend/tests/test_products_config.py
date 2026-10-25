@@ -79,9 +79,9 @@ def item(catalog: dict, item_id: str) -> dict:
 
 def test_the_shipped_files_load_and_stamp_content_hashed_versions(shipped):
     assert SOURCE_CATALOG['schema_version'] == '3.2' and SOURCE_CATALOG['catalog_version'] == '2026-10-25.1'
-    assert SOURCE_POLICY['rules_version'] == 'demo-rules-v2'
+    assert SOURCE_POLICY['rules_version'] == 'rules-v2'
     assert shipped.catalog_version == f"2026-10-25.1+{sha8(oracle.CATALOG_PATH)}"
-    assert shipped.rules_version == f"demo-rules-v2+{sha8(oracle.POLICY_PATH)}"
+    assert shipped.rules_version == f"rules-v2+{sha8(oracle.POLICY_PATH)}"
     assert [product['id'] for product in shipped.products] == list(GOLDEN)  # catalog order, the overlay excluded
     assert [overlay['id'] for overlay in shipped.overlays] == ['zont_corpmsp']
     assert all(product['applyable'] for product in shipped.products)
@@ -233,7 +233,7 @@ def test_any_edit_changes_the_stamped_version_even_without_a_version_bump(tmp_pa
     policy = deepcopy(SOURCE_POLICY)
     policy['products']['psk_borderline']['priority'] += 1
     repriced = load_config(*write_pair(tmp_path, policy=policy))
-    assert repriced.rules_version.split('+')[0] == 'demo-rules-v2' and repriced.rules_version != shipped.rules_version
+    assert repriced.rules_version.split('+')[0] == 'rules-v2' and repriced.rules_version != shipped.rules_version
 
 
 def test_config_changes_really_change_the_runtime_model(tmp_path):

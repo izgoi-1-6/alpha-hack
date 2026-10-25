@@ -8,7 +8,7 @@ from app.main import app
 
 ORIGIN = 'http://localhost:5173'
 PASSWORD = 'DemoCredit2026!'
-CONSENT_VERSION = 'demo-consent-v2'
+CONSENT_VERSION = 'consent-v2'
 CONSENTS = [{'code': c, 'version': CONSENT_VERSION, 'accepted': True}
             for c in ('ONBOARDING_PROCESSING', 'REGISTRY_LOOKUP')]
 

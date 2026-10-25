@@ -13,7 +13,7 @@ type State =
   | { kind: "loaded"; application: Application };
 
 /**
- * `/demo/alfa-business/{id}`: the local page the approved customer reaches through «Перейти в Альфа-Бизнес (демо)»,
+ * `/alfa-business/{id}`: the local page the approved customer reaches through «Перейти в Альфа-Бизнес (демо)»,
  * also by a direct link. It reads the application as its owner (another client gets the server's 404) and confirms a
  * simulation only for an APPROVED one: no bank redirect, signing or disbursement, and APPROVED is not money issued.
  */

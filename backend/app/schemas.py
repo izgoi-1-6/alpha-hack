@@ -27,7 +27,7 @@ class RegisterInput(LoginInput):
 
 class ConsentInput(StrictModel):
     code: Literal['ONBOARDING_PROCESSING','REGISTRY_LOOKUP']
-    version: Literal['demo-consent-v2']
+    version: Literal['consent-v2']
     accepted: Literal[True]
     @field_validator('accepted', mode='before')
     @classmethod

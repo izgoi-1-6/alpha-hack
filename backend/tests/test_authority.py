@@ -5,6 +5,9 @@ seeded verifications and the submission re-check.
 Person names and roles come from the raw fixture file (recommendation_oracle.FIXTURES), never from the code under test.
 """
 from datetime import timedelta
+import itertools
+import os
+import threading
 from uuid import uuid4
 import pytest
 from sqlalchemy import select
@@ -251,6 +254,67 @@ def test_several_users_may_add_the_same_inn_each_with_their_own_verification(cli
     assert people[first['authority_verification_id']][1] == people[second['authority_verification_id']][1] == FIXTURES['strong']['director_name']
     assert people[first['authority_verification_id']][0] == first['owner_user_id']
     assert people[second['authority_verification_id']][0] == second['owner_user_id']
+
+
+# --- PostgreSQL race --------------------------------------------------------------------------------------------------
+
+pg_only = pytest.mark.skipif(not os.getenv('TEST_DATABASE_URL'), reason='concurrent commands need PostgreSQL row locks')
+
+
+class Ticking:
+    """A request clock one second later on every request, so each request's writes carry their own time."""
+    def __init__(self, start):
+        self.start, self.ticks, self.lock = start, itertools.count(1), threading.Lock()
+
+    def __call__(self):
+        with self.lock:
+            return self.start + timedelta(seconds=next(self.ticks))
+
+
+def race(client, verification_id: str, calls: int, send):
+    """Runs `send` concurrently while the verification row is locked, so every request queues on that lock."""
+    from app.models import AuthorityVerification
+    outcome = [None] * calls
+
+    def run(index):
+        with TestClient(app, headers={'origin': ORIGIN}, cookies=client.cookies) as worker:
+            outcome[index] = send(worker)
+
+    with client.app.state.test_factory() as blocker:
+        blocker.execute(select(AuthorityVerification).where(AuthorityVerification.id == verification_id).with_for_update())
+        workers = [threading.Thread(target=run, args=(index,)) for index in range(calls)]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=1)
+        assert all(worker.is_alive() for worker in workers), 'every request must wait for the verification row lock'
+        blocker.commit()
+    for worker in workers:
+        worker.join(timeout=30)
+    assert not any(worker.is_alive() for worker in workers)
+    return outcome
+
+
+@pg_only
+def test_two_concurrent_companies_with_one_verification_admit_exactly_one(client):
+    """Single use under concurrency: the gate's row lock serializes the two requests, so the second sees the
+    verification spent (403), not a unique-constraint conflict; one company keeps it, used once by its request."""
+    from app.models import AuthorityVerification, Company
+    from app.clock import utc_now
+    register(client)
+    verification = verify(client, STRONG).json()['verification_id']
+    client.app.dependency_overrides[utc_now] = Ticking(FIXED_NOW)
+    outcome = race(client, verification, 2, lambda worker: create_company(worker, STRONG, verification))
+    assert sorted(response.status_code for response in outcome) == [201, 403], [response.text for response in outcome]
+    refusal = next(response for response in outcome if response.status_code == 403)
+    assert refusal.json()['error']['code'] == 'AUTHORITY_NOT_VERIFIED'
+    winner = next(response for response in outcome if response.status_code == 201).json()['company']
+    with client.app.state.test_factory() as db:
+        (company,) = db.scalars(select(Company).where(Company.owner_user_id == me(client))).all()
+        assert company.id == winner['id'] and company.authority_verification_id == verification
+        row = db.get(AuthorityVerification, verification)
+        assert row.used_at is not None and row.used_at == company.created_at  # set by the winning request only
+        assert db.scalars(select(Company).where(Company.authority_verification_id == verification)).all() == [company]
 
 
 # --- the seed --------------------------------------------------------------------------------------------------------

@@ -366,7 +366,8 @@ def test_a09_document_correction_journey_ends_in_a_simulated_handoff(client, off
     refused(upload(client, customer, 'FINANCIAL_REPORT'), 409, 'INVALID_STATUS')  # accepted evidence is final
     refused(delete(client, customer, replacement), 409, 'INVALID_STATUS')
     first = link(client, application, key='handoff')
-    assert first.status_code == 200 and first.json() == {'url': f"/demo/alfa-business/{application['id']}", 'simulated': True}
+    # The address bar shows the hand-off path: no demo wording (Task 10 fix round 1 ruling).
+    assert first.status_code == 200 and first.json() == {'url': f"/alfa-business/{application['id']}", 'simulated': True}
     assert link(client, application, key='handoff').json() == first.json()
     assert read(client, application)['version'] == customer['version']  # the link changes nothing
 

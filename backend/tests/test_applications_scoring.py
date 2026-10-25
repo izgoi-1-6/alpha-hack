@@ -54,7 +54,7 @@ def test_oracle_constants_match_the_policy_file():
 
 NO_CONSENT = {
     'none': [], 'processing only': [CONSENTS[0]], 'bki only': [CONSENTS[1]],
-    'old version': [{**consent, 'version': 'demo-consent-v1'} for consent in CONSENTS],
+    'old version': [{**consent, 'version': 'demo-consent-v2'} for consent in CONSENTS],
     'unchecked': [{**consent, 'accepted': False} for consent in CONSENTS],
     'extra code': CONSENTS + [{'code': 'ONBOARDING_PROCESSING', 'version': CONSENTS[0]['version'], 'accepted': True}],
     'duplicate': [CONSENTS[0], CONSENTS[0]],
@@ -167,7 +167,7 @@ def test_fixture_submission_outcomes_match_the_independent_oracle(client, bki_ca
     assert application['preapproved_amount_rub'] == amount and application['requested_amount_rub'] == requested
     assert application['submitted_at'] == '2026-10-24T12:00:00Z' and application['final_amount_rub'] is None
     assert [call['attempt'] for call in bki_calls] == [1]
-    assert granted(client, application) == [('APPLICATION_PROCESSING', 'demo-consent-v2'), ('BKI', 'demo-consent-v2')]
+    assert granted(client, application) == [('APPLICATION_PROCESSING', 'consent-v2'), ('BKI', 'consent-v2')]
     assert [(item['from_status'], item['to_status']) for item in history(client, application)][1:] == [('DRAFT', 'CHECKING'), ('CHECKING', status)]
     saved = evaluations(client, application)
     assert len(saved) == 1 and saved[0].sources['bki']['credit_history'] == fixture['credit_history']

@@ -58,6 +58,9 @@ def test_a_new_draft_prefills_the_source_owned_answers_and_shows_them_read_only(
     assert all(fields[name]['read_only'] is True for name in AUTHORITY_FIELDS)
     read_only = [name for name, field in fields.items() if field.get('read_only')]
     assert sorted(read_only) == sorted(SOURCE_OWNED)
+    # Nothing is asked of the client for them (R3 skips them): no requirement flags on the read-only descriptors.
+    assert all(fields[name]['required'] is False and 'must_be_true' not in fields[name] for name in SOURCE_OWNED)
+    assert fields['beneficial_owners_confirmed']['required'] is True and fields['beneficial_owners_confirmed']['must_be_true'] is True
     assert 'source' not in fields['beneficial_owners_confirmed'] and 'source' not in fields['seasonal']
 
 

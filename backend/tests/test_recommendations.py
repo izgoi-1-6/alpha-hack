@@ -65,7 +65,7 @@ def test_catalog_serves_every_card_product_with_explanations_and_no_research_ite
     catalog = response.json()
     assert set(catalog) == {'catalog_version', 'rules_version', 'key_rate', 'amount_slider', 'products', 'overlays'}
     assert 'research_items' not in catalog
-    assert catalog['catalog_version'].startswith('2026-10-25.1+') and catalog['rules_version'].startswith('demo-rules-v2+')
+    assert catalog['catalog_version'].startswith('2026-10-25.1+') and catalog['rules_version'].startswith('rules-v2+')
     assert catalog['key_rate']['value_bps'] == 1400
     assert (catalog['amount_slider']['min_rub'], catalog['amount_slider']['max_rub'], catalog['amount_slider']['default_rub']) == \
            (300_000, 2_000_000_000, 2_000_000)

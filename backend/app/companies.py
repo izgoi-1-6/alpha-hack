@@ -13,8 +13,9 @@ from .identity import Db, Now, ClientUser
 from .models import AuthorityVerification, Company, Precheck, Consent
 from .schemas import CompanyInput, VersionInput
 
-# v2: the texts no longer call the service a demonstration (revision rule 7); a text change is a new version.
-CONSENT_VERSION='demo-consent-v2'
+# v2: the texts no longer call the service a demonstration (revision rule 7); a text change is a new version. The UI
+# shows it («Версия consent-v2»), so it carries no demo wording either (Task 10 fix round 1).
+CONSENT_VERSION='consent-v2'
 CONSENT_TEXTS={
     'ONBOARDING_PROCESSING':'Согласен на обработку данных компании для подбора финансирования.',
     'REGISTRY_LOOKUP':'Разрешаю запросить сведения о компании и её оборотах в реестре и открытых источниках.',

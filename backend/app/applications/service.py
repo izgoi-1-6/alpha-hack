@@ -3,7 +3,8 @@ the router has already locked (company first, then application) and after the id
 rolls the whole command back.
 
 Submit validates in the spec's order: version, draft, current policy, one active application per company/product,
-R1 corrections (the company's current eligibility included), explicit current consents, R3 required answers (skipped
+R1 corrections (the company's current eligibility included; with the registry source unavailable an unknown fact waits
+for R4 instead), explicit current consents, R3 required answers (skipped
 for a known inactive company, which the check rejects through R2). Only then are the consents granted, the inputs and
 the decision facts (products.pin: the runtime product, `secured`, `required_documents`) pinned and DRAFT→CHECKING
 recorded before the check runs. Retry-check and respond-info decide under the pinned facts.
@@ -107,7 +108,9 @@ def submit_application(db: Session, application: Application, company: Company, 
         raise stale()
     reject_duplicate_active(db, application, now)
     answers = application.answers
-    corrections = stages.corrections(answers, product, public_row(company))
+    precheck = latest_precheck(db, company.id)
+    corrections = stages.corrections(answers, product, public_row(company),
+                                     registry_unavailable=precheck.registry_source_status == 'unavailable')
     if corrections:
         raise ApiError(422, 'CORRECTION_REQUIRED', 'Измените параметры заявки под условия продукта.', fields=corrections)
     if not consents_given(data.consents):
@@ -122,7 +125,6 @@ def submit_application(db: Session, application: Application, company: Company, 
                       text_version=CONSENT_VERSION, granted_at=now) for code in SUBMISSION_CONSENTS]
     db.add_all(grants)
     db.flush()
-    precheck = latest_precheck(db, company.id)
     revenue = stages.finance_evidence(answers, precheck)['monthly_revenue_rub']['value']
     application.submitted_at = now
     application.requested_amount_rub = answers.get('requested_amount_rub')

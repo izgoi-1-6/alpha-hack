@@ -81,7 +81,7 @@ def staff_application(db: Session, application: Application, officer_id: str, co
                                               preapprovable=preapproval is not None and preapproval['blocked_by'] is None,
                                               reviewable=reviewable,
                                               approvable=final_approval is not None and final_approval['blocked_by'] is None),
-                missing_fields=missing_fields(application, company, terms, request),
+                missing_fields=missing_fields(db, application, company, terms, request),
                 open_info_request=staff_info_request(db, request, application), preapproval=preapproval,
                 final_approval=final_approval, document_summary=documents.summary(application, application_documents))
     return body

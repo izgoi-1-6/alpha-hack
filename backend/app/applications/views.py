@@ -69,16 +69,20 @@ def allowed_actions(application: Application, company: Company, request: InfoReq
     return actions
 
 
-def blocking_issues(application: Application, company: Company, terms: Terms | None) -> dict:
+def blocking_issues(db: Session, application: Application, company: Company, terms: Terms | None) -> dict:
+    """What submission would refuse now (R1 and R3), judged like submit: the company's current row and the registry
+    source status of its latest precheck."""
     if terms is None:
         return {'product_id': 'Продукт больше не доступен: пересчитайте оценку.'}
-    return stages.issues(application.answers, terms.product, public_row(company), terms.secured)
+    unavailable = latest_precheck(db, company.id).registry_source_status == 'unavailable'
+    return stages.issues(application.answers, terms.product, public_row(company), terms.secured, registry_unavailable=unavailable)
 
 
-def missing_fields(application: Application, company: Company, terms: Terms | None, request: InfoRequest | None) -> list[str]:
+def missing_fields(db: Session, application: Application, company: Company, terms: Terms | None,
+                   request: InfoRequest | None) -> list[str]:
     """What the client must still supply: a draft's submit blockers, or a client_answers request's fields."""
     if application.status == 'DRAFT':
-        return list(blocking_issues(application, company, terms))
+        return list(blocking_issues(db, application, company, terms))
     if application.status == 'NEED_INFO' and request is not None and request.kind == 'client_answers':
         return list(request.requested_fields)
     return []
@@ -119,7 +123,7 @@ def public_application(db: Session, application: Application, company: Company |
     body.update(company=company_summary(company), product=product_summary(application, terms),
                 latest_evaluation=public_evaluation(latest_evaluation(db, application.id)),
                 allowed_actions=allowed_actions(application, company, request, application_documents),
-                missing_fields=missing_fields(application, company, terms, request),
+                missing_fields=missing_fields(db, application, company, terms, request),
                 open_info_request=public_info_request(request),
                 document_summary=documents.summary(application, application_documents))
     return body
@@ -133,12 +137,12 @@ def dialog(db: Session, application: Application) -> dict:
     if terms is None:
         raise ApiError(409, 'RECOMMENDATION_STALE', 'Условия продукта изменились. Пересчитайте оценку и создайте новую заявку.')
     request = current_request(db, application)
-    blocking = blocking_issues(application, company, terms)
+    blocking = blocking_issues(db, application, company, terms)
     return {'application_id': application.id, 'status': application.status, 'version': application.version,
             'current_stage': application.current_stage, 'steps_total': len(stages.STAGES),
             'company': company_summary(company), 'product': product_summary(application, terms),
             'stages': stages.stage_contract(application.answers, terms.product, latest_precheck(db, company.id), blocking),
-            'answers': application.answers, 'missing_fields': missing_fields(application, company, terms, request),
+            'answers': application.answers, 'missing_fields': missing_fields(db, application, company, terms, request),
             'field_issues': blocking if application.status == 'DRAFT' else {},
             'allowed_actions': allowed_actions(application, company, request, documents.documents_of(db, application.id))}
 

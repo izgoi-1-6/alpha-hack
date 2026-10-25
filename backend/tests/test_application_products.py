@@ -12,15 +12,18 @@ import pytest
 from sqlalchemy import select
 import application_oracle as oracle
 import catalog_oracle
-from application_helpers import (CONSENTS, LINE, SECURED, TERM, bki_calls, clock, complete, create, declared_collateral,
-                                 onboard, patch_answers, read, retry, rows, set_company, snapshot_for, submit)
+from datetime import date
+from application_helpers import (CONSENTS, FIXED_DATE, LINE, SECURED, TERM, bki_calls, clock, complete, create,
+                                 declared_collateral, history, onboard, patch_answers, read, retry, rows, set_company,
+                                 snapshot_for, submit)
 from document_helpers import accept_all, checklist, completed, storage, upload_all
 from officer_helpers import claimed, detail, officer, ok, preapprove, request_info, respond
-from recommendation_oracle import PRODUCTS
+from recommendation_oracle import FIXTURES, PRODUCTS
 from test_identity_company import client
 
 pytestmark = pytest.mark.usefixtures('clock')
 GOSCREDIT, UNIVERSAL, FACTORING = 'alfa_goscredit_zont', 'alfa_universal_limit', 'alfa_factoring'
+LINE_SECURED, NONREVOLVING_SECURED = 'alfa_revolving_line_secured', 'alfa_nonrevolving_line_secured'
 PSK_INVEST, PSK_WORKING, PSK_BORDER = 'psk_invest_subsidy', 'psk_working_capital', 'psk_borderline'
 ALL = catalog_oracle.CARD_IDS
 SLIDER_MAX = catalog_oracle.POLICY['amount_slider']['max_rub']
@@ -44,9 +47,10 @@ def saved(response) -> dict:
     return response.json()['application']
 
 
-def fresh(client, product_id: str, fixture: str = MANUFACTURER, *, amount: int | None = None) -> dict:
-    """A draft straight from an amount-only snapshot of the product's minimum, before any stage-2 answer."""
-    company = onboard(client, fixture)
+def fresh(client, product_id: str, fixture: str = MANUFACTURER, *, amount: int | None = None, company: str | None = None) -> dict:
+    """A draft straight from an amount-only snapshot of the product's minimum, before any stage-2 answer (for a newly
+    onboarded fixture company unless `company` is given)."""
+    company = company or onboard(client, fixture)
     response = create(client, company, product_id, snapshot_for(client, company, amount or PRODUCTS[product_id]['amount_min_rub']))
     assert response.status_code == 201, response.text
     return response.json()['application']
@@ -63,9 +67,10 @@ def stage_two_answers(product_id: str, **changes) -> dict:
     return {**answers, **changes}
 
 
-def ready(client, product_id: str, fixture: str = MANUFACTURER, **changes) -> dict:
+def ready(client, product_id: str, fixture: str = MANUFACTURER, *, company: str | None = None, **changes) -> dict:
     """A complete draft of the product: every stage answered, stage 2 inside the product's bounds."""
-    application = saved(patch_answers(client, fresh(client, product_id, fixture), stage=2, **stage_two_answers(product_id, **changes)))
+    application = fresh(client, product_id, fixture, company=company)
+    application = saved(patch_answers(client, application, stage=2, **stage_two_answers(product_id, **changes)))
     return complete(client, application)
 
 
@@ -183,16 +188,96 @@ def test_the_amount_input_reaches_the_policy_maximum(client):
     (GOSCREDIT, {'msp_registry': False}, 'МСП'), (PSK_INVEST, {'msp_registry': None}, 'МСП'),
 ])
 def test_eligibility_is_rechecked_on_submit_against_the_current_company(client, bki_calls, product_id, change, phrase):
-    """The draft was made while the company was eligible; the company data changed since. A failed or an unknown
-    machine-checkable fact refuses the submission on product_id, like can_apply refuses the draft button."""
+    """The draft was made while the company was eligible; the company data changed since. With the registry source
+    available, a failed or an unknown machine-checkable fact refuses the submission on product_id, like can_apply
+    refuses the draft button."""
     application = ready(client, product_id)
     assert dialog(client, application)['field_issues'] == {}
+    assert client.get(f"/api/v1/companies/{application['company_id']}").json()['precheck']['registry_source_status'] == 'available'
     set_company(client, application['company_id'], **change)
     issues = dialog(client, application)['field_issues']
     assert set(issues) == {'product_id'} and phrase in issues['product_id']
     assert 'product_id' in read(client, application)['missing_fields']
     refused_correction(client, application, {'product_id'})
     assert bki_calls == [] and consents_of(client, application) == []
+
+
+SME_REGISTER_PRODUCTS = [product_id for product_id, product in PRODUCTS.items() if product['msp_registry_required']
+                         and not product['regions']]  # the gov credit and two PSK programs; the border one has a region rule
+
+
+def test_the_sme_register_products_are_the_three_without_a_region_rule():
+    assert sorted(SME_REGISTER_PRODUCTS) == sorted([GOSCREDIT, PSK_INVEST, PSK_WORKING])
+
+
+@pytest.mark.parametrize('product_id', SME_REGISTER_PRODUCTS)
+def test_an_unavailable_registry_waits_for_the_source_instead_of_asking_for_a_correction(client, bki_calls, product_id):
+    """Spec: registry unavailable uses R4 (it is not missing client input). The SME flag is unknown only because the
+    source is down, so R1 lets it through; the check waits without a BKI request, and the retry's recovery confirms the
+    flag and scores the application against the pinned product."""
+    fixture = FIXTURES['registry_unavailable']
+    application = ready(client, product_id, 'registry_unavailable')
+    company_url = f"/api/v1/companies/{application['company_id']}"
+    assert client.get(company_url).json()['company']['msp_registry'] is None
+    assert dialog(client, application)['field_issues'] == {} and application['missing_fields'] == []
+    response = submit(client, application)
+    assert response.status_code == 200, response.text
+    waiting = response.json()['application']
+    assert (waiting['status'], waiting['latest_evaluation']['rule'], bki_calls) == ('WAIT_EXTERNAL', 'R4', [])
+    result = saved(retry(client, waiting))
+    assert client.get(company_url).json()['company']['msp_registry'] is True
+    months = oracle.completed_months(date.fromisoformat(fixture['registered_at']), FIXED_DATE)
+    total = oracle.score(months, fixture['monthly_revenue_rub'], fixture['previous_monthly_revenue_rub'],
+                         fixture['monthly_debt_payment_rub'], fixture['credit_history'])
+    limit = oracle.scored_limit(product_id, oracle.risk(total), fixture['monthly_revenue_rub'])
+    rule, status, amount = oracle.outcome(product_id, total, limit, PRODUCTS[product_id]['amount_min_rub'])
+    assert (result['status'], result['latest_evaluation']['rule'], result['scored_limit_rub']) == (status, rule, limit)
+    assert result['preapproved_amount_rub'] == amount and len(bki_calls) == 1
+
+
+def test_a_failed_fact_still_needs_correction_while_the_registry_is_unavailable(client, bki_calls):
+    application = ready(client, PSK_BORDER, 'registry_unavailable')  # Татарстан is outside the border program's regions
+    issues = dialog(client, application)['field_issues']
+    assert set(issues) == {'product_id'} and 'регионах' in issues['product_id'] and 'МСП' not in issues['product_id']
+    refused_correction(client, application, {'product_id'})
+    assert bki_calls == []
+
+
+def test_a_recovery_that_fails_eligibility_is_a_mandatory_stop_without_bki(client, bki_calls, monkeypatch):
+    """Controller ruling: after the registry recovers, the check re-evaluates eligibility on the current company data;
+    a failed fact rejects (R2, reason ELIGIBILITY_FAILED) before any BKI request, and the application stays submitted."""
+    from app import companies
+    inn = FIXTURES['registry_unavailable']['inn']
+    source = companies.SOURCES[inn]
+    monkeypatch.setitem(companies.SOURCES, inn, {**source, 'recovery': {**source['recovery'], 'retry_msp_registry': False}})
+    application = ready(client, GOSCREDIT, 'registry_unavailable')
+    waiting = submit(client, application).json()['application']
+    assert (waiting['status'], waiting['latest_evaluation']['rule']) == ('WAIT_EXTERNAL', 'R4')
+    result = saved(retry(client, waiting))
+    evaluation = result['latest_evaluation']
+    assert (result['status'], evaluation['rule'], evaluation['outcome'], evaluation['score']) == ('REJECTED', 'R2', 'REJECTED', None)
+    assert result['scored_limit_rub'] is None and result['preapproved_amount_rub'] is None and result['allowed_actions'] == []
+    assert any('МСП' in reason for reason in evaluation['reasons'])
+    last = history(client, application)[-1]
+    assert (last['from_status'], last['to_status'], last['reason_code']) == ('CHECKING', 'REJECTED', 'ELIGIBILITY_FAILED')
+    assert 'МСП' in last['notification']['message']
+    first, second = sorted(rows(client, 'Evaluation', application_id=application['id']), key=lambda row: row.sequence)
+    assert (first.rule, second.rule, second.sources['bki']) == ('R4', 'R2', None)
+    assert second.input_snapshot['eligibility_failures'] and 'МСП' in second.input_snapshot['eligibility_failures'][0]
+    assert bki_calls == []
+    assert retry(client, result).status_code == 409  # terminal: no way back to DRAFT
+
+
+def test_an_inactive_company_on_an_sme_register_product_is_corrected_before_r2(client, bki_calls):
+    """R1 precedes R2: the inactive fixture is outside the SME register, so an SME-register product needs correction
+    (422) where a product without that rule reaches the defensive R2 rejection."""
+    corrected = ready(client, GOSCREDIT, 'inactive')
+    issues = dialog(client, corrected)['field_issues']
+    assert set(issues) == {'product_id'} and 'МСП' in issues['product_id']
+    refused_correction(client, corrected, {'product_id'})
+    rejected = submit(client, ready(client, TERM, 'inactive', company=corrected['company_id']))
+    assert rejected.status_code == 200 and rejected.json()['application']['status'] == 'REJECTED'
+    assert rejected.json()['application']['latest_evaluation']['rule'] == 'R2' and bki_calls == []
 
 
 def edited_catalog(tmp_path, edit) -> 'object':
@@ -280,8 +365,8 @@ PINNED_KEYS = ('id', 'amount_min_rub', 'amount_max_rub', 'unsecured_cap_rub', 't
 
 
 @pytest.mark.parametrize('product_id,collateral', [
-    (TERM, None), (LINE, None), (SECURED, PLEDGE), (UNIVERSAL, None), (UNIVERSAL, PLEDGE), (PSK_WORKING, None),
-    (PSK_WORKING, PLEDGE), (FACTORING, None), (PSK_BORDER, None), (PSK_INVEST, None),
+    (TERM, None), (LINE, None), (SECURED, PLEDGE), (LINE_SECURED, PLEDGE), (NONREVOLVING_SECURED, PLEDGE), (UNIVERSAL, None),
+    (UNIVERSAL, PLEDGE), (PSK_WORKING, None), (PSK_WORKING, PLEDGE), (FACTORING, None), (PSK_BORDER, None), (PSK_INVEST, None),
 ])
 def test_submission_pins_the_secured_flag_documents_and_effective_terms(client, product_id, collateral):
     application = ready(client, product_id, collateral=collateral)

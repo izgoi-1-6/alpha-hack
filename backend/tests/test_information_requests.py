@@ -79,11 +79,31 @@ def test_requested_fields_must_be_questionnaire_answer_paths(client, officer, fi
     assert read(client, application)['status'] == 'MANUAL_REVIEW'
 
 
-@pytest.mark.parametrize('fields', [['collateral'], ['collateral.declared_value_rub'], ['seasonal'], ['accuracy_confirmed', 'employees']])
-def test_questionnaire_answers_outside_the_need_can_be_requested(client, officer, fields):
-    application = claimed(officer, submitted(client, 'medium'))
+@pytest.mark.parametrize('fixture_id,fields', [
+    ('medium', ['seasonal']), ('medium', ['accuracy_confirmed', 'employees']),
+    ('secured_investment', ['collateral']), ('secured_investment', ['collateral.declared_value_rub']),
+])
+def test_questionnaire_answers_outside_the_need_can_be_requested(client, officer, fixture_id, fields):
+    application = claimed(officer, submitted(client, fixture_id, answers={'tax_debt_rub': 1}))  # R5 review
+    assert application['status'] == 'MANUAL_REVIEW'
     assert ok(request_info(officer, application, fields))['status'] == 'NEED_INFO'
     assert read(client, application)['missing_fields'] == fields
+
+
+@pytest.mark.parametrize('product', [LINE, 'alfa_universal_limit'])  # collateral mode none; optional, no pledge declared
+@pytest.mark.parametrize('fields', [['collateral'], ['collateral.declared_value_rub'], ['employees', 'collateral.owner_confirmed']])
+def test_pledge_paths_cannot_be_requested_for_an_application_pinned_unsecured(client, officer, product, fields):
+    """The server agrees with the officer's `requestable_fields`: an application pinned unsecured has no pledge to ask
+    about (an answer would never be scored or documented)."""
+    changes = {'purpose': 'working_capital'} if product != LINE else {}
+    application = claimed(officer, submitted(client, 'medium', product=product, answers={'tax_debt_rub': 1}, **changes))
+    assert application['status'] == 'MANUAL_REVIEW' and application['product']['secured'] is False
+    assert not any(path.startswith('collateral') for path in detail(officer, application)['requestable_fields'])
+    error = refused(request_info(officer, application, fields), 422, 'FIELD_NOT_REQUESTABLE')
+    assert set(error['fields']) == {'requested_fields'}
+    assert error['details'] == {'fields': [path for path in fields if path.startswith('collateral')]}
+    assert rows(client, 'InfoRequest') == [] and decisions(client, application) == []
+    assert read(client, application)['status'] == 'MANUAL_REVIEW'
 
 
 # The stage-2 need (purpose, amount, term) is fixed once submitted: a smaller amount is a smaller preapproval and a

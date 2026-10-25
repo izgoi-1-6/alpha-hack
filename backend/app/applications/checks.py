@@ -10,8 +10,10 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from ..clock import iso_utc
-from ..companies import latest_precheck
+from ..companies import latest_precheck, public_row
 from ..models import Company, Precheck
+from ..recommendations import catalog
+from ..recommendations.service import eligibility_checks
 from . import bki, scoring, stages
 from .info_requests import create_info_request, open_info_request
 from .lifecycle import PREAPPROVAL_TTL, ApplicationChange, preapproval_notice
@@ -27,15 +29,20 @@ def iso_date(value: date | None) -> str | None:
 
 
 def check_input(application: Application, company: Company, precheck: Precheck, terms: Terms) -> scoring.CheckInput:
-    """The terms are the ones pinned at submission. Business age counts completed months from registration to the
-    company's business reference date (the fixture date for seeded companies, the onboarding date otherwise)."""
+    """The terms are the ones pinned at submission. The pinned product's machine eligibility is re-evaluated on the
+    company's current row (after a registry recovery a fact may now fail). Business age counts completed months from
+    registration to the company's business reference date (the fixture date for seeded companies, the onboarding date
+    otherwise)."""
     registered, reference = company.registered_at, company.business_reference_date
+    failures = tuple(entry['text'] for entry in eligibility_checks(public_row(company), terms.product, catalog.config())
+                     if entry['result'] == 'failed')
     return scoring.CheckInput(
         product=terms.product, secured=terms.secured, registry_status=company.registry_status,
         registry_source_status=precheck.registry_source_status, turnover_source_status=precheck.turnover_source_status,
         age_months=scoring.completed_months(registered, reference) if registered and reference else None,
         finance=stages.finance_evidence(application.answers, precheck), answers=application.answers,
-        missing_answers=tuple(stages.missing(application.answers, terms.product, terms.secured)))
+        missing_answers=tuple(stages.missing(application.answers, terms.product, terms.secured)),
+        eligibility_failures=failures)
 
 
 def bki_attempts(db: Session, application_id: str) -> int:
@@ -81,7 +88,8 @@ def record_evaluation(db: Session, application: Application, company: Company, p
                         'business_reference_date': iso_date(company.business_reference_date)},
             'age_months': check.age_months, 'finance': check.finance,
             'answers': {name: application.answers.get(name) for name in SCORED_ANSWERS},
-            'missing_answers': list(check.missing_answers), 'review_flags': list(decision.flags)},
+            'missing_answers': list(check.missing_answers), 'eligibility_failures': list(check.eligibility_failures),
+            'review_flags': list(decision.flags)},
         sources={
             'registry': {'precheck_id': precheck.id, 'source_status': precheck.registry_source_status,
                          'registry_status': company.registry_status, 'checked_at': iso_utc(precheck.checked_at)},
@@ -117,7 +125,7 @@ def run_check(db: Session, change: ApplicationChange, company: Company, terms: T
         application.preapproved_amount_rub = decision.preapproved_amount_rub
         application.preapproved_at = now
         application.preapproval_expires_at = now + PREAPPROVAL_TTL
-    change.move(decision.outcome, reason_code=decision.rule, reason_text=' '.join(decision.reasons),
+    change.move(decision.outcome, reason_code=decision.reason_code or decision.rule, reason_text=' '.join(decision.reasons),
                 notification=outcome_notification(decision, application), by_system=True)
     return evaluation
 

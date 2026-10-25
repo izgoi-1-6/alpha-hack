@@ -28,6 +28,8 @@ FAMILIES = {
     'term': ('strong', TERM, {}),
     'line': ('medium', LINE, {}),
     'secured': ('secured_investment', SECURED, {}),
+    'line_secured': ('secured_investment', 'alfa_revolving_line_secured', {'purpose': 'working_capital'}),
+    'nonrevolving_secured': ('secured_investment', 'alfa_nonrevolving_line_secured', {}),
     'universal': (MANUFACTURER, UNIVERSAL, {'purpose': 'working_capital', 'requested_amount_rub': 25_000_000}),
     'universal_pledged': (MANUFACTURER, UNIVERSAL, {'purpose': 'working_capital', 'requested_amount_rub': 25_000_000,
                                                     'collateral': PLEDGE}),
@@ -85,6 +87,7 @@ def test_one_submission_per_product_family(client, bki_calls, storage, family):
 def test_the_family_outcomes_agree_with_the_literal_numbers():
     """Hand-derived anchors for the oracle: limits by min(max, 3R or the medium cap, unsecured cap [+ 70% of V])."""
     literal = {'term': ('R8', 2_400_000), 'line': ('R10', 600_000), 'secured': ('R8', 4_500_000),
+               'line_secured': ('R8', 4_500_000), 'nonrevolving_secured': ('R8', 4_500_000),
                'universal': ('R9', 20_000_000), 'universal_pledged': ('R8', 27_000_000), 'factoring': ('R8', 2_400_000),
                'gov_border': ('R8', 30_000_000), 'gov_invest': ('R8', 36_000_000), 'gov_working_pledged': ('R8', 36_000_000)}
     for family, (fixture_id, product_id, changes) in FAMILIES.items():

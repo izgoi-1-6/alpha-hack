@@ -2,8 +2,9 @@
 
 Factors (spec "Scoring and state machine"): business age in completed calendar months, revenue growth (R-P)/P,
 monthly debt burden debt/R and the BKI credit history, compared exactly by cross-multiplication. Rules run in the
-spec table's order: `before_bki` covers R2 (known inactive), R3 (a client-answerable gap) and R4 (registry or turnover
-unavailable), so none of them spends a BKI request; `after_bki` covers the report's R4/R2/R3, then the review flags
+spec table's order: `before_bki` covers R2 (known inactive, or a machine eligibility fact of the pinned product that the
+current company data fails — reached after a registry recovery, since R1 refuses it at submission), R3 (a
+client-answerable gap) and R4 (registry or turnover unavailable), so none of them spends a BKI request; `after_bki` covers the report's R4/R2/R3, then the review flags
 (R5), R6, R7 and R8-R11. A check that recovers trusted-source evidence (an open trusted_source request) ends in
 MANUAL_REVIEW unless R2, R6 or R7 rejects. `after_response` re-checks revised answers after an information response
 and always ends in MANUAL_REVIEW. Score and limit stay null when they cannot be computed.
@@ -22,6 +23,7 @@ REVENUE_FIELDS = ('monthly_revenue_rub', 'previous_monthly_revenue_rub')
 
 REASONS = {
     'inactive': 'Компания не действует по данным демо-реестра.',
+    'ineligible': 'По обновлённым данным реестра компания не подходит под условия продукта.',
     'overdue': 'Текущая просрочка по данным демо-БКИ — 30 дней или более.',
     'client_gap': 'Для проверки не хватает обязательных сведений анкеты.',
     'bki_missing': 'Ответ демо-БКИ не содержит категорию кредитной истории. Нужен повторный запрос к источнику; '
@@ -134,6 +136,7 @@ class CheckInput:
     finance: dict
     answers: dict
     missing_answers: tuple[str, ...] = ()
+    eligibility_failures: tuple[str, ...] = ()  # texts of the pinned product's eligibility checks the company now fails
 
 
 @dataclass(frozen=True)
@@ -148,12 +151,16 @@ class Decision:
     preapproved_amount_rub: int | None = None
     flags: tuple[str, ...] = ()
     info_request: dict | None = None  # {kind, source, requested_fields, question} for a system-detected gap
+    reason_code: str | None = None  # the history row's reason code when it is not the rule (ELIGIBILITY_FAILED)
 
 
 def before_bki(check: CheckInput) -> Decision | None:
     """R2, R3 and R4 outcomes that need no BKI request; None means the BKI simulator may be called."""
     if check.registry_status == 'inactive':
         return Decision('R2', 'REJECTED', (REASONS['inactive'],))
+    if check.eligibility_failures:
+        return Decision('R2', 'REJECTED', (REASONS['ineligible'] + ' ' + ' '.join(check.eligibility_failures),),
+                        reason_code='ELIGIBILITY_FAILED')
     if check.missing_answers:
         return Decision('R3', 'NEED_INFO', (REASONS['client_gap'],), info_request={
             'kind': 'client_answers', 'source': None, 'requested_fields': list(check.missing_answers),

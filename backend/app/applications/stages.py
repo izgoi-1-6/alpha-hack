@@ -172,13 +172,16 @@ def missing(answers: dict, product: dict, secured: bool) -> dict:
     return gaps
 
 
-def corrections(answers: dict, product: dict, company: dict) -> dict:
+def corrections(answers: dict, product: dict, company: dict, *, registry_unavailable: bool) -> dict:
     """R1: what the selected product cannot accept. The company's current data must pass the product's machine-checked
-    eligibility (an unknown fact blocks like a failed one, as for `can_apply`); present answers must fit the purposes,
-    the amount bounds and the term range (its per-purpose maximum included); a product without a term takes no term and
-    one without collateral no declared pledge."""
+    eligibility: a failed fact always blocks; an unknown one blocks like a failed one (as for `can_apply`) unless the
+    registry source is unavailable — then the fact is unknown only because the source is down, the check waits (R4) and
+    re-checks eligibility after the recovery (scoring.before_bki). Present answers must fit the purposes, the amount
+    bounds and the term range (its per-purpose maximum included); a product without a term takes no term and one
+    without collateral no declared pledge."""
     issues = {}
-    blocked = [entry['text'] for entry in eligibility_checks(company, product, catalog.config()) if entry['result'] != 'passed']
+    blocking = ('failed',) if registry_unavailable else ('failed', 'unknown')
+    blocked = [entry['text'] for entry in eligibility_checks(company, product, catalog.config()) if entry['result'] in blocking]
     if blocked:
         issues['product_id'] = ' '.join(blocked)
     purpose, amount, term = (answers.get(name) for name in ('purpose', 'requested_amount_rub', 'term_months'))
@@ -199,9 +202,10 @@ def corrections(answers: dict, product: dict, company: dict) -> dict:
     return issues
 
 
-def issues(answers: dict, product: dict, company: dict, secured: bool) -> dict:
+def issues(answers: dict, product: dict, company: dict, secured: bool, *, registry_unavailable: bool) -> dict:
     """Everything blocking submission (R1 and R3), ordered by stage and field."""
-    found = {**corrections(answers, product, company), **missing(answers, product, secured)}
+    found = {**corrections(answers, product, company, registry_unavailable=registry_unavailable),
+             **missing(answers, product, secured)}
     order = {name: index for index, name in enumerate(ANSWER_FIELDS)}
     return dict(sorted(found.items(), key=lambda item: order.get(item[0].split('.')[0], -1)))
 

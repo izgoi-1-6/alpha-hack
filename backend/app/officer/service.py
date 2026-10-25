@@ -26,6 +26,7 @@ from .policy import CLAIMABLE, REJECT_PHASE, amount_error_message, final_terms, 
 from .schemas import ApproveInput, PreapproveInput, RejectInput, RequestInfoInput, ReviewInput
 
 INFO_REQUEST_NOTICE = 'Кредитный специалист запросил дополнительные сведения. Откройте заявку и ответьте на вопрос.'
+UNSECURED_MESSAGE = 'Заявка подана без залога: сведения о залоге по ней не запрашиваются.'
 REJECTION_NOTICE = 'По заявке принят отказ кредитного специалиста. Причина указана в истории заявки.'
 VALUATION = 'COLLATERAL_VALUATION'
 
@@ -96,8 +97,9 @@ def require_review(application: Application, message: str) -> None:
 
 def request_info(db: Session, application: Application, officer: User, data: RequestInfoInput, now: datetime) -> None:
     """MANUAL_REVIEW → NEED_INFO: an officer client_answers request (the reason is its question), its decision row.
-    The need fields are never requested (422 NEED_FIELDS_LOCKED), and an application with an open request gets no
-    second one (409 INFO_REQUEST_OPEN)."""
+    The need fields are never requested (422 NEED_FIELDS_LOCKED), nor a pledge path of an application pinned unsecured
+    (422 FIELD_NOT_REQUESTABLE: no pledge is scored or documented for it, as `requestable_fields` shows), and an
+    application with an open request gets no second one (409 INFO_REQUEST_OPEN)."""
     require_assignee(application, officer)
     require_version(application, data.version)
     require_review(application, 'Запросить сведения можно у заявки на рассмотрении.')
@@ -105,6 +107,10 @@ def request_info(db: Session, application: Application, officer: User, data: Req
     if locked:
         raise ApiError(422, 'NEED_FIELDS_LOCKED', NEED_FIELDS_MESSAGE, fields={'requested_fields': NEED_FIELDS_MESSAGE},
                        details={'fields': locked})
+    pledge = [path for path in data.requested_fields if path.split('.')[0] == 'collateral']
+    if pledge and not pinned_terms(application).secured:
+        raise ApiError(422, 'FIELD_NOT_REQUESTABLE', UNSECURED_MESSAGE, fields={'requested_fields': UNSECURED_MESSAGE},
+                       details={'fields': pledge})
     if open_info_request(db, application.id) is not None:
         raise ApiError(409, 'INFO_REQUEST_OPEN', 'По заявке уже есть открытый запрос сведений.')
     create_info_request(db, application, kind='client_answers', source=None, requested_fields=data.requested_fields,

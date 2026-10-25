@@ -1,0 +1,1359 @@
+{
+  "schema_version": "3.2",
+  "catalog_version": "2026-10-25.1",
+  "description": "Справочник кредитных продуктов и госпрограмм, по которым кредитором выступает Альфа-Банк. Предназначен для хранения в БД или конфиге: все записи имеют одинаковую схему, ставки заданы формулами от ключевой ставки.",
+  "params": {
+    "key_rate": {
+      "value_percent": 14.0,
+      "effective_from": "2026-10-23",
+      "next_review": "2026-12-18",
+      "source_url": "https://www.cbr.ru/press/keypr/",
+      "note": "Переменная KEY_RATE в rate.periods[].rate_formula. Поле rate_percent — вычисленное значение при текущей ключевой ставке, пересчитывается при её изменении и в БД хранится как производное."
+    }
+  },
+  "enums": {
+    "kind": [
+      "product",
+      "gov_program",
+      "overlay"
+    ],
+    "instrument_type": [
+      "term_loan",
+      "revolving_credit_line",
+      "nonrevolving_credit_line",
+      "surety",
+      "factoring"
+    ],
+    "purposes": [
+      "working_capital",
+      "investment",
+      "business_development",
+      "refinancing"
+    ],
+    "rate_type": [
+      "fixed",
+      "formula",
+      "schedule",
+      "none",
+      "undisclosed"
+    ],
+    "limit_status": [
+      "open",
+      "exhausted",
+      "closed"
+    ],
+    "confidence": [
+      "official",
+      "secondary",
+      "unverified"
+    ],
+    "entity_types": [
+      "ИП",
+      "ЮЛ"
+    ]
+  },
+  "constraints": [
+    "Решение не опирается на корпоративные продукты и платформы банка: льготные ставки и скидки, обусловленные подключением внутренних подписок («Защита бизнеса», Подписка), из каталога исключены. В rate.periods хранится только базовая ставка продукта."
+  ],
+  "known_gaps": [
+    "Условия собственных продуктов Альфа-Банка (confidence: secondary) — с публичной страницы банка от 2026-10-23, автоматическая перепроверка невозможна (robots).",
+    "Внутренние требования банка по госпрограммам — минимальный срок деятельности, стоп-ОКВЭД сверх программных, требования к обеспечению — на публичных страницах операторов отсутствуют.",
+    "Параметры Программы 1764 в редакции до 2025 года (KEY_RATE + 2.75) в каталог не включены: действующая конструкция — psk_invest_subsidy.",
+    "Карточка alfa_goscredit_zont пересекается с собственными продуктами + overlay zont_corpmsp: банк продаёт её как отдельный продукт с собственными лимитами (до 50 млн ₽, до 60 мес). Нужно решить с БА, показывать ли её отдельной карточкой или как состояние обычного кредита с зонтом.",
+    "Базовая ставка по alfa_universal_limit и комиссия по alfa_factoring на публичных страницах не раскрыты (rate.type = undisclosed) — уточнить у банка.",
+    "Срок деятельности бизнеса (min_age_months) ни на одной из разобранных страниц не указан — поле остаётся незаполненным по всем продуктам Альфа-Банка."
+  ],
+  "items": [
+    {
+      "id": "alfa_term_loan_unsecured",
+      "name": "Кредит одной суммой без залога",
+      "aliases": [],
+      "kind": "product",
+      "instrument_type": "term_loan",
+      "lender": "Альфа-Банк",
+      "program_operator": "Альфа-Банк",
+      "legal_basis": null,
+      "status": "active",
+      "limit_status": "open",
+      "display": {
+        "as": "card",
+        "applies_to": null,
+        "headline": "Без поручителей для ИП",
+        "summary": "Кредит одной суммой без залога: вся сумма выдаётся сразу.",
+        "features": [
+          "Залог не нужен",
+          "Вся сумма выдаётся одним платежом",
+          "Цели: пополнение оборотных средств, развитие бизнеса, рефинансирование",
+          "Оформление в Альфа-Бизнесе"
+        ],
+        "best_for": "Бизнесу, которому нужна вся сумма сразу без залога имущества."
+      },
+      "purposes": [
+        "working_capital",
+        "business_development",
+        "refinancing"
+      ],
+      "amount": {
+        "min": 300000,
+        "max": 30000000,
+        "max_unsecured": null,
+        "tranche_min": null,
+        "tranche_max": null,
+        "currency": "RUB"
+      },
+      "term": {
+        "min_months": 12,
+        "max_months": 60,
+        "max_months_by_purpose": null,
+        "unlimited": false,
+        "preferential_period_months": null,
+        "note": null
+      },
+      "rate": {
+        "type": "fixed",
+        "periods": [
+          {
+            "from_month": 1,
+            "to_month": null,
+            "rate_formula": null,
+            "rate_percent": 23.5,
+            "note": null
+          }
+        ],
+        "note": null
+      },
+      "collateral": {
+        "required": false,
+        "surety_rules": [
+          {
+            "entity_type": "ИП",
+            "amount_max": 3000000,
+            "requirement": "Поручительство залогодателя — третьих лиц"
+          },
+          {
+            "entity_type": "ИП",
+            "amount_max": null,
+            "requirement": "Хотя бы один поручитель — физлицо, либо поручительство залогодателя"
+          },
+          {
+            "entity_type": "ЮЛ",
+            "amount_max": null,
+            "requirement": "Хотя бы один поручитель — физлицо-учредитель с совокупной долей в УК более 50%, либо поручительство залогодателя"
+          }
+        ],
+        "guarantee_overlay": "zont_corpmsp",
+        "coverage_pct_max": null,
+        "coverage_amount_max": null
+      },
+      "eligibility": {
+        "entity_types": [
+          "ИП",
+          "ЮЛ"
+        ],
+        "msp_registry_required": false,
+        "categories": [],
+        "regions_allow": [],
+        "okved_deny_main": [],
+        "requirements": []
+      },
+      "usage_restrictions": [],
+      "fees": {
+        "for_borrower_pct": null,
+        "paid_by": null
+      },
+      "process": {
+        "channel": "Альфа-Бизнес",
+        "deeplink": null,
+        "note": null
+      },
+      "source": {
+        "url": "https://alfabank.ru/sme/profits/businesscredit/",
+        "verified_at": "2026-10-23",
+        "confidence": "secondary"
+      }
+    },
+    {
+      "id": "alfa_term_loan_secured",
+      "name": "Кредит одной суммой с залогом",
+      "aliases": [],
+      "kind": "product",
+      "instrument_type": "term_loan",
+      "lender": "Альфа-Банк",
+      "program_operator": "Альфа-Банк",
+      "legal_basis": null,
+      "status": "active",
+      "limit_status": "open",
+      "display": {
+        "as": "card",
+        "applies_to": null,
+        "headline": "Разные виды залогов, необеспеченная часть — до 50% суммы кредита",
+        "summary": "Кредит одной суммой под залог: вся сумма выдаётся сразу.",
+        "features": [
+          "Нужен залог; подходят разные виды залогов",
+          "Необеспеченная часть — до 50% суммы кредита",
+          "Вся сумма выдаётся одним платежом",
+          "Цели: пополнение оборотных средств, развитие бизнеса, рефинансирование"
+        ],
+        "best_for": "Бизнесу с имуществом для залога, которому нужна крупная сумма или долгий срок."
+      },
+      "purposes": [
+        "working_capital",
+        "business_development",
+        "refinancing"
+      ],
+      "amount": {
+        "min": 500000,
+        "max": 150000000,
+        "max_unsecured": null,
+        "tranche_min": null,
+        "tranche_max": null,
+        "currency": "RUB"
+      },
+      "term": {
+        "min_months": 12,
+        "max_months": 120,
+        "max_months_by_purpose": null,
+        "unlimited": false,
+        "preferential_period_months": null,
+        "note": null
+      },
+      "rate": {
+        "type": "fixed",
+        "periods": [
+          {
+            "from_month": 1,
+            "to_month": null,
+            "rate_formula": null,
+            "rate_percent": 21.5,
+            "note": null
+          }
+        ],
+        "note": null
+      },
+      "collateral": {
+        "required": true,
+        "surety_rules": [
+          {
+            "entity_type": "ИП",
+            "amount_max": 3000000,
+            "requirement": "Поручительство залогодателя — третьих лиц"
+          },
+          {
+            "entity_type": "ИП",
+            "amount_max": null,
+            "requirement": "Хотя бы один поручитель — физлицо, либо поручительство залогодателя"
+          },
+          {
+            "entity_type": "ЮЛ",
+            "amount_max": null,
+            "requirement": "Хотя бы один поручитель — физлицо-учредитель с совокупной долей в УК более 50%, либо поручительство залогодателя"
+          }
+        ],
+        "guarantee_overlay": "zont_corpmsp",
+        "coverage_pct_max": null,
+        "coverage_amount_max": null
+      },
+      "eligibility": {
+        "entity_types": [
+          "ИП",
+          "ЮЛ"
+        ],
+        "msp_registry_required": false,
+        "categories": [],
+        "regions_allow": [],
+        "okved_deny_main": [],
+        "requirements": []
+      },
+      "usage_restrictions": [],
+      "fees": {
+        "for_borrower_pct": null,
+        "paid_by": null
+      },
+      "process": {
+        "channel": "Альфа-Бизнес",
+        "deeplink": null,
+        "note": null
+      },
+      "source": {
+        "url": "https://alfabank.ru/sme/profits/businesscredit/",
+        "verified_at": "2026-10-23",
+        "confidence": "secondary"
+      }
+    },
+    {
+      "id": "alfa_revolving_line_unsecured",
+      "name": "Возобновляемая кредитная линия без залога",
+      "aliases": [],
+      "kind": "product",
+      "instrument_type": "revolving_credit_line",
+      "lender": "Альфа-Банк",
+      "program_operator": "Альфа-Банк",
+      "legal_basis": null,
+      "status": "active",
+      "limit_status": "open",
+      "display": {
+        "as": "card",
+        "applies_to": null,
+        "headline": "Деньги можно брать частями; до 10 млн ₽ без визита в отделение для ИП — клиентов банка",
+        "summary": "Возобновляемая кредитная линия без залога: деньги берутся частями, погашенная часть лимита снова доступна.",
+        "features": [
+          "Залог не нужен",
+          "Транши от 50 000 ₽",
+          "Договор на 18 месяцев с автопродлением каждый год",
+          "До 10 млн ₽ без визита в отделение для ИП — клиентов банка"
+        ],
+        "best_for": "Бизнесу с регулярными расходами на оборотные средства."
+      },
+      "purposes": [
+        "working_capital"
+      ],
+      "amount": {
+        "min": 300000,
+        "max": 30000000,
+        "max_unsecured": null,
+        "tranche_min": 50000,
+        "tranche_max": 30000000,
+        "currency": "RUB"
+      },
+      "term": {
+        "min_months": null,
+        "max_months": null,
+        "max_months_by_purpose": null,
+        "unlimited": true,
+        "preferential_period_months": null,
+        "note": "Договор на 18 месяцев с автопродлением каждый год"
+      },
+      "rate": {
+        "type": "fixed",
+        "periods": [
+          {
+            "from_month": 1,
+            "to_month": null,
+            "rate_formula": null,
+            "rate_percent": 23.5,
+            "note": null
+          }
+        ],
+        "note": null
+      },
+      "collateral": {
+        "required": false,
+        "surety_rules": [
+          {
+            "entity_type": "ИП",
+            "amount_max": 3000000,
+            "requirement": "Поручительство залогодателя — третьих лиц"
+          },
+          {
+            "entity_type": "ИП",
+            "amount_max": null,
+            "requirement": "Хотя бы один поручитель — физлицо, либо поручительство залогодателя"
+          },
+          {
+            "entity_type": "ЮЛ",
+            "amount_max": null,
+            "requirement": "Хотя бы один поручитель — физлицо-учредитель с совокупной долей в УК более 50%, либо поручительство залогодателя"
+          }
+        ],
+        "guarantee_overlay": "zont_corpmsp",
+        "coverage_pct_max": null,
+        "coverage_amount_max": null
+      },
+      "eligibility": {
+        "entity_types": [
+          "ИП",
+          "ЮЛ"
+        ],
+        "msp_registry_required": false,
+        "categories": [],
+        "regions_allow": [],
+        "okved_deny_main": [],
+        "requirements": []
+      },
+      "usage_restrictions": [],
+      "fees": {
+        "for_borrower_pct": null,
+        "paid_by": null
+      },
+      "process": {
+        "channel": "Альфа-Бизнес",
+        "deeplink": null,
+        "note": null
+      },
+      "source": {
+        "url": "https://alfabank.ru/sme/profits/businesscredit/",
+        "verified_at": "2026-10-23",
+        "confidence": "secondary"
+      }
+    },
+    {
+      "id": "alfa_revolving_line_secured",
+      "name": "Возобновляемая кредитная линия с залогом",
+      "aliases": [],
+      "kind": "product",
+      "instrument_type": "revolving_credit_line",
+      "lender": "Альфа-Банк",
+      "program_operator": "Альфа-Банк",
+      "legal_basis": null,
+      "status": "active",
+      "limit_status": "open",
+      "display": {
+        "as": "card",
+        "applies_to": null,
+        "headline": "Деньги можно брать частями",
+        "summary": "Возобновляемая кредитная линия под залог: деньги берутся частями в пределах лимита.",
+        "features": [
+          "Нужен залог",
+          "Транши от 50 000 ₽ до 30 млн ₽",
+          "Выборка — до момента за 6 месяцев до окончания линии",
+          "Срок использования транша — 6 месяцев"
+        ],
+        "best_for": "Бизнесу с имуществом для залога и регулярными расходами на оборотные средства."
+      },
+      "purposes": [
+        "working_capital"
+      ],
+      "amount": {
+        "min": 500000,
+        "max": 60000000,
+        "max_unsecured": null,
+        "tranche_min": 50000,
+        "tranche_max": 30000000,
+        "currency": "RUB"
+      },
+      "term": {
+        "min_months": 6,
+        "max_months": 60,
+        "max_months_by_purpose": null,
+        "unlimited": false,
+        "preferential_period_months": null,
+        "note": "Период выборки — с даты открытия линии до момента за 6 месяцев до её окончания; срок использования транша 6 месяцев"
+      },
+      "rate": {
+        "type": "fixed",
+        "periods": [
+          {
+            "from_month": 1,
+            "to_month": null,
+            "rate_formula": null,
+            "rate_percent": 23.0,
+            "note": null
+          }
+        ],
+        "note": null
+      },
+      "collateral": {
+        "required": true,
+        "surety_rules": [
+          {
+            "entity_type": "ИП",
+            "amount_max": 3000000,
+            "requirement": "Поручительство залогодателя — третьих лиц"
+          },
+          {
+            "entity_type": "ИП",
+            "amount_max": null,
+            "requirement": "Хотя бы один поручитель — физлицо, либо поручительство залогодателя"
+          },
+          {
+            "entity_type": "ЮЛ",
+            "amount_max": null,
+            "requirement": "Хотя бы один поручитель — физлицо-учредитель с совокупной долей в УК более 50%, либо поручительство залогодателя"
+          }
+        ],
+        "guarantee_overlay": "zont_corpmsp",
+        "coverage_pct_max": null,
+        "coverage_amount_max": null
+      },
+      "eligibility": {
+        "entity_types": [
+          "ИП",
+          "ЮЛ"
+        ],
+        "msp_registry_required": false,
+        "categories": [],
+        "regions_allow": [],
+        "okved_deny_main": [],
+        "requirements": []
+      },
+      "usage_restrictions": [],
+      "fees": {
+        "for_borrower_pct": null,
+        "paid_by": null
+      },
+      "process": {
+        "channel": "Альфа-Бизнес",
+        "deeplink": null,
+        "note": null
+      },
+      "source": {
+        "url": "https://alfabank.ru/sme/profits/businesscredit/",
+        "verified_at": "2026-10-23",
+        "confidence": "secondary"
+      }
+    },
+    {
+      "id": "alfa_nonrevolving_line_secured",
+      "name": "Невозобновляемая кредитная линия с залогом",
+      "aliases": [],
+      "kind": "product",
+      "instrument_type": "nonrevolving_credit_line",
+      "lender": "Альфа-Банк",
+      "program_operator": "Альфа-Банк",
+      "legal_basis": null,
+      "status": "active",
+      "limit_status": "open",
+      "display": {
+        "as": "card",
+        "applies_to": null,
+        "headline": "Деньги можно брать частями",
+        "summary": "Невозобновляемая кредитная линия под залог: деньги берутся частями в первые 6 месяцев, дальше идёт только погашение.",
+        "features": [
+          "Нужен залог",
+          "Транши от 50 000 ₽ до 30 млн ₽",
+          "Первые 6 месяцев — выборка, далее только погашение",
+          "Цели: пополнение оборотных средств, развитие бизнеса"
+        ],
+        "best_for": "Проектам, где деньги нужны несколькими частями в течение полугода."
+      },
+      "purposes": [
+        "working_capital",
+        "business_development"
+      ],
+      "amount": {
+        "min": 500000,
+        "max": 60000000,
+        "max_unsecured": null,
+        "tranche_min": 50000,
+        "tranche_max": 30000000,
+        "currency": "RUB"
+      },
+      "term": {
+        "min_months": 6,
+        "max_months": 60,
+        "max_months_by_purpose": null,
+        "unlimited": false,
+        "preferential_period_months": null,
+        "note": "Первые 6 месяцев — выборка, далее только погашение"
+      },
+      "rate": {
+        "type": "fixed",
+        "periods": [
+          {
+            "from_month": 1,
+            "to_month": null,
+            "rate_formula": null,
+            "rate_percent": 22.0,
+            "note": null
+          }
+        ],
+        "note": null
+      },
+      "collateral": {
+        "required": true,
+        "surety_rules": [
+          {
+            "entity_type": "ИП",
+            "amount_max": 3000000,
+            "requirement": "Поручительство залогодателя — третьих лиц"
+          },
+          {
+            "entity_type": "ИП",
+            "amount_max": null,
+            "requirement": "Хотя бы один поручитель — физлицо, либо поручительство залогодателя"
+          },
+          {
+            "entity_type": "ЮЛ",
+            "amount_max": null,
+            "requirement": "Хотя бы один поручитель — физлицо-учредитель с совокупной долей в УК более 50%, либо поручительство залогодателя"
+          }
+        ],
+        "guarantee_overlay": "zont_corpmsp",
+        "coverage_pct_max": null,
+        "coverage_amount_max": null
+      },
+      "eligibility": {
+        "entity_types": [
+          "ИП",
+          "ЮЛ"
+        ],
+        "msp_registry_required": false,
+        "categories": [],
+        "regions_allow": [],
+        "okved_deny_main": [],
+        "requirements": []
+      },
+      "usage_restrictions": [],
+      "fees": {
+        "for_borrower_pct": null,
+        "paid_by": null
+      },
+      "process": {
+        "channel": "Альфа-Бизнес",
+        "deeplink": null,
+        "note": null
+      },
+      "source": {
+        "url": "https://alfabank.ru/sme/profits/businesscredit/",
+        "verified_at": "2026-10-23",
+        "confidence": "secondary"
+      }
+    },
+    {
+      "id": "alfa_goscredit_zont",
+      "name": "Кредит для бизнеса с господдержкой",
+      "aliases": [
+        "зонтичный кредит",
+        "кредит с господдержкой"
+      ],
+      "kind": "product",
+      "instrument_type": "term_loan",
+      "lender": "Альфа-Банк",
+      "program_operator": "Альфа-Банк",
+      "legal_basis": null,
+      "status": "active",
+      "limit_status": "open",
+      "display": {
+        "as": "card",
+        "applies_to": null,
+        "headline": "Собственный залог не нужен — кредит обеспечен зонтичным поручительством Корпорации МСП",
+        "summary": "Кредит с господдержкой: вместо собственного залога его обеспечивает зонтичное поручительство Корпорации МСП.",
+        "features": [
+          "Собственный залог не нужен",
+          "Для компаний и ИП из реестра МСП",
+          "На оборотные средства — до 36 месяцев, на инвестиции и рефинансирование в стороннем банке — до 60 месяцев",
+          "Выдача одной суммой или кредитной линией"
+        ],
+        "best_for": "Компаниям и ИП из реестра МСП без собственного залога."
+      },
+      "purposes": [
+        "working_capital",
+        "investment",
+        "refinancing"
+      ],
+      "amount": {
+        "min": null,
+        "max": 50000000,
+        "max_unsecured": null,
+        "tranche_min": null,
+        "tranche_max": null,
+        "currency": "RUB"
+      },
+      "term": {
+        "min_months": null,
+        "max_months": 60,
+        "max_months_by_purpose": {
+          "working_capital": 36
+        },
+        "unlimited": false,
+        "preferential_period_months": null,
+        "note": "До 36 месяцев на пополнение оборотных средств; до 60 месяцев на инвестиционные цели и рефинансирование в стороннем банке"
+      },
+      "rate": {
+        "type": "fixed",
+        "periods": [
+          {
+            "from_month": 1,
+            "to_month": null,
+            "rate_formula": null,
+            "rate_percent": 24.0,
+            "note": "базовая ставка без подписки «Защита бизнеса»"
+          }
+        ],
+        "note": "Публичная ставка «от 19,5%» действует при подключении «Защиты бизнеса» и в каталог не включена согласно constraints"
+      },
+      "collateral": {
+        "required": false,
+        "surety_rules": [
+          {
+            "entity_type": "ИП",
+            "amount_max": 3000000,
+            "requirement": "Поручительство залогодателя — третьих лиц"
+          },
+          {
+            "entity_type": "ИП",
+            "amount_max": null,
+            "requirement": "Хотя бы один поручитель — физлицо, либо поручительство залогодателя"
+          },
+          {
+            "entity_type": "ЮЛ",
+            "amount_max": null,
+            "requirement": "Хотя бы один поручитель — физлицо-учредитель с совокупной долей в УК более 50%, либо поручительство залогодателя"
+          }
+        ],
+        "guarantee_overlay": "zont_corpmsp",
+        "coverage_pct_max": 50,
+        "coverage_amount_max": null
+      },
+      "eligibility": {
+        "entity_types": [
+          "ИП",
+          "ЮЛ"
+        ],
+        "msp_registry_required": true,
+        "categories": [],
+        "regions_allow": [],
+        "okved_deny_main": [
+          "64–66 — банки, страховые компании, инвестиционные и финансовые организации",
+          "92 — игорный бизнес",
+          "05–09 — добыча и реализация полезных ископаемых",
+          "производство и продажа подакцизных товаров (кроме ОКВЭД 55, 56)"
+        ],
+        "requirements": [
+          "компания или ИП — резидент РФ",
+          "включена в Единый реестр субъектов МСП",
+          "соответствует условиям программы господдержки"
+        ]
+      },
+      "usage_restrictions": [
+        "снятие наличных со счёта по чеку или карте Альфа-Cash",
+        "погашение любой задолженности перед банком",
+        "выдача и погашение займов и кредитов",
+        "приобретение эмиссионных ценных бумаг",
+        "оплата инкассовых и других документов на бесспорное списание средств",
+        "выплата дивидендов акционерам",
+        "вложения в уставные капиталы",
+        "перевод на карту и размещение во вкладах",
+        "погашение просроченной задолженности по налогам",
+        "оплата участия в тендерах и аукционах"
+      ],
+      "fees": {
+        "for_borrower_pct": 0,
+        "paid_by": "банк-партнёр"
+      },
+      "process": {
+        "channel": "Альфа-Бизнес",
+        "deeplink": null,
+        "note": "Формы выдачи: единоразовая выдача, возобновляемая и невозобновляемая кредитная линия. Решение по онлайн-заявке за 5 минут, деньги — за 1 день"
+      },
+      "source": {
+        "url": "https://alfabank.ru/sme/profits/goscredit/",
+        "verified_at": "2026-10-25",
+        "confidence": "secondary"
+      }
+    },
+    {
+      "id": "alfa_universal_limit",
+      "name": "Универсальный кредитный лимит",
+      "aliases": [
+        "УКЛ"
+      ],
+      "kind": "product",
+      "instrument_type": "revolving_credit_line",
+      "lender": "Альфа-Банк",
+      "program_operator": "Альфа-Банк",
+      "legal_basis": null,
+      "status": "active",
+      "limit_status": "open",
+      "display": {
+        "as": "card",
+        "applies_to": null,
+        "headline": "Без залога — до 20 млн ₽, с залогом — до 70 млн ₽; залог можно добавить позже и увеличить лимит",
+        "summary": "Универсальный кредитный лимит: оформляется один раз, деньги берутся частями в пределах лимита.",
+        "features": [
+          "Можно без залога",
+          "Залог можно добавить позже, чтобы увеличить лимит",
+          "Залог: квартира, дом, земельный участок, коммерческая недвижимость, транспорт и спецтехника",
+          "Возможна отсрочка основного долга",
+          "Базовая ставка не опубликована — уточняется у банка"
+        ],
+        "best_for": "Бизнесу, которому нужен гибкий лимит на оборотные средства, развитие или рефинансирование."
+      },
+      "purposes": [
+        "working_capital",
+        "business_development",
+        "refinancing"
+      ],
+      "amount": {
+        "min": null,
+        "max": 70000000,
+        "max_unsecured": 20000000,
+        "tranche_min": null,
+        "tranche_max": null,
+        "currency": "RUB"
+      },
+      "term": {
+        "min_months": null,
+        "max_months": 120,
+        "max_months_by_purpose": null,
+        "unlimited": false,
+        "preferential_period_months": null,
+        "note": "Возобновляемый лимит: оформляется один раз, деньги берутся частями в пределах лимита"
+      },
+      "rate": {
+        "type": "undisclosed",
+        "periods": [
+          {
+            "from_month": 1,
+            "to_month": null,
+            "rate_formula": null,
+            "rate_percent": null,
+            "note": "базовая ставка не опубликована"
+          }
+        ],
+        "note": "На странице раскрыта только ставка со скидкой — от 18,5%; базовая ставка требует уточнения у банка"
+      },
+      "collateral": {
+        "required": false,
+        "surety_rules": [
+          {
+            "entity_type": "ИП",
+            "amount_max": 3000000,
+            "requirement": "Поручительство залогодателя — третьих лиц"
+          },
+          {
+            "entity_type": "ИП",
+            "amount_max": null,
+            "requirement": "Хотя бы один поручитель — физлицо, либо поручительство залогодателя"
+          },
+          {
+            "entity_type": "ЮЛ",
+            "amount_max": null,
+            "requirement": "Хотя бы один поручитель — физлицо-учредитель с совокупной долей в УК более 50%, либо поручительство залогодателя"
+          }
+        ],
+        "guarantee_overlay": null,
+        "coverage_pct_max": null,
+        "coverage_amount_max": null
+      },
+      "eligibility": {
+        "entity_types": [
+          "ИП",
+          "ЮЛ"
+        ],
+        "msp_registry_required": false,
+        "categories": [],
+        "regions_allow": [],
+        "okved_deny_main": [],
+        "requirements": []
+      },
+      "usage_restrictions": [],
+      "fees": {
+        "for_borrower_pct": null,
+        "paid_by": null
+      },
+      "process": {
+        "channel": "Альфа-Бизнес",
+        "deeplink": null,
+        "note": "Виды залога: квартира, жилой дом, земельный участок, коммерческая недвижимость, автотранспорт и спецтехника. Залог предоставляется в любой момент для увеличения лимита. Возможна отсрочка основного долга. Рефинансирование кредита физлица допускается, если он взят на нужды бизнеса; ограничений по форме выдачи рефинансируемого кредита нет"
+      },
+      "source": {
+        "url": "https://alfabank.ru/sme/profits/ukl/",
+        "verified_at": "2026-10-25",
+        "confidence": "secondary"
+      }
+    },
+    {
+      "id": "alfa_factoring",
+      "name": "Факторинг",
+      "aliases": [
+        "факторинг для поставщиков",
+        "деньги вместо отсрочки"
+      ],
+      "kind": "product",
+      "instrument_type": "factoring",
+      "lender": "Альфа-Банк",
+      "program_operator": "Альфа-Банк",
+      "legal_basis": null,
+      "status": "active",
+      "limit_status": "open",
+      "display": {
+        "as": "card",
+        "applies_to": null,
+        "headline": "Без залога, до 100% суммы поставки; погашает задолженность ваш заказчик, а не вы",
+        "summary": "Финансирование поставок с отсрочкой платежа: банк выплачивает поставщику сумму поставки, а долг погашает заказчик.",
+        "features": [
+          "Без залога",
+          "До 100% суммы поставки и отсрочка до 365 дней в открытом факторинге",
+          "Закрытый факторинг: до 90%, отсрочка до 180 дней, без уведомления заказчика",
+          "Не отражается в кредитной истории",
+          "Комиссия за фактический срок пользования деньгами, ставка не опубликована"
+        ],
+        "best_for": "Поставщикам, которые отгружают товар постоянным заказчикам с отсрочкой платежа."
+      },
+      "purposes": [
+        "working_capital"
+      ],
+      "amount": {
+        "min": null,
+        "max": null,
+        "max_unsecured": null,
+        "tranche_min": null,
+        "tranche_max": null,
+        "currency": "RUB"
+      },
+      "term": {
+        "min_months": null,
+        "max_months": 12,
+        "max_months_by_purpose": null,
+        "unlimited": false,
+        "preferential_period_months": null,
+        "note": "Определяется отсрочкой платежа по контракту: от 7 до 365 дней (открытый факторинг), до 180 дней (закрытый)"
+      },
+      "rate": {
+        "type": "undisclosed",
+        "periods": [
+          {
+            "from_month": 1,
+            "to_month": null,
+            "rate_formula": null,
+            "rate_percent": null,
+            "note": "комиссия за фактический срок пользования деньгами"
+          }
+        ],
+        "note": "Ставка комиссии не опубликована; банк указывает, что она ниже, чем по кредитным продуктам. По закрытому факторингу выше, чем по открытому"
+      },
+      "collateral": {
+        "required": false,
+        "surety_rules": [],
+        "guarantee_overlay": null,
+        "coverage_pct_max": null,
+        "coverage_amount_max": null
+      },
+      "eligibility": {
+        "entity_types": [
+          "ИП",
+          "ЮЛ"
+        ],
+        "msp_registry_required": false,
+        "categories": [],
+        "regions_allow": [],
+        "okved_deny_main": [],
+        "requirements": [
+          "наличие фиксированной отсрочки платежа в контракте",
+          "хозяйственные отношения между поставщиком и дебитором носят постоянный характер",
+          "уступаемая задолженность на момент начала финансирования не просрочена",
+          "отсутствует аффилированность между поставщиком и покупателем"
+        ]
+      },
+      "usage_restrictions": [],
+      "fees": {
+        "for_borrower_pct": null,
+        "paid_by": "поставщик (клиент банка)"
+      },
+      "process": {
+        "channel": "Альфа-Бизнес",
+        "deeplink": null,
+        "note": "Открытый факторинг: до 100% суммы поставки, отсрочка до 365 дней, нужно трёхстороннее уведомление дебитора, расчётный счёт в Альфа-Банке и перевод оборотов не требуются. Закрытый: до 90%, отсрочка до 180 дней, уведомление не нужно, требуются счёт в Альфа-Банке и перевод оборотов, ответственность только на поставщике. Факторинг не отражается в кредитной истории и не влияет на кредитный рейтинг"
+      },
+      "source": {
+        "url": "https://alfabank.ru/sme/profits/factoring/",
+        "verified_at": "2026-10-25",
+        "confidence": "secondary"
+      }
+    },
+    {
+      "id": "psk_invest_subsidy",
+      "name": "Инвестиционный кредит по ПСК с субсидией Минэкономразвития",
+      "aliases": [
+        "ПСК + 1764",
+        "1764 v2.0",
+        "комбинированная программа"
+      ],
+      "kind": "gov_program",
+      "instrument_type": "term_loan",
+      "lender": "Альфа-Банк",
+      "program_operator": "Корпорация МСП, Банк России, Минэкономразвития",
+      "legal_basis": "ПП РФ от 30.12.2018 № 1764 (субсидия) + льготное фондирование Банка России",
+      "status": "active",
+      "limit_status": "open",
+      "display": {
+        "as": "card",
+        "applies_to": null,
+        "headline": null,
+        "summary": "Инвестиционный кредит по программе стимулирования кредитования с субсидией Минэкономразвития.",
+        "features": [
+          "Ставка привязана к ключевой: ключевая минус 3,5 п.п.",
+          "Только на инвестиционные цели",
+          "Для компаний и ИП из реестра МСП",
+          "Для приоритетных отраслей, малых технологических компаний и регионов со «средним уровнем реагирования»"
+        ],
+        "best_for": "Компаниям и ИП из реестра МСП с крупным инвестиционным проектом."
+      },
+      "purposes": [
+        "investment"
+      ],
+      "amount": {
+        "min": 25000000,
+        "max": 2000000000,
+        "max_unsecured": null,
+        "tranche_min": null,
+        "tranche_max": null,
+        "currency": "RUB"
+      },
+      "term": {
+        "min_months": null,
+        "max_months": 120,
+        "max_months_by_purpose": null,
+        "unlimited": false,
+        "preferential_period_months": null,
+        "note": null
+      },
+      "rate": {
+        "type": "formula",
+        "periods": [
+          {
+            "from_month": 1,
+            "to_month": 120,
+            "rate_formula": "KEY_RATE - 3.5",
+            "rate_percent": 10.5,
+            "note": null
+          }
+        ],
+        "note": null
+      },
+      "collateral": {
+        "required": null,
+        "surety_rules": [],
+        "guarantee_overlay": "zont_corpmsp",
+        "coverage_pct_max": null,
+        "coverage_amount_max": null
+      },
+      "eligibility": {
+        "entity_types": [
+          "ИП",
+          "ЮЛ"
+        ],
+        "msp_registry_required": true,
+        "categories": [
+          "приоритетные отрасли, в т.ч. креативные индустрии: обрабатывающее производство; транспортировка и хранение (СКФО, ДФО, Крым и Севастополь); гостиницы и общепит; информация и связь; профессиональная, научная и техническая деятельность; экскурсионные услуги",
+          "участники региональной программы повышения производительности труда",
+          "малые технологические компании (МТК)",
+          "компании из регионов со «средним уровнем реагирования»: Республика Крым, Краснодарский край, Белгородская, Брянская, Воронежская, Курская, Ростовская области, г. Севастополь",
+          "для категории приграничных регионов — регистрация не позднее 01.01.2025"
+        ],
+        "regions_allow": [],
+        "okved_deny_main": [],
+        "requirements": [
+          "включена в Единый реестр субъектов МСП",
+          "нет процедуры банкротства; ИП — действующий",
+          "не кредитная/страховая организация, не инвестфонд, не НПФ, не профучастник РЦБ, не ломбард, не участник СРП, не игорный бизнес",
+          "не входит в группу с крупным бизнесом с долей участия более 25%",
+          "нет действующих кредитов в рамках отдельных льготных программ"
+        ]
+      },
+      "usage_restrictions": [],
+      "fees": {
+        "for_borrower_pct": null,
+        "paid_by": null
+      },
+      "process": {
+        "channel": "Альфа-Бизнес (банк-партнёр программы)",
+        "deeplink": null,
+        "note": null
+      },
+      "source": {
+        "url": "https://corpmsp.ru/to-business/finansirovanie-lgotnye-programmy-kreditovaniya/psk_subsidizing/",
+        "verified_at": "2026-10-24",
+        "confidence": "official"
+      }
+    },
+    {
+      "id": "psk_working_capital",
+      "name": "Оборотный кредит по ПСК",
+      "aliases": [
+        "ПСК на оборотные цели"
+      ],
+      "kind": "gov_program",
+      "instrument_type": "term_loan",
+      "lender": "Альфа-Банк",
+      "program_operator": "Корпорация МСП, Банк России",
+      "legal_basis": "Льготное фондирование Банка России под поручительство Корпорации МСП",
+      "status": "active",
+      "limit_status": "open",
+      "display": {
+        "as": "card",
+        "applies_to": null,
+        "headline": null,
+        "summary": "Оборотный кредит по программе стимулирования кредитования Корпорации МСП и Банка России.",
+        "features": [
+          "Льготная ставка — ключевая плюс 3 п.п., действует 1 год",
+          "Только на пополнение оборотных средств",
+          "Для компаний и ИП из реестра МСП",
+          "Для приоритетных отраслей, малых технологических компаний и регионов со «средним уровнем реагирования»"
+        ],
+        "best_for": "Компаниям и ИП из реестра МСП из приоритетных отраслей и регионов, которым нужны оборотные средства."
+      },
+      "purposes": [
+        "working_capital"
+      ],
+      "amount": {
+        "min": 500000,
+        "max": 500000000,
+        "max_unsecured": null,
+        "tranche_min": null,
+        "tranche_max": null,
+        "currency": "RUB"
+      },
+      "term": {
+        "min_months": null,
+        "max_months": null,
+        "max_months_by_purpose": null,
+        "unlimited": false,
+        "preferential_period_months": 12,
+        "note": null
+      },
+      "rate": {
+        "type": "formula",
+        "periods": [
+          {
+            "from_month": 1,
+            "to_month": 12,
+            "rate_formula": "KEY_RATE + 3",
+            "rate_percent": 17.0,
+            "note": "льготная ставка действует 1 год"
+          }
+        ],
+        "note": "Применяется к кредитным договорам, заключённым с 01.07.2026"
+      },
+      "collateral": {
+        "required": null,
+        "surety_rules": [],
+        "guarantee_overlay": "zont_corpmsp",
+        "coverage_pct_max": null,
+        "coverage_amount_max": null
+      },
+      "eligibility": {
+        "entity_types": [
+          "ИП",
+          "ЮЛ"
+        ],
+        "msp_registry_required": true,
+        "categories": [
+          "приоритетные отрасли, в т.ч. креативные индустрии: обрабатывающее производство; транспортировка и хранение (СКФО, ДФО, Крым и Севастополь); гостиницы и общепит; информация и связь; профессиональная, научная и техническая деятельность; экскурсионные услуги",
+          "участники региональной программы повышения производительности труда",
+          "малые технологические компании (МТК)",
+          "компании из регионов со «средним уровнем реагирования»: Республика Крым, Краснодарский край, Белгородская, Брянская, Воронежская, Курская, Ростовская области, г. Севастополь"
+        ],
+        "regions_allow": [],
+        "okved_deny_main": [],
+        "requirements": [
+          "включена в Единый реестр субъектов МСП",
+          "нет процедуры банкротства; ИП — действующий",
+          "не кредитная/страховая организация, не инвестфонд, не НПФ, не профучастник РЦБ, не ломбард, не участник СРП, не игорный бизнес",
+          "не входит в группу с крупным бизнесом с долей участия более 25%"
+        ]
+      },
+      "usage_restrictions": [],
+      "fees": {
+        "for_borrower_pct": null,
+        "paid_by": null
+      },
+      "process": {
+        "channel": "Альфа-Бизнес (банк-партнёр программы)",
+        "deeplink": null,
+        "note": "Объявленный лимит программы на 2026 год — 150 млрд ₽"
+      },
+      "source": {
+        "url": "https://corpmsp.ru/to-business/finansirovanie-lgotnye-programmy-kreditovaniya/psk_current/",
+        "verified_at": "2026-10-24",
+        "confidence": "official"
+      }
+    },
+    {
+      "id": "psk_borderline",
+      "name": "Кредит по ПСК для приграничных территорий",
+      "aliases": [
+        "приграничные регионы"
+      ],
+      "kind": "gov_program",
+      "instrument_type": "term_loan",
+      "lender": "Альфа-Банк",
+      "program_operator": "Корпорация МСП, Банк России",
+      "legal_basis": null,
+      "status": "active",
+      "limit_status": "open",
+      "display": {
+        "as": "card",
+        "applies_to": null,
+        "headline": null,
+        "summary": "Кредит по программе стимулирования кредитования для бизнеса приграничных территорий.",
+        "features": [
+          "Ставка не выше ключевой",
+          "Для бизнеса, зарегистрированного в Курской, Белгородской или Брянской области",
+          "Для компаний и ИП из реестра МСП",
+          "Цели: инвестиции, оборотные средства, развитие бизнеса, рефинансирование"
+        ],
+        "best_for": "Компаниям и ИП из реестра МСП из Курской, Белгородской и Брянской областей."
+      },
+      "purposes": [
+        "investment",
+        "working_capital",
+        "business_development",
+        "refinancing"
+      ],
+      "amount": {
+        "min": null,
+        "max": 30000000,
+        "max_unsecured": null,
+        "tranche_min": null,
+        "tranche_max": null,
+        "currency": "RUB"
+      },
+      "term": {
+        "min_months": null,
+        "max_months": null,
+        "max_months_by_purpose": null,
+        "unlimited": false,
+        "preferential_period_months": 12,
+        "note": null
+      },
+      "rate": {
+        "type": "formula",
+        "periods": [
+          {
+            "from_month": 1,
+            "to_month": 12,
+            "rate_formula": "KEY_RATE",
+            "rate_percent": 14.0,
+            "note": "ставка не выше ключевой"
+          }
+        ],
+        "note": null
+      },
+      "collateral": {
+        "required": false,
+        "surety_rules": [],
+        "guarantee_overlay": "zont_corpmsp",
+        "coverage_pct_max": 50,
+        "coverage_amount_max": null
+      },
+      "eligibility": {
+        "entity_types": [
+          "ИП",
+          "ЮЛ"
+        ],
+        "msp_registry_required": true,
+        "categories": [],
+        "regions_allow": [
+          "Курская область",
+          "Белгородская область",
+          "Брянская область"
+        ],
+        "okved_deny_main": [],
+        "requirements": [
+          "включена в Единый реестр субъектов МСП",
+          "нет процедуры банкротства; ИП — действующий",
+          "не кредитная/страховая организация, не инвестфонд, не НПФ, не профучастник РЦБ, не ломбард, не участник СРП, не игорный бизнес",
+          "не входит в группу с крупным бизнесом с долей участия более 25%",
+          "зарегистрирована в Курской, Белгородской или Брянской области"
+        ]
+      },
+      "usage_restrictions": [],
+      "fees": {
+        "for_borrower_pct": null,
+        "paid_by": null
+      },
+      "process": {
+        "channel": "Альфа-Бизнес (один из 5 банков-партнёров)",
+        "deeplink": null,
+        "note": null
+      },
+      "source": {
+        "url": "https://corpmsp.ru/to-business/finansirovanie-lgotnye-programmy-kreditovaniya/borderline/",
+        "verified_at": "2026-10-24",
+        "confidence": "official"
+      }
+    },
+    {
+      "id": "zont_corpmsp",
+      "name": "«Зонтичное» поручительство Корпорации МСП",
+      "aliases": [
+        "зонт",
+        "зонтичный механизм"
+      ],
+      "kind": "overlay",
+      "instrument_type": "surety",
+      "lender": null,
+      "program_operator": "АО «Корпорация «МСП»",
+      "legal_basis": null,
+      "status": "active",
+      "limit_status": "open",
+      "display": {
+        "as": "badge_on_card",
+        "applies_to": [
+          "alfa_term_loan_unsecured",
+          "alfa_term_loan_secured",
+          "alfa_revolving_line_unsecured",
+          "alfa_revolving_line_secured",
+          "alfa_nonrevolving_line_secured",
+          "alfa_goscredit_zont",
+          "psk_invest_subsidy",
+          "psk_working_capital",
+          "psk_borderline"
+        ],
+        "headline": "Залог не нужен — до 50% суммы закрывает поручительство Корпорации МСП"
+      },
+      "purposes": [
+        "investment",
+        "working_capital",
+        "business_development",
+        "refinancing"
+      ],
+      "amount": {
+        "min": null,
+        "max": null,
+        "max_unsecured": null,
+        "tranche_min": null,
+        "tranche_max": null,
+        "currency": "RUB"
+      },
+      "term": {
+        "min_months": null,
+        "max_months": 120,
+        "max_months_by_purpose": null,
+        "unlimited": false,
+        "preferential_period_months": null,
+        "note": null
+      },
+      "rate": {
+        "type": "none",
+        "periods": [],
+        "note": null
+      },
+      "collateral": {
+        "required": null,
+        "surety_rules": [],
+        "guarantee_overlay": null,
+        "coverage_pct_max": 50,
+        "coverage_amount_max": 1000000000
+      },
+      "eligibility": {
+        "entity_types": [
+          "ИП",
+          "ЮЛ"
+        ],
+        "msp_registry_required": true,
+        "categories": [],
+        "regions_allow": [],
+        "okved_deny_main": [
+          "47 — Торговля розничная (как основной ОКВЭД; допустим как дополнительный)"
+        ],
+        "requirements": [
+          "соответствует 209-ФЗ",
+          "не нарушала условия предоставления господдержки МСП либо с момента нарушения прошло не менее 3 лет",
+          "не осуществляет добычу и/или реализацию полезных ископаемых",
+          "не в процессе банкротства",
+          "в группе нет компаний с выручкой более 2 млрд ₽",
+          "нет непогашенных просроченных платежей перед банком-партнёром"
+        ]
+      },
+      "usage_restrictions": [],
+      "fees": {
+        "for_borrower_pct": 0,
+        "paid_by": "банк-партнёр"
+      },
+      "process": {
+        "channel": "встроено в кредитный процесс банка",
+        "deeplink": null,
+        "note": "Документы в Корпорацию МСП не подаются. Для специальной программы приграничных регионов (Белгородская, Курская, Брянская области) ограничение по ОКВЭД 47 не применяется"
+      },
+      "source": {
+        "url": "https://corpmsp.ru/to-business/obespechenie-kreditov-zaymov/zontichnye-poruchitelstva/",
+        "verified_at": "2026-10-24",
+        "confidence": "official"
+      }
+    }
+  ],
+  "items_count": 12
+}

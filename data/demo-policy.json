@@ -1,0 +1,142 @@
+{
+  "schema_version": "1.0",
+  "rules_version": "demo-rules-v2",
+  "is_synthetic": true,
+  "description": "Демонстрационные правила решения поверх data/credit_catalog.json. Каталог главнее: политика только заполняет пустые (null) поля каталога и может ужесточать его условия, но не ослаблять их. Проверка: python -m app.products_config check.",
+  "entity_types": {
+    "ИП": "IP",
+    "ЮЛ": "LLC"
+  },
+  "applyable_kinds": [
+    "product",
+    "gov_program"
+  ],
+  "defaults": {
+    "amount_min_rub": 300000,
+    "amount_max_rub_if_null": 2000000000,
+    "term_min_months": 6,
+    "term_max_months": 36,
+    "low_risk_revenue_multiple": 3,
+    "medium_risk_revenue_multiple": 1,
+    "medium_risk_cap_rub": 1000000,
+    "collateral_ltv_bps": 7000,
+    "base_documents": [
+      "BANK_STATEMENT",
+      "FINANCIAL_REPORT"
+    ],
+    "collateral_documents": [
+      "COLLATERAL_OWNERSHIP",
+      "COLLATERAL_VALUATION"
+    ],
+    "priority": 1000
+  },
+  "payment_models": {
+    "term_loan": "annuity",
+    "nonrevolving_credit_line": "annuity",
+    "revolving_credit_line": "interest_full_utilization",
+    "factoring": "none"
+  },
+  "payment_estimate_term_months": 36,
+  "products": {
+    "alfa_term_loan_unsecured": {
+      "priority": 10
+    },
+    "alfa_revolving_line_unsecured": {
+      "priority": 20
+    },
+    "alfa_universal_limit": {
+      "collateral_mode": "optional",
+      "priority": 30
+    },
+    "alfa_goscredit_zont": {
+      "priority": 40
+    },
+    "alfa_factoring": {
+      "term_min_months": 1,
+      "priority": 50
+    },
+    "alfa_term_loan_secured": {
+      "priority": 60
+    },
+    "alfa_revolving_line_secured": {
+      "priority": 70
+    },
+    "alfa_nonrevolving_line_secured": {
+      "priority": 80
+    },
+    "psk_working_capital": {
+      "collateral_mode": "optional",
+      "priority": 90
+    },
+    "psk_invest_subsidy": {
+      "collateral_mode": "optional",
+      "priority": 100
+    },
+    "psk_borderline": {
+      "priority": 110
+    }
+  },
+  "ranking": {
+    "collateral_burden": {
+      "none": 0,
+      "optional": 0,
+      "required": 1
+    },
+    "rate_certainty": {
+      "full": 0,
+      "preferential": 1,
+      "undisclosed": 2
+    }
+  },
+  "amount_slider": {
+    "scale": "log",
+    "min_rub": 300000,
+    "max_rub": 2000000000,
+    "default_rub": 2000000,
+    "snap": [
+      {
+        "up_to_rub": 1000000,
+        "step_rub": 50000
+      },
+      {
+        "up_to_rub": 10000000,
+        "step_rub": 100000
+      },
+      {
+        "up_to_rub": 100000000,
+        "step_rub": 1000000
+      },
+      {
+        "up_to_rub": 2000000000,
+        "step_rub": 10000000
+      }
+    ],
+    "presets_rub": [
+      500000,
+      1000000,
+      3000000,
+      10000000,
+      30000000,
+      100000000,
+      500000000
+    ]
+  },
+  "okved_rule": {
+    "deny_entries": "leading_code_or_range",
+    "compare": "main_okved_class",
+    "unparsed": "condition_to_confirm"
+  },
+  "overlay_badges": {
+    "zont_corpmsp": {
+      "text_collateral_required": "До 50% суммы может закрыть поручительство Корпорации МСП",
+      "okved_exempt_products": [
+        "psk_borderline"
+      ]
+    }
+  },
+  "region_normalization": [
+    "casefold",
+    "yo_to_ye",
+    "collapse_spaces"
+  ]
+}

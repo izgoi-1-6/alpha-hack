@@ -194,7 +194,7 @@ class ItemBuilder:
     def collateral_mode(self, entry: dict, label: str, settings: dict, fallbacks: list[str]) -> str | None:
         """required (the catalog requires it), none or optional (it does not); a catalog null needs the policy's mode."""
         required = entry['collateral']['required']
-        if required not in (True, False, None) or isinstance(required, int) and not isinstance(required, bool):
+        if not (isinstance(required, bool) or required is None):  # a JSON 1.0 or 0 equals True/False but is no flag
             self.problems.add(f'{label}.collateral.required', 'must be true, false or null')
             return None
         mode = settings.get('collateral_mode')

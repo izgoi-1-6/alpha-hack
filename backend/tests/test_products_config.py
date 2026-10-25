@@ -471,6 +471,13 @@ CASES = [
      'items[alfa_factoring].purposes: at least one purpose is required'),
     ('collateral flag not a boolean', lambda c: item(c, 'alfa_factoring')['collateral'].update(required='no'), None,
      'items[alfa_factoring].collateral.required: must be true, false or null'),
+    # Task 9: a JSON 1.0/0.0 parses as a Decimal equal to True/False; it is no boolean, and 1.0 must not let the policy
+    # make a required pledge optional unnoticed.
+    ('collateral flag 1.0', lambda c: item(c, 'alfa_term_loan_secured')['collateral'].update(required=1.0),
+     lambda p: p['products']['alfa_term_loan_secured'].update(collateral_mode='optional'),
+     'items[alfa_term_loan_secured].collateral.required: must be true, false or null'),
+    ('collateral flag 0.0', lambda c: item(c, 'alfa_factoring')['collateral'].update(required=0.0), None,
+     'items[alfa_factoring].collateral.required: must be true, false or null'),
     ('registry flag not a boolean', lambda c: item(c, 'alfa_goscredit_zont')['eligibility'].update(msp_registry_required='yes'), None,
      'items[alfa_goscredit_zont].eligibility.msp_registry_required: must be true or false'),
     ('regions not a list', lambda c: item(c, 'psk_borderline')['eligibility'].update(regions_allow='Курская область'), None,

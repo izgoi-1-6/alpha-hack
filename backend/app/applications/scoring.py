@@ -288,14 +288,14 @@ def after_response(check: CheckInput, report: dict | None, previous_flags=()) ->
     conflict flagged by an earlier evaluation stays flagged (RETAINED_FLAGS)."""
     retained = tuple(flag for flag in RETAINED_FLAGS if flag in previous_flags)
     if check.registry_status == 'inactive':
-        return Decision('R2', 'MANUAL_REVIEW', (REASONS['inactive'], REASONS['answered']))
+        return Decision('R2', 'MANUAL_REVIEW', (REASONS['inactive'], REASONS['answered']), flags=retained)
     if report is None:  # the gap was found before any BKI request (an internal check) and none is made now
         flags = ordered_flags(review_flags(check, None) + retained)
         return Decision('R5', 'MANUAL_REVIEW', tuple(FLAG_REASONS[flag] for flag in flags) + (REASONS['no_bki'], REASONS['answered']),
                         flags=flags)
     overdue = report.get('current_overdue_days')
     if is_count(overdue) and overdue >= OVERDUE_STOP_DAYS:
-        return Decision('R2', 'MANUAL_REVIEW', (REASONS['overdue'], REASONS['answered']))
+        return Decision('R2', 'MANUAL_REVIEW', (REASONS['overdue'], REASONS['answered']), flags=retained)
     measured = measure(check, report)
     measured['flags'] = flags = ordered_flags(measured['flags'] + retained)
     score, risk, limit = measured['score'], measured['risk'], measured['scored_limit_rub']

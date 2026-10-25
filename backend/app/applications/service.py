@@ -17,7 +17,7 @@ from ..models import Company, Consent
 from ..recommendations.models import RecommendationSnapshot
 from . import scoring, stages
 from .checks import recheck_after_response, run_check
-from .info_requests import answered_paths, open_info_request, unanswered, unrequested
+from .info_requests import NEED_FIELDS, NEED_FIELDS_MESSAGE, answered_paths, open_info_request, unanswered, unrequested
 from .lifecycle import ApplicationChange, expire_if_due, record_creation
 from .models import ACTIVE_STATUSES, Application
 from .products import application_product, current_product, is_current
@@ -170,10 +170,11 @@ def cancel_application(db: Session, application: Application, user_id: str, data
 
 def respond_info(db: Session, application: Application, company: Company, user_id: str, data: RespondInput, now: datetime) -> None:
     """NEED_INFO with an open client_answers request (an officer's or the system's): the owner sets exactly the
-    requested answer paths, validated like questionnaire saves and then against the pinned product's R1/R3
-    requirements. The request records the response and is resolved, and `recheck_after_response` scores the revised
-    answers with the stored source evidence (no BKI request) and returns the application to MANUAL_REVIEW with its
-    assignee. The submission snapshot and earlier evaluations are never changed."""
+    requested answer paths, never a need field (purpose, funding pattern, amount, term: fixed since submission, so the
+    request is never rewritten and R1 cannot change), validated like questionnaire saves and then against the pinned
+    product's R3 requirements. The request records the response and is resolved, and `recheck_after_response` scores
+    the revised answers with the stored source evidence (no BKI request) and returns the application to MANUAL_REVIEW
+    with its assignee. The submission snapshot and earlier evaluations are never changed."""
     require_version(application, data.version)
     request = open_info_request(db, application.id)
     if application.status != 'NEED_INFO' or request is None:
@@ -182,6 +183,9 @@ def respond_info(db: Session, application: Application, company: Company, user_i
         raise ApiError(409, 'TRUSTED_SOURCE_REQUIRED', 'Эти сведения приходят только из демо-источника, анкета их не принимает. '
                                                        'Нажмите «Повторить проверку».')
     patch = data.answers.model_dump(mode='json', exclude_unset=True)
+    locked = [name for name in patch if name in NEED_FIELDS]
+    if locked:  # whatever the request's origin: a system request built from missing answers may name one
+        raise ApiError(422, 'NEED_FIELDS_LOCKED', NEED_FIELDS_MESSAGE, fields={name: NEED_FIELDS_MESSAGE for name in locked})
     paths = answered_paths(patch)
     extra = unrequested(request.requested_fields, paths)
     if extra:
@@ -192,15 +196,10 @@ def respond_info(db: Session, application: Application, company: Company, user_i
         raise ApiError(422, 'NEED_INFO', 'Ответьте на все запрошенные поля.', fields={path: 'Укажите значение' for path in gaps})
     answers = stages.merge(application.answers, patch)
     product = application_product(application)
-    corrections = stages.corrections(answers, product, company.entity_type)
-    if corrections:
-        raise ApiError(422, 'CORRECTION_REQUIRED', 'Измените ответ под условия продукта.', fields=corrections)
     gaps = stages.missing(answers, product)
     if gaps:
         raise ApiError(422, 'NEED_INFO', 'Заполните обязательные поля анкеты.', fields=gaps)
     application.answers = answers
-    if 'requested_amount_rub' in patch:  # the client's own revision; the submission snapshot keeps the original
-        application.requested_amount_rub = patch['requested_amount_rub']
     request.response, request.responded_at, request.resolved_at = data.response, now, now
     recheck_after_response(db, ApplicationChange(db, application, actor_id=user_id, now=now), company, product,
                            reason_text=data.response, notification=RESPONSE_NOTICE)

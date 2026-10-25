@@ -7,7 +7,8 @@ Scores and limits come from application_oracle and the spec's literal numbers, n
 import json
 import pytest
 import application_oracle as oracle
-from application_helpers import FIXED_NOW, LINE, TERM, bki_calls, cancel, clock, draft, history, read, rows, submitted
+from application_helpers import (FIXED_NOW, LINE, TERM, bki_calls, cancel, clock, draft, history, read, rows, set_company,
+                                 submitted)
 from officer_helpers import (claim, claimed, decisions, detail, ok, officer, preapprove, refused, request_info, respond,
                              second_officer, staff_url)
 from test_identity_company import client, register
@@ -78,11 +79,49 @@ def test_requested_fields_must_be_questionnaire_answer_paths(client, officer, fi
     assert read(client, application)['status'] == 'MANUAL_REVIEW'
 
 
-@pytest.mark.parametrize('fields', [['collateral'], ['collateral.declared_value_rub'], ['seasonal'], ['accuracy_confirmed', 'purpose']])
-def test_any_questionnaire_answer_path_can_be_requested(client, officer, fields):
+@pytest.mark.parametrize('fields', [['collateral'], ['collateral.declared_value_rub'], ['seasonal'], ['accuracy_confirmed', 'employees']])
+def test_questionnaire_answers_outside_the_need_can_be_requested(client, officer, fields):
     application = claimed(officer, submitted(client, 'medium'))
     assert ok(request_info(officer, application, fields))['status'] == 'NEED_INFO'
     assert read(client, application)['missing_fields'] == fields
+
+
+# The stage-2 need (purpose, funding pattern, amount, term) is fixed once submitted: a smaller amount is a smaller
+# preapproval and a different need is a new application (controller ruling; spec: the request is never rewritten).
+NEED = ['purpose', 'funding_pattern', 'requested_amount_rub', 'term_months']
+
+
+@pytest.mark.parametrize('fields', [[name] for name in NEED] + [['accuracy_confirmed', 'term_months'], NEED])
+def test_an_officer_cannot_request_the_need_fields(client, officer, fields):
+    application = claimed(officer, submitted(client, 'medium'))
+    error = refused(request_info(officer, application, fields), 422, 'NEED_FIELDS_LOCKED')
+    assert set(error['fields']) == {'requested_fields'} and error['fields']['requested_fields']
+    assert error['details'] == {'fields': [name for name in fields if name in NEED]}
+    assert rows(client, 'InfoRequest') == [] and decisions(client, application) == []
+    assert read(client, application)['status'] == 'MANUAL_REVIEW'
+
+
+def test_request_info_is_refused_while_another_request_is_open(client, officer):
+    from app.applications.models import InfoRequest
+    application = claimed(officer, submitted(client, 'medium'))
+    with client.app.state.test_factory.begin() as db:  # a request left open in review (no 4a path leaves one)
+        db.add(InfoRequest(application_id=application['id'], kind='trusted_source', source='bki', requested_fields=[],
+                           question='Открытый запрос', created_at=FIXED_NOW))
+    refused(request_info(officer, application, ['employees']), 409, 'INFO_REQUEST_OPEN')
+    assert len(rows(client, 'InfoRequest', application_id=application['id'])) == 1 and decisions(client, application) == []
+    assert read(client, application)['status'] == 'MANUAL_REVIEW'
+
+
+def test_a_replayed_request_info_records_one_request_and_one_decision(client, officer):
+    application = claimed(officer, submitted(client, 'medium'))
+    first = request_info(officer, application, ['employees'], key='ask-once')
+    again = request_info(officer, application, ['employees'], key='ask-once')
+    assert first.status_code == again.status_code == 200 and again.json() == first.json()
+    refused(request_info(officer, application, ['seasonal'], key='ask-once'), 409, 'IDEMPOTENCY_CONFLICT')
+    refused(request_info(officer, application, ['employees'], key='ask-twice'), 409, 'VERSION_CONFLICT')
+    assert len(rows(client, 'InfoRequest', application_id=application['id'])) == 1
+    assert [row.action for row in decisions(client, application)] == ['request_info']
+    assert [row.to_status for row in history_rows(client, application)].count('NEED_INFO') == 1
 
 
 # --- respond-info ----------------------------------------------------------------------------------------------------
@@ -217,22 +256,54 @@ def test_respond_info_accepts_only_valid_answers_to_the_requested_fields(client,
     assert len(evaluations(client, application)) == 1 and len(bki_calls) == 1
 
 
-def test_a_response_cannot_break_the_product_bounds(client, officer):
-    application = asked(client, officer, 'medium', ['term_months'])
-    error = refused(respond(client, application, {'term_months': 19}), 422, 'CORRECTION_REQUIRED')  # the line allows 6-18
-    assert set(error['fields']) == {'term_months'}
-    assert ok(respond(client, application, {'term_months': 18}))['answers']['term_months'] == 18
+def test_a_response_cannot_drop_the_pledge_a_secured_product_requires(client, officer):
+    application = asked(client, officer, 'secured_investment', ['collateral'], answers={'collateral': {'encumbered': True}})
+    error = refused(respond(client, application, {'collateral': {'status': 'none'}}), 422, 'NEED_INFO')  # R3 on the merged answers
+    assert set(error['fields']) == {'collateral'}
+    assert ok(respond(client, application, {'collateral': {'encumbered': False}}))['answers']['collateral']['status'] == 'declared'
 
 
-def test_a_revised_requested_amount_moves_the_upper_bound_but_keeps_the_submitted_original(client, officer):
-    application = asked(client, officer, 'medium', ['requested_amount_rub'], requested_amount_rub=700_000)
-    answered = ok(respond(client, application, {'requested_amount_rub': 450_000}))
-    assert answered['requested_amount_rub'] == 450_000 and answered['latest_evaluation']['rule'] == 'R10'
-    (row,) = rows(client, 'Application', id=application['id'])
-    assert row.submitted_input_snapshot['answers']['requested_amount_rub'] == 700_000
+def test_a_response_never_rewrites_the_requested_amount(client, officer):
+    application = asked(client, officer, 'medium', ['employees'], requested_amount_rub=700_000)
+    error = refused(respond(client, application, {'employees': 5, 'requested_amount_rub': 450_000}), 422, 'NEED_FIELDS_LOCKED')
+    assert set(error['fields']) == {'requested_amount_rub'}
+    answered = ok(respond(client, application, {'employees': 5}))
+    assert (answered['requested_amount_rub'], answered['answers']['requested_amount_rub']) == (700_000, 700_000)
+    assert answered['latest_evaluation']['rule'] == 'R11'  # still compared with the original 700,000 (limit 600,000)
+    (_, latest) = evaluations(client, application)
+    assert latest.input_snapshot['answers']['requested_amount_rub'] == 700_000
     staff = detail(officer, answered)['application']
-    assert staff['preapproval']['amount_max_rub'] == 450_000
-    refused(preapprove(officer, staff, 450_001), 422, 'AMOUNT_OUT_OF_BOUNDS')
+    assert staff['preapproval']['amount_max_rub'] == MEDIUM_LIMIT  # min(original 700,000, scored limit 600,000)
+    refused(preapprove(officer, staff, MEDIUM_LIMIT + 1), 422, 'AMOUNT_OUT_OF_BOUNDS')
+
+
+def internal_gap(client, application: dict) -> dict:
+    """The defensive client-answers gap of an internal check (Task 4a): the draft reaches the check without the submit
+    gate, as a submitted application whose answers still miss required values."""
+    from app.applications import checks
+    from app.applications.lifecycle import ApplicationChange
+    from app.applications.models import Application
+    from app.models import Company
+    from recommendation_oracle import PRODUCTS
+    with client.app.state.test_factory.begin() as db:
+        row = db.get(Application, application['id'])
+        row.submitted_at = FIXED_NOW
+        change = ApplicationChange(db, row, actor_id=None, now=FIXED_NOW)
+        change.move('CHECKING', reason_code='SUBMITTED', reason_text='Проверка без шлюза анкеты')
+        checks.run_check(db, change, db.get(Company, row.company_id), PRODUCTS[TERM])
+    return read(client, application)
+
+
+def test_a_system_request_for_a_need_field_cannot_rewrite_the_need_either(client, bki_calls):
+    application = draft(client, 'strong')
+    cleared = client.patch(f"/api/v1/applications/{application['id']}/answers",
+                           json={'version': application['version'], 'current_stage': 2, 'answers': {'requested_amount_rub': None}})
+    assert cleared.status_code == 200, cleared.text
+    application = internal_gap(client, cleared.json()['application'])
+    assert application['status'] == 'NEED_INFO' and 'requested_amount_rub' in application['missing_fields']
+    error = refused(respond(client, application, {'requested_amount_rub': 500_000}), 422, 'NEED_FIELDS_LOCKED')
+    assert set(error['fields']) == {'requested_amount_rub'}
+    assert read(client, application)['status'] == 'NEED_INFO' and bki_calls == []
 
 
 def test_a_trusted_source_request_cannot_be_answered_by_the_client(client, officer, bki_calls):
@@ -262,18 +333,7 @@ def test_respond_info_needs_an_open_client_answers_request_and_the_current_versi
 
 def test_a_response_to_a_system_request_is_queued_unassigned(client, officer, bki_calls):
     """The defensive client-answers gap of an internal check (Task 4a) closes through respond-info."""
-    from app.applications import checks
-    from app.applications.lifecycle import ApplicationChange
-    from app.applications.models import Application
-    from app.models import Company
-    from recommendation_oracle import PRODUCTS
-    application = draft(client, 'missing_turnover')
-    with client.app.state.test_factory.begin() as db:
-        row = db.get(Application, application['id'])
-        change = ApplicationChange(db, row, actor_id=None, now=FIXED_NOW)
-        change.move('CHECKING', reason_code='SUBMITTED', reason_text='Проверка без шлюза анкеты')
-        checks.run_check(db, change, db.get(Company, row.company_id), PRODUCTS[TERM])
-    application = read(client, application)
+    application = internal_gap(client, draft(client, 'missing_turnover'))
     assert application['status'] == 'NEED_INFO' and application['allowed_actions'] == ['respond_info', 'cancel']
     answers = {'company_confirmed': True, 'actual_address': 'Демо-адрес', 'actual_activity': 'Торговля', 'tax_regime': 'USN',
                'employees': 3, 'monthly_debt_payment_rub': 160_000, 'tax_debt_rub': 0, 'legal_proceedings': False,
@@ -316,3 +376,42 @@ def test_another_officer_sees_the_request_but_cannot_decide(client, officer, sec
     refused(preapprove(second_officer, answered, 300_000), 409, 'ASSIGNMENT_REQUIRED')
     refused(claim(second_officer, answered), 409, 'ALREADY_ASSIGNED')
     assert second_officer.get(staff_url(answered)).json()['history'][3]['actor']['display_name'] == officer.user['display_name']
+
+
+def stored_overdue_of_thirty_days(client, application):
+    from sqlalchemy import select
+    from app.applications.models import Evaluation
+    with client.app.state.test_factory.begin() as db:
+        row = db.scalars(select(Evaluation).where(Evaluation.application_id == application['id'])).one()
+        row.sources = {**row.sources, 'bki': {**row.sources['bki'], 'current_overdue_days': 30}}
+
+
+@pytest.mark.parametrize('stop', ['company_inactive', 'stored_overdue'])
+def test_a_response_rechecked_into_a_mandatory_stop_keeps_the_declaration_flag(client, officer, stop):
+    application = asked(client, officer, 'missing_turnover', ['employees'],
+                        answers={'monthly_revenue_rub': 800_000, 'previous_monthly_revenue_rub': 680_000})  # declared → R5
+    assert evaluations(client, application)[0].input_snapshot['review_flags'] == ['declared_finance']
+    if stop == 'company_inactive':
+        set_company(client, application['company_id'], registry_status='inactive')
+    else:
+        stored_overdue_of_thirty_days(client, application)
+    answered = ok(respond(client, application, {'employees': 5}))
+    assert (answered['status'], answered['latest_evaluation']['rule']) == ('MANUAL_REVIEW', 'R2')
+    assert evaluations(client, application)[1].input_snapshot['review_flags'] == ['declared_finance']
+    assert detail(officer, answered)['application']['preapproval']['blocked_by']['code'] == 'MANDATORY_STOP'
+
+
+def test_the_info_request_guard_keeps_need_fields_for_system_requests_only(client, officer):
+    from app.applications.info_requests import create_info_request
+    from app.applications.models import Application
+    application = claimed(officer, submitted(client, 'medium'))
+    with client.app.state.test_factory() as db:
+        row = db.get(Application, application['id'])
+        for name in NEED:
+            with pytest.raises(ValueError):
+                create_info_request(db, row, kind='client_answers', source=None, requested_fields=[name], question='Вопрос',
+                                    now=FIXED_NOW, officer_id=officer.user['id'])
+        system = create_info_request(db, row, kind='client_answers', source=None, requested_fields=list(NEED),
+                                     question='Не хватает параметров', now=FIXED_NOW)  # built from a check's missing answers
+        assert system.requested_fields == NEED and system.officer_id is None
+        db.rollback()

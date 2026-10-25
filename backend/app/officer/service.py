@@ -6,15 +6,14 @@ decision checks the assignment, then the version, then the state, then its own g
 OfficerDecision with the reason and the latest evaluation, a StatusHistory row (actor, reason, revision) and its
 simulated notification through the transition service. Statuses only change through ApplicationChange.move.
 """
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from ..clock import as_utc
 from ..errors import ApiError
 from ..models import Company, User
 from ..schemas import VersionInput
-from ..applications.info_requests import create_info_request
-from ..applications.lifecycle import PREAPPROVAL_TTL, ApplicationChange, expire_if_due, preapproval_notice
+from ..applications.info_requests import NEED_FIELDS, NEED_FIELDS_MESSAGE, create_info_request, open_info_request
+from ..applications.lifecycle import EXPIRING, PREAPPROVAL_TTL, ApplicationChange, expire_if_due, preapproval_notice
 from ..applications.models import Application, OfficerDecision
 from ..applications.products import application_product
 from ..applications.service import require_version
@@ -24,25 +23,30 @@ from .schemas import PreapproveInput, RejectInput, RequestInfoInput
 
 INFO_REQUEST_NOTICE = 'Кредитный специалист запросил дополнительные сведения. Откройте заявку и ответьте на вопрос.'
 REJECTION_NOTICE = 'По заявке принят отказ кредитного специалиста. Причина указана в истории заявки.'
-EARLIEST = datetime.min.replace(tzinfo=timezone.utc)
 
 
 def review_queue(db: Session, officer_id: str, now: datetime, *, status: str | None = None, assignee: str | None = None,
                  company_id: str | None = None) -> list[Application]:
-    """Applications for review in arrival order (submitted_at, then id; never-submitted rows last). Lazy expiry runs
-    before the status filter. Drafts are listed only when status=DRAFT is asked for."""
-    query = select(Application)
+    """Applications for review in arrival order (submitted_at, then id). Only submitted rows are listed, except that
+    status=DRAFT lists drafts; a draft cancelled before submission never reaches the queue. Filters and the order are
+    SQL, so lazy expiry locks rows in a deterministic order; it runs before the final status check, so a request for
+    EXPIRED also reads the expiring states and a row that has just expired leaves the other statuses."""
+    if status == 'DRAFT':
+        query = select(Application).where(Application.status == 'DRAFT')
+    else:
+        query = select(Application).where(Application.submitted_at.is_not(None))
+        if status is not None:
+            query = query.where(Application.status.in_((status, *EXPIRING) if status == 'EXPIRED' else (status,)))
     if company_id is not None:
         query = query.where(Application.company_id == company_id)
     if assignee == 'me':
         query = query.where(Application.assignee_id == officer_id)
     elif assignee == 'unassigned':
         query = query.where(Application.assignee_id.is_(None))
-    rows = db.scalars(query).all()
+    rows = db.scalars(query.order_by(Application.submitted_at, Application.id)).all()
     for row in rows:
         expire_if_due(db, row, now)
-    rows = [row for row in rows if row.status == status] if status else [row for row in rows if row.status != 'DRAFT']
-    return sorted(rows, key=lambda row: (row.submitted_at is None, as_utc(row.submitted_at) if row.submitted_at else EARLIEST, row.id))
+    return [row for row in rows if status is None or row.status == status]
 
 
 def require_assignee(application: Application, officer: User) -> None:
@@ -86,10 +90,18 @@ def require_review(application: Application, message: str) -> None:
 
 
 def request_info(db: Session, application: Application, officer: User, data: RequestInfoInput, now: datetime) -> None:
-    """MANUAL_REVIEW → NEED_INFO: an officer client_answers request (the reason is its question), its decision row."""
+    """MANUAL_REVIEW → NEED_INFO: an officer client_answers request (the reason is its question), its decision row.
+    The need fields are never requested (422 NEED_FIELDS_LOCKED), and an application with an open request gets no
+    second one (409 INFO_REQUEST_OPEN)."""
     require_assignee(application, officer)
     require_version(application, data.version)
     require_review(application, 'Запросить сведения можно у заявки на рассмотрении.')
+    locked = [path for path in data.requested_fields if path in NEED_FIELDS]
+    if locked:
+        raise ApiError(422, 'NEED_FIELDS_LOCKED', NEED_FIELDS_MESSAGE, fields={'requested_fields': NEED_FIELDS_MESSAGE},
+                       details={'fields': locked})
+    if open_info_request(db, application.id) is not None:
+        raise ApiError(409, 'INFO_REQUEST_OPEN', 'По заявке уже есть открытый запрос сведений.')
     create_info_request(db, application, kind='client_answers', source=None, requested_fields=data.requested_fields,
                         question=data.reason, now=now, officer_id=officer.id)
     record_decision(db, application, officer, phase='preliminary', action='request_info', reason=data.reason, now=now)

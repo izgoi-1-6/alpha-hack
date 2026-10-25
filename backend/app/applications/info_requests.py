@@ -2,8 +2,8 @@
 
 trusted_source: a named source (registry, turnover or bki), no officer, no requested fields; it is closed by a
 retry-check that obtains complete source evidence, never by client answers. client_answers: no source and at least
-one requested questionnaire answer path; an officer request also carries officer_id. It is closed by the owner's
-respond-info, which may set only those paths.
+one requested questionnaire answer path; an officer request also carries officer_id and never names a need field. It
+is closed by the owner's respond-info, which may set only those paths and never a need field.
 """
 from datetime import datetime
 from sqlalchemy import select
@@ -14,8 +14,15 @@ from .stages import ANSWER_FIELDS
 
 SOURCES = ('registry', 'turnover', 'bki')
 # Paths a client_answers request may name: every saved questionnaire answer, and each pledge detail. Company snapshot,
-# consents and BKI categories are not answers, so they can never be requested from the client.
+# consents and BKI categories are not answers, so they can never be requested from the client. System requests built
+# from a check's missing answers may name any of them.
 ANSWER_PATHS = ANSWER_FIELDS + tuple(f'collateral.{key}' for key in CollateralAnswer.model_fields)
+# The stage-2 need is fixed once submitted: the requested amount is never rewritten (an officer wanting less
+# preapproves a smaller amount) and a different need is a new application. Collateral stays answerable.
+NEED_FIELDS = ('purpose', 'funding_pattern', 'requested_amount_rub', 'term_months')
+OFFICER_PATHS = tuple(path for path in ANSWER_PATHS if path not in NEED_FIELDS)
+NEED_FIELDS_MESSAGE = ('Цель, порядок использования, сумма и срок не меняются после отправки заявки: меньшую сумму можно '
+                       'одобрить предварительно, другая потребность — это новая заявка.')
 
 
 def create_info_request(db: Session, application: Application, *, kind: str, source: str | None, requested_fields: list[str],
@@ -23,8 +30,9 @@ def create_info_request(db: Session, application: Application, *, kind: str, sou
     if kind == 'trusted_source':
         valid = source in SOURCES and officer_id is None and not requested_fields
     else:
+        allowed = ANSWER_PATHS if officer_id is None else OFFICER_PATHS
         valid = (kind == 'client_answers' and source is None and bool(requested_fields)
-                 and all(path in ANSWER_PATHS for path in requested_fields))
+                 and all(path in allowed for path in requested_fields))
     if not valid:
         raise ValueError(f'invalid {kind} info request')
     row = InfoRequest(application_id=application.id, officer_id=officer_id, kind=kind, source=source,

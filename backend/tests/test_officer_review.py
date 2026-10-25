@@ -94,6 +94,7 @@ def test_officer_commands_reject_unknown_and_server_owned_keys(client, officer):
 def test_queue_lists_submitted_applications_in_arrival_order_with_filters(client, officer, clock):
     company = onboard(client, 'strong')
     draft_only = draft(client, 'strong', company=company)
+    never_submitted = ok(cancel(client, draft(client, 'strong', company=company)))  # cancelled as a draft
     clock.now = datetime(2026, 10, 24, 12, 0, 1, tzinfo=timezone.utc)
     preapproved = submitted(client, 'strong', company=company)  # auto-preapproved: unassigned, claimable later
     clock.now = datetime(2026, 10, 24, 12, 0, 2, tzinfo=timezone.utc)
@@ -103,6 +104,10 @@ def test_queue_lists_submitted_applications_in_arrival_order_with_filters(client
     assert rejected['status'] == 'REJECTED'
     assert queue(officer) == [preapproved['id'], review['id'], rejected['id']]  # FIFO by submission; no drafts
     assert queue(officer, status='DRAFT') == [draft_only['id']]  # drafts only on explicit request
+    assert never_submitted['status'] == 'CANCELLED' and queue(officer, status='CANCELLED') == []  # never reached the bank
+    cancelled = ok(cancel(client, preapproved))  # a submitted application cancelled later is listed
+    assert queue(officer, status='CANCELLED') == [cancelled['id']]
+    assert queue(officer) == [preapproved['id'], review['id'], rejected['id']]
     assert queue(officer, status='MANUAL_REVIEW') == [review['id']]
     assert queue(officer, company_id=company) == [preapproved['id']]
     assert queue(officer, company_id=str(uuid4())) == []
@@ -120,11 +125,15 @@ def test_queue_lists_submitted_applications_in_arrival_order_with_filters(client
     assert item['allowed_actions'] == ['request_info', 'preapprove', 'reject']
 
 
-def test_queue_applies_lazy_expiry_before_the_status_filter(client, officer, clock):
+@pytest.mark.parametrize('first', ['EXPIRED', 'PREAPPROVED'])
+def test_queue_applies_lazy_expiry_before_the_status_filter(client, officer, clock, first):
     application = submitted(client, 'strong')
     clock.now = datetime(2026, 11, 7, 12, 0, tzinfo=timezone.utc)  # preapproved_at + 14 days
     login(officer, OFFICER_EMAIL)  # the 12-hour session has ended
-    assert queue(officer, status='PREAPPROVED') == [] and queue(officer, status='EXPIRED') == [application['id']]
+    expected = {'EXPIRED': [application['id']], 'PREAPPROVED': []}
+    assert queue(officer, status=first) == expected[first]  # the first read after the deadline records the expiry
+    second = 'PREAPPROVED' if first == 'EXPIRED' else 'EXPIRED'
+    assert queue(officer, status=second) == expected[second]
     assert [row.to_status for row in history_rows(client, application)].count('EXPIRED') == 1
 
 
@@ -442,6 +451,18 @@ def test_a_final_phase_rejection_needs_no_documents(client, officer, status):
     assert (decision.phase, decision.action) == ('final', 'reject')
     last = history_rows(client, application)[-1]
     assert (last.from_status, last.to_status, last.reason_code) == (status, 'REJECTED', 'FINAL_REJECTED')
+
+
+def test_a_replayed_rejection_records_one_decision_and_one_history_row(client, officer):
+    application = claimed(officer, medium_review(client))
+    first = reject(officer, application, key='reject-once')
+    again = reject(officer, application, key='reject-once')
+    assert first.status_code == again.status_code == 200 and again.json() == first.json()
+    refused(reject(officer, application, reason='Другая причина', key='reject-once'), 409, 'IDEMPOTENCY_CONFLICT')
+    refused(reject(officer, application, key='reject-twice'), 409, 'VERSION_CONFLICT')
+    assert [row.action for row in decisions(client, application)] == ['reject']
+    assert [row.to_status for row in history_rows(client, application)].count('REJECTED') == 1
+    assert len(rows(client, 'Notification', application_id=application['id'])) == 4
 
 
 def test_rejection_is_refused_while_waiting_for_information(client, officer):

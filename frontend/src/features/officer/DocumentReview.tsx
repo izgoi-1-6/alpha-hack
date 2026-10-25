@@ -1,6 +1,6 @@
 import { useId, useRef, useState } from "react";
 import { DocumentType } from "../../api";
-import { DemoBadge, Icon } from "../../components";
+import { Icon } from "../../components";
 import { CommandAttempts } from "../applications/commands";
 import { keepAmountsTogether, rub } from "../applications/format";
 import { useCommand } from "../applications/useCommand";
@@ -196,7 +196,6 @@ export function DocumentReview({
     <section className="card evidence-card documents-review" aria-labelledby="documents-review-heading">
       <div className="panel-title">
         <h2 id="documents-review-heading">Документы клиента</h2>
-        <DemoBadge label="Демонстрационная проверка документов" />
       </div>
       <p className="panel-note">{notice}</p>
       {open && (

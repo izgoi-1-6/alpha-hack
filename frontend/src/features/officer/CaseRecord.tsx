@@ -74,7 +74,7 @@ export function InfoRequestsPanel({
                 <div className="record-head">
                   <strong>
                     {request.kind === "trusted_source"
-                      ? `Повторный запрос к демо-источнику: ${request.source ? SOURCE_NAME[request.source] : "источник"}`
+                      ? `Повторный запрос к источнику: ${request.source ? SOURCE_NAME[request.source] : "источник"}`
                       : request.officer
                         ? `Запрос специалиста · ${request.officer.display_name}`
                         : "Запрос системы"}

@@ -1,13 +1,14 @@
-import { FieldDescriptor } from "../../api";
-import { DemoBadge } from "../../components";
+import { useId } from "react";
+import { ApplicationProduct, FieldDescriptor } from "../../api";
+import { Icon } from "../../components";
 import { keepAmountsTogether, rub } from "./format";
 import {
   CollateralDraft,
   FieldDraft,
-  formatAnswer,
   formatDay,
   isMoney,
   parseInteger,
+  sourceReading,
 } from "./fields";
 
 type FieldProps = {
@@ -17,17 +18,17 @@ type FieldProps = {
   messages: Record<string, string>;
   disabled: boolean;
   onChange: (draft: FieldDraft) => void;
+  /** What a number's range belongs to («Для продукта», «Для цели «…»»). */
+  rangeScope?: string;
 };
 
 const HINTS: Record<string, string> = {
   actual_address: "Синтетический адрес: реальные данные не нужны.",
   actual_activity: "Например, оптовая торговля или производство мебели.",
-  employees: "Сотрудники в штате на сегодня.",
   monthly_debt_payment_rub:
     "Сумма ежемесячных платежей по кредитам, лизингу и займам. Если их нет, укажите 0.",
   tax_debt_rub: "Если задолженности нет, укажите 0.",
   obligations_note: "Например, лизинг оборудования до конца 2027 года.",
-  representative_name: "Только синтетическое имя: паспортные данные не нужны.",
 };
 
 /** The input id of an answer path; the wizard uses it to move focus to the first invalid field. */
@@ -90,15 +91,19 @@ function Choices({
   );
 }
 
-function numberHint(field: FieldDescriptor, draft: string) {
+function numberHint(
+  field: FieldDescriptor,
+  draft: string,
+  scope = "Для продукта",
+) {
   const parsed = parseInteger(draft);
   const range =
     field.name === "requested_amount_rub" &&
     field.min != null &&
     field.max != null
-      ? `Для продукта: от ${rub(field.min)} до ${rub(field.max)}.`
+      ? `${scope}: от ${rub(field.min)} до ${rub(field.max)}.`
       : field.name === "term_months" && field.min != null && field.max != null
-        ? `Для продукта: от ${field.min} до ${field.max} мес.`
+        ? `${scope}: от ${field.min} до ${field.max} мес.`
         : null;
   // A prefilled source value already shows its formatted amount in the source note.
   const sameAsSource =
@@ -132,8 +137,7 @@ function SourceNote({
   return (
     <div className={"source-note" + (differs || !known ? " caution" : "")}>
       <span className="source-line">
-        <b>Демо-источник оборотов</b> · {shown}
-        <DemoBadge />
+        <b>Источник оборотов</b> · {shown}
       </span>
       <p>
         {!known
@@ -154,11 +158,14 @@ function TextLikeField({
   messages,
   disabled,
   onChange,
+  rangeScope,
 }: FieldProps) {
   const id = idOf(field.name);
   const value = draft as string;
   const hint =
-    field.type === "integer" ? numberHint(field, value) : HINTS[field.name];
+    field.type === "integer"
+      ? numberHint(field, value, rangeScope)
+      : HINTS[field.name];
   const error = messages[field.name];
   const common = {
     id,
@@ -313,7 +320,7 @@ function CollateralField({
           ? declared
             ? "Заявленную стоимость нужно будет подтвердить документами об оценке и праве собственности."
             : "Для кредита с залогом заявите залог: тип, стоимость и описание — без них заявку не отправить."
-          : "Продукт без залога: сведения о залоге не влияют на решение."}
+          : "Залог по желанию: заявленный залог может увеличить лимит, его стоимость нужно будет подтвердить документами об оценке и праве собственности."}
       </p>
       <Choices
         name={idOf("collateral.status")}
@@ -422,26 +429,87 @@ function CollateralField({
   );
 }
 
-const SOURCE_NOTES: Record<string, string> = {
-  registry: "Из открытых источников: в анкете не меняется.",
-  gosuslugi: "Подтверждено через Госуслуги: в анкете не меняется.",
-};
-
-/** A source-owned answer (registry, Госуслуги): the source's value as text. It has no input, so it is never sent. */
+/**
+ * A source-owned answer (registry, Госуслуги): the source's value as static text with where it comes from — or why it
+ * is missing. It has no input, so it is never sent.
+ */
 function ReadOnlyField({ field }: { field: FieldDescriptor }) {
-  const source = field.source;
-  const value =
-    formatAnswer(field, source?.value ?? null) ?? "Нет данных источника";
-  const note =
-    source?.status === "unavailable"
-      ? "Реестр временно недоступен: значение уточнится после повторной проверки."
-      : SOURCE_NOTES[source?.name ?? ""];
+  const reading = sourceReading(field);
   return (
-    <fieldset className="field read-only-field">
-      <legend>{field.label}</legend>
-      <p>{value}</p>
-      {note && <p className="field-note">{note}</p>}
-    </fieldset>
+    <StaticValue
+      label={field.label}
+      value={reading.value}
+      note={reading.note}
+      caution={reading.caution}
+      icon={field.source?.name === "gosuslugi" ? "shield" : "building"}
+    />
+  );
+}
+
+function StaticValue({
+  label,
+  value,
+  note,
+  caution = false,
+  icon = "info",
+}: {
+  label: string;
+  value: string;
+  note: string;
+  caution?: boolean;
+  icon?: string;
+}) {
+  const id = useId();
+  return (
+    <div
+      className={"field read-only-field" + (caution ? " caution" : "")}
+      role="group"
+      aria-labelledby={id}
+    >
+      <span className="read-only-label" id={id}>
+        {label}
+      </span>
+      <p className="read-only-value">{value}</p>
+      <p className="read-only-source">
+        <Icon name={icon} size={16} />
+        <span>{note}</span>
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Facts in place of the questions a product does not ask, on the stage that holds the amount: no term for a product
+ * without one, no pledge for a product taken without collateral. Text only, never sent.
+ */
+export function ProductFacts({
+  product,
+  fields,
+}: {
+  product: ApplicationProduct;
+  fields: FieldDescriptor[];
+}) {
+  const asks = (name: string) => fields.some((field) => field.name === name);
+  if (!asks("requested_amount_rub")) return null;
+  return (
+    <>
+      {!asks("term_months") && product.term_min_months === null && (
+        <StaticValue
+          label="Срок"
+          value="Без фиксированного срока"
+          note="Продукт действует без фиксированного срока: срок в анкете не указывается."
+          icon="clock"
+        />
+      )}
+      {!asks("collateral") && product.collateral_mode === "none" && (
+        <StaticValue
+          label="Залог"
+          value="Не требуется"
+          note="Продукт выдаётся без залога: сведения о залоге не нужны."
+          icon="shield"
+        />
+      )}
+    </>
   );
 }
 

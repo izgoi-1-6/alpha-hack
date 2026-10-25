@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { Application, Dialog, DialogStage } from "../../api";
-import { DemoBadge, Icon } from "../../components";
-import { rub } from "./format";
+import { Icon } from "../../components";
+import { productName, rub } from "./format";
 
 /** Progress as a slim bar with a textual count, and one 44px button per stage (titles collapse on small screens). */
 export function Stepper({
@@ -91,13 +91,12 @@ export function DraftSummary({
     <aside className="card draft-summary" aria-labelledby="draft-summary-title">
       <div className="panel-title">
         <h2 id="draft-summary-title">Предварительный расчёт</h2>
-        <DemoBadge />
       </div>
       <dl>
         <div>
           <dt>Продукт</dt>
           <dd>
-            {product.name ?? "Демо-продукт"}
+            {productName(dialog)}
             {product.amount_min_rub != null &&
               product.amount_max_rub != null && (
                 <small>
@@ -129,13 +128,19 @@ export function DraftSummary({
         </div>
         <div>
           <dt>Срок</dt>
-          <dd>{typeof term === "number" ? `${term} мес.` : "Не указан"}</dd>
+          <dd>
+            {typeof term === "number"
+              ? `${term} мес.`
+              : product.term_min_months === null
+                ? "Без фиксированного срока"
+                : "Не указан"}
+          </dd>
         </div>
         <div>
           <dt>Оборот в месяц</dt>
           <dd>
             {typeof revenue === "number" ? rub(revenue) : "Нет данных"}
-            <small>по демо-источнику</small>
+            <small>по данным источника</small>
           </dd>
         </div>
       </dl>

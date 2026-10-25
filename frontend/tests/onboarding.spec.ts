@@ -1,19 +1,41 @@
 import { test, expect } from "@playwright/test";
-import { artifacts, confirmAuthority, settle } from "./helpers";
+import {
+  artifacts,
+  authorityDialog,
+  confirmAuthority,
+  loginClient,
+  password,
+  registerClient,
+  revision,
+  settle,
+} from "./helpers";
 
-test("seeded demo login, source details, retry and persistent refresh", async ({
+test("seeded client login, source details, retry and persistent refresh", async ({
   page,
 }) => {
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "С возвращением" }),
   ).toBeVisible();
+  // Quick login keeps its three profiles; the seed password is never shown as copy on the page.
+  for (const name of [
+    "Войти как клиент",
+    "Войти как специалист",
+    "Новый клиент",
+  ])
+    await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText(password);
+  await expect(page.locator("body")).not.toContainText("Пароль:");
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: artifacts + "/task-2-login-desktop.png",
     fullPage: true,
   });
-  await page.getByRole("button", { name: "Демо-клиент", exact: true }).click();
+  await page.screenshot({
+    path: `${revision}/task-11-login.png`,
+    fullPage: true,
+  });
+  await loginClient(page);
   await page
     .getByLabel("Ваша компания", { exact: true })
     .selectOption({ label: "ООО «Сильный бизнес» · 9900000017" });
@@ -66,11 +88,11 @@ test("mobile registration, explicit consents, source recovery, reload, errors an
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.getByRole("button", { name: "Регистрация", exact: true }).click();
-  await page.getByLabel("Ваше имя").fill("Демо Предприниматель");
+  await page.getByLabel("Ваше имя").fill("Пётр Предприниматель");
   await page
     .getByLabel("Электронная почта")
     .fill(`browser-${Date.now()}@example.test`);
-  await page.getByLabel("Пароль", { exact: true }).fill("DemoCredit2026!");
+  await page.getByLabel("Пароль", { exact: true }).fill(password);
   await page
     .getByRole("button", { name: "Создать аккаунт", exact: true })
     .click();
@@ -150,9 +172,7 @@ for (const outcome of ["success", "unauthorized"] as const) {
     page,
   }) => {
     await page.goto("/");
-    await page
-      .getByRole("button", { name: "Демо-клиент", exact: true })
-      .click();
+    await loginClient(page);
     const companyA = "e230a446-129b-570f-b450-3cd8f7ddc8e5";
     await page
       .getByLabel("Ваша компания", { exact: true })
@@ -245,9 +265,7 @@ for (const outcome of ["success", "unauthorized"] as const) {
     page,
   }) => {
     await page.goto("/");
-    await page
-      .getByRole("button", { name: "Демо-клиент", exact: true })
-      .click();
+    await loginClient(page);
     await expect(
       page.getByLabel("Ваша компания", { exact: true }),
     ).toBeVisible();
@@ -311,7 +329,7 @@ test("company retry retains its replay body and key after navigation and a lost 
   page,
 }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Демо-клиент", exact: true }).click();
+  await loginClient(page);
   const companyA = "e230a446-129b-570f-b450-3cd8f7ddc8e5";
   await page
     .getByLabel("Ваша компания", { exact: true })
@@ -374,7 +392,7 @@ test("history navigation during delayed auth restoration finishes boot on the cu
   page,
 }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Демо-клиент", exact: true }).click();
+  await loginClient(page);
   const companyA = "e230a446-129b-570f-b450-3cd8f7ddc8e5";
   await page
     .getByLabel("Ваша компания", { exact: true })
@@ -413,4 +431,106 @@ test("history navigation during delayed auth restoration finishes boot on the cu
   await expect(page.getByLabel("Ваша компания", { exact: true })).toHaveValue(
     companyA,
   );
+});
+
+test("adding a company needs the representative's Госуслуги confirmation in a dialog: person and role shown, Escape cancels, the confirmation belongs to its ИНН", async ({
+  page,
+}) => {
+  await registerClient(page, "gosuslugi");
+  const verifications: { id: string; inn: string }[] = [];
+  page.on("response", async (response) => {
+    if (
+      response.url().endsWith("/identity/gosuslugi/verify") &&
+      response.status() === 201
+    ) {
+      const body = await response.json();
+      verifications.push({ id: body.verification_id, inn: body.inn });
+    }
+  });
+  await page
+    .locator(".sidebar")
+    .getByRole("button", { name: "Добавить компанию" })
+    .click();
+  const trigger = page.getByRole("button", {
+    name: "Подтвердить через Госуслуги",
+  });
+  const add = page.getByRole("button", { name: "Добавить и проверить" });
+  // Nothing to confirm before an ИНН is chosen.
+  await expect(trigger).toBeDisabled();
+  await page.getByRole("button").filter({ hasText: "Сильный бизнес" }).click();
+  for (const checkbox of await page
+    .locator("#onboarding-consents")
+    .getByRole("checkbox")
+    .all())
+    await checkbox.check();
+  await expect(add).toBeDisabled();
+  await expect(page.locator(".onboarding-remaining")).toContainText(
+    "подтвердить полномочия",
+  );
+
+  // The dialog shows who Госуслуги returned for this company; Escape closes it without a confirmation.
+  await trigger.click();
+  const dialog = authorityDialog(page);
+  await expect(dialog).toBeVisible();
+  for (const text of [
+    "Соколов Андрей Викторович",
+    "Генеральный директор",
+    "ООО «Сильный бизнес»",
+    "9900000017",
+  ])
+    await expect(dialog).toContainText(text);
+  await expect(
+    dialog.getByRole("button", { name: "Подтвердить" }),
+  ).toBeFocused();
+  await expect(dialog.locator("img")).toHaveCount(0);
+  await dialog.screenshot({ path: `${revision}/task-11-gosuslugi-dialog.png` });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(add).toBeDisabled();
+
+  // «Отмена» closes it too; «Подтвердить» confirms, moves focus to the confirmation and enables adding.
+  await trigger.click();
+  await dialog.getByRole("button", { name: "Отмена" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(add).toBeDisabled();
+  await confirmAuthority(page);
+  const confirmed = page.getByRole("status");
+  await expect(confirmed).toContainText("Соколов Андрей Викторович");
+  await expect(confirmed).toContainText("Генеральный директор");
+  await expect(confirmed).toBeFocused();
+  await expect(add).toBeEnabled();
+  await page
+    .locator("#gosuslugi-step")
+    .screenshot({ path: `${revision}/task-11-gosuslugi-confirmed.png` });
+
+  // Another ИНН needs its own confirmation; coming back to the first one asks again too.
+  await page.getByRole("button").filter({ hasText: "Средний риск" }).click();
+  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(add).toBeDisabled();
+  await page.getByRole("button").filter({ hasText: "Сильный бизнес" }).click();
+  await expect(add).toBeDisabled();
+
+  // An ИНН outside the registry: the dialog explains the refusal and closes on Escape.
+  await page.getByLabel("ИНН компании или ИП").fill("9912345672");
+  await trigger.click();
+  await expect(dialog.getByRole("alert")).toContainText("не найден");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  // The company is added with the verification confirmed in the dialog.
+  await page.getByRole("button").filter({ hasText: "Сильный бизнес" }).click();
+  await confirmAuthority(page);
+  await add.click();
+  await expect(
+    page.getByRole("heading", { name: "Что удалось узнать" }),
+  ).toBeVisible();
+  const { items } = await (await page.request.get("/api/v1/companies")).json();
+  expect(items).toHaveLength(1);
+  expect(verifications.length).toBe(4);
+  expect(items[0].authority_verification_id).toBe(verifications.at(-1)!.id);
+  expect(
+    verifications.every((verification) => verification.inn === "9900000017"),
+  ).toBe(true);
 });

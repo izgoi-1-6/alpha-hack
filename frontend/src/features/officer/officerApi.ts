@@ -131,7 +131,7 @@ export type StaffDetail = {
   history: StaffHistoryItem[];
   /** Every revision, in checklist order, then revision. */
   documents: StaffDocument[];
-  /** «Демонстрационная проверка документов…»: the review label (the same text as the customer checklist's notice). */
+  /** «Проверка документов: …»: the review label (the same text as the customer checklist's notice). */
   document_notice: string;
   /** Answer paths an officer may request for this product (pledge paths only for the secured product). */
   requestable_fields: string[];

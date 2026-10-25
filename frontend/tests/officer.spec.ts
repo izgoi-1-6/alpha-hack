@@ -121,7 +121,7 @@ test("A06 medium review: claim → information request → the client answers on
   ).toBeVisible();
   expect(new URL(officer.url()).searchParams.get("application")).toBe(id);
 
-  // Evidence: score with each factor, labelled demo sources, amounts and the allowed range.
+  // Evidence: score with each factor, the data sources, amounts and the allowed range.
   const score = officer.getByRole("region", { name: "Скоринг и факторы" });
   await expect(score).toContainText("65 баллов из 100");
   await expect(score).toContainText("Средний риск");
@@ -133,10 +133,9 @@ test("A06 medium review: claim → information request → the client answers on
     ["Кредитная история", "25 из 25"],
   ])
     await expect(score.getByRole("row", { name: new RegExp(factor) })).toContainText(points);
-  const sources = officer.getByRole("region", { name: "Демо-источники" });
+  const sources = officer.getByRole("region", { name: "Источники данных" });
   for (const source of ["Реестр", "Обороты", "БКИ"])
     await expect(sources).toContainText(source);
-  await expect(sources.getByText("Демо · имитация")).toHaveCount(3);
   await expect(officer.getByRole("group", { name: "Запрошенная сумма" })).toContainText("700 000 ₽");
   await expect(officer.getByRole("group", { name: "Расчётный лимит" })).toContainText("600 000 ₽");
   await expect(officer.getByRole("group", { name: "Разница с лимитом" })).toContainText("+100 000 ₽");
@@ -175,15 +174,37 @@ test("A06 medium review: claim → information request → the client answers on
   await expect(secondDecision.locator(".request-fields .check-row")).toHaveCount(requestable.length);
   await expect(secondDecision.getByLabel("Подтверждаю, что сведения анкеты верны")).toBeVisible();
   // Source-owned answers (registry, Госуслуги) are never requested from the client.
-  for (const label of ["Налоговый режим", "Число сотрудников", "ФИО представителя (синтетические данные)"])
+  for (const label of ["Налоговый режим", "Число сотрудников", "ФИО представителя"])
     await expect(secondDecision.getByLabel(label, { exact: true })).toHaveCount(0);
-  await expect(secondDecision.getByLabel(/Подтверждаю полномочия представителя/)).toHaveCount(0);
+  await expect(secondDecision.getByLabel(/Полномочия представителя/)).toHaveCount(0);
   await expect(secondDecision.getByText(/Залог/)).toHaveCount(0);
   await secondDecision
     .getByLabel("Ежемесячные платежи по действующим кредитам и лизингу, ₽")
     .check();
   const question = "Уточните ежемесячные платежи по кредитам и лизингу на сегодня.";
   await secondDecision.getByLabel("Вопрос клиенту").fill(question);
+  // A field the server will not ask the client for (FIELD_NOT_REQUESTABLE; the picker never offers one, so this
+  // reply is injected once) is explained next to the picker, and nothing is sent until the officer tries again.
+  await second.route(
+    /\/api\/v1\/officer\/applications\/[^/]+\/request-info$/,
+    (route) =>
+      route.fulfill({
+        status: 422,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: {
+            code: "FIELD_NOT_REQUESTABLE",
+            message: "Заявка подана без залога: сведения о залоге по ней не запрашиваются.",
+            fields: { requested_fields: "Заявка подана без залога: сведения о залоге по ней не запрашиваются." },
+          },
+        }),
+      }),
+    { times: 1 },
+  );
+  await secondDecision.getByRole("button", { name: "Отправить запрос" }).click();
+  await expect(secondDecision.getByRole("alert")).toContainText("нельзя запросить у клиента");
+  await expect(secondDecision.locator("#request-fields-error")).toContainText("сведения о залоге по ней не запрашиваются");
+  await expect(statusPill(second)).toHaveText("На рассмотрении");
   await secondDecision.getByRole("button", { name: "Отправить запрос" }).click();
   await expect(statusPill(second)).toHaveText("Нужны сведения");
   await expect(
@@ -221,7 +242,7 @@ test("A06 medium review: claim → information request → the client answers on
   await expect(debt).toHaveValue("240000");
   await expect(form.getByRole("textbox")).toHaveCount(2);
   await debt.fill("200000");
-  const answer = "Платежи снизились после досрочного погашения лизинга (демо).";
+  const answer = "Платежи снизились после досрочного погашения лизинга.";
   await form.getByLabel("Ответ специалисту").fill(answer);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
@@ -239,7 +260,7 @@ test("A06 medium review: claim → information request → the client answers on
   await expect(page.getByRole("list", { name: "История заявки" })).toContainText(answer);
 
   // The first officer tab is now outdated: its decision meets the version conflict, reloads and keeps the reason.
-  const reason = "Средний риск: одобряем в пределах расчётного лимита (демо).";
+  const reason = "Средний риск: одобряем в пределах расчётного лимита.";
   await decision.getByLabel("Основание решения").fill(reason);
   await decision.getByRole("button", { name: "Предварительно одобрить" }).click();
   await expect(decision.getByRole("alert")).toContainText("Заявка изменилась");
@@ -425,7 +446,7 @@ test("filters survive a reload; a non-computable limit is refused with the serve
   await row.getByRole("link").click();
   await decision.getByRole("button", { name: "Отказ", exact: true }).click();
   await expect(decision).toContainText("Предварительный отказ");
-  const reason = "Выручка не подтверждена источником, лимит рассчитать нельзя (демо).";
+  const reason = "Выручка не подтверждена источником, лимит рассчитать нельзя.";
   await decision.getByLabel("Причина отказа").fill(reason);
   await decision.getByRole("button", { name: "Отказать", exact: true }).click();
   await expect(decision.getByRole("group", { name: "Отказать по заявке?" })).toBeVisible();
@@ -456,7 +477,7 @@ test("a trusted-source request keeps the retry path and never shows the answer f
   await registerClient(page, "officer-flow");
   await onboard(page, "БКИ без категории");
   await openRecommendations(page);
-  // The demo BKI answers without the history category: a system request that only a retry of the source can close.
+  // The BKI answers without the history category: a system request that only a retry of the source can close.
   const id = await submitForReview(
     page,
     termCard,
@@ -467,7 +488,7 @@ test("a trusted-source request keeps the retry path and never shows the answer f
   await expect(page.getByRole("button", { name: "Повторить проверку" })).toBeVisible();
   await expect(page.getByRole("form", { name: "Ответ на запрос" })).toHaveCount(0);
   await page.getByRole("button", { name: "Отменить заявку" }).click();
-  await page.getByLabel("Причина отмены").fill("Проверка записи о запросе (демо)");
+  await page.getByLabel("Причина отмены").fill("Проверка записи о запросе");
   await page.getByRole("button", { name: "Да, отменить заявку" }).click();
   await expect(
     page.getByRole("heading", { level: 1, name: "Заявка отменена" }),
@@ -477,7 +498,7 @@ test("a trusted-source request keeps the retry path and never shows the answer f
   await officer.goto(`/?application=${id}`);
   await expect(statusPill(officer)).toHaveText("Отменена");
   const requests = officer.getByRole("region", { name: "Запросы сведений" });
-  await expect(requests).toContainText("Повторный запрос к демо-источнику: БКИ");
+  await expect(requests).toContainText("Повторный запрос к источнику: БКИ");
   await expect(requests).toContainText("Не завершён: заявка закрыта");
   await expect(requests).not.toContainText("Открыт");
   await expect(decisionPanel(officer)).toContainText("Заявка закрыта");

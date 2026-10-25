@@ -18,11 +18,12 @@ import {
   hasAnswer,
   locate,
   sameAnswer,
+  termFor,
   toDraft,
 } from "./fields";
 import { formatTime, productName, STATUS } from "./format";
 import { ReviewStage } from "./ReviewStage";
-import { idOf, StageField } from "./StageFields";
+import { idOf, ProductFacts, StageField } from "./StageFields";
 import { UnsavedFieldsDialog } from "./UnsavedFieldsDialog";
 import { useCommand } from "./useCommand";
 import { DraftSummary, Stepper } from "./WizardChrome";
@@ -31,11 +32,11 @@ import { DraftSummary, Stepper } from "./WizardChrome";
 export type LeaveGuard = () => Promise<boolean>;
 
 const STAGE_INTRO: Record<number, string> = {
-  1: "Подтвердите сведения из демо-реестра и укажите, где и чем фактически занимается бизнес.",
-  2: "Цель, сумма и срок перенесены из подбора. Их можно изменить в пределах условий продукта.",
-  3: "Обороты подставлены из демо-источника. Если меняете значение, его проверит кредитный специалист.",
-  4: "Текущие платежи и налоговые обязательства. Кредитную историю запросим в демо-БКИ только после отправки.",
-  5: "Только синтетические данные: паспорт и реальные персональные данные не нужны.",
+  1: "Подтвердите сведения из реестра и укажите, где и чем фактически занимается бизнес.",
+  2: "Сумма перенесена из подбора. Выберите цель и срок в пределах условий продукта — и залог, если продукт его предусматривает.",
+  3: "Обороты подставлены из источника данных: если меняете значение, его проверит кредитный специалист. Налоговый режим и число сотрудников приходят из открытых источников.",
+  4: "Текущие платежи и налоговые обязательства. Кредитную историю запросим в бюро кредитных историй только после отправки.",
+  5: "ФИО и полномочия представителя приходят из подтверждения через Госуслуги. Подтвердите сведения о владельцах.",
   6: "Проверьте ответы и дайте согласия — без них заявку не отправить.",
 };
 const belongsTo = (path: string, name: string) =>
@@ -114,6 +115,20 @@ export function Wizard({
     field.name in edits
       ? edits[field.name]
       : toDraft(field, dialog.answers[field.name]);
+  /** The field as shown: a term's range follows the purpose being chosen on the same stage. */
+  function shown(field: FieldDescriptor) {
+    if (field.name !== "term_months") return { field, scope: undefined };
+    const purposeField = current.fields.find(
+      (entry) => entry.name === "purpose",
+    );
+    const purpose = purposeField
+      ? (draftOf(purposeField) as string | null)
+      : null;
+    const label = purposeField?.options?.find(
+      (o) => o.value === purpose,
+    )?.label;
+    return termFor(field, purpose, dialog.product.term_max_months, label);
+  }
 
   function change(field: FieldDescriptor, draft: FieldDraft) {
     setEdits((previous) => ({ ...previous, [field.name]: draft }));
@@ -383,7 +398,7 @@ export function Wizard({
           <Icon name="info" />
           <span>
             {dialog.company.registry_status === "inactive"
-              ? "Компания не действует по данным демо-реестра: черновик можно просмотреть или отменить, но не отправить."
+              ? "Компания не действует по данным реестра: черновик можно просмотреть или отменить, но не отправить."
               : "Отправка этой заявки сейчас недоступна."}
           </span>
         </div>
@@ -428,16 +443,24 @@ export function Wizard({
               }}
             >
               <div className="stage-fields">
-                {current.fields.map((field) => (
-                  <StageField
-                    key={field.name}
-                    field={field}
-                    draft={draftOf(field)}
-                    messages={messagesFor(field)}
-                    disabled={busy}
-                    onChange={(draft) => change(field, draft)}
-                  />
-                ))}
+                {current.fields.map((field) => {
+                  const view = shown(field);
+                  return (
+                    <StageField
+                      key={field.name}
+                      field={view.field}
+                      rangeScope={view.scope}
+                      draft={draftOf(field)}
+                      messages={messagesFor(field)}
+                      disabled={busy}
+                      onChange={(draft) => change(field, draft)}
+                    />
+                  );
+                })}
+                <ProductFacts
+                  product={dialog.product}
+                  fields={current.fields}
+                />
               </div>
               {stageProblem && (
                 <div className="notice error" role="alert">

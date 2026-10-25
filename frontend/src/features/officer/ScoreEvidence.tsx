@@ -1,4 +1,3 @@
-import { DemoBadge } from "../../components";
 import {
   formatDate,
   formatDateTime,
@@ -44,7 +43,7 @@ export function ReviewAmounts({
         value={limit !== null ? rub(limit) : "Не рассчитан"}
         note={
           evaluation
-            ? `Демо-скоринг, правило ${evaluation.rule}.`
+            ? `Скоринг, правило ${evaluation.rule}.`
             : "Проверка не проводилась."
         }
       />
@@ -120,10 +119,10 @@ function FinalAmounts({ application }: { application: StaffApplication }) {
         ))}
       {application.final_amount_rub !== null && (
         <Amount
-          label="Итоговая сумма (демо-решение)"
+          label="Итоговая сумма"
           tone="approved"
           value={rub(application.final_amount_rub)}
-          note="Окончательное решение демо: деньги не перечисляются, договор не подписывается."
+          note="Окончательное решение. Договор и выдача оформляются в Альфа-Бизнесе, не в «Кредитном маршруте»."
         />
       )}
     </>
@@ -163,7 +162,7 @@ export function ScorePanel({
           30,
         ],
         [
-          "Кредитная история (демо-БКИ)",
+          "Кредитная история (БКИ)",
           CREDIT_HISTORY[factors.credit_history],
           factors.credit_history_points,
           25,
@@ -174,7 +173,6 @@ export function ScorePanel({
     <section className="card evidence-card" aria-labelledby="score-heading">
       <div className="panel-title">
         <h2 id="score-heading">Скоринг и факторы</h2>
-        <DemoBadge label="Демо-скоринг" />
       </div>
       {!evaluation ? (
         <p className="muted">Проверка по заявке не проводилась.</p>
@@ -292,8 +290,8 @@ export function EvaluationsPanel({
                 </p>
                 {bki?.reused_from_evaluation_id && (
                   <small>
-                    Ответ демо-БКИ взят из прежней проверки: повторного запроса
-                    не было.
+                    Ответ БКИ взят из прежней проверки: повторного запроса не
+                    было.
                   </small>
                 )}
                 <ul>

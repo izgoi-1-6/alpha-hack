@@ -234,7 +234,8 @@ export type Overlay = {
   badge_text: string;
   badge_text_collateral_required: string;
 };
-export type AmountSlider = {
+/** The product screen's amount slider (policy `amount_slider`): bounds, default, snapping bands and presets. */
+export type AmountSliderConfig = {
   scale: "log";
   min_rub: number;
   max_rub: number;
@@ -246,7 +247,7 @@ export type Catalog = {
   catalog_version: string;
   rules_version: string;
   key_rate: { value_bps: number; effective_from: string | null };
-  amount_slider: AmountSlider;
+  amount_slider: AmountSliderConfig;
   products: Product[];
   overlays: Overlay[];
 };
@@ -354,7 +355,7 @@ export type DocumentSummary = {
   can_complete: boolean;
 };
 export type DocumentChecklist = {
-  /** «Демонстрационная проверка документов…»: the review label the UI shows (no antivirus or authenticity claim). */
+  /** «Проверка документов: …»: the review label the UI shows (no antivirus or authenticity claim). */
   notice: string;
   requirements: {
     document_type: DocumentType;

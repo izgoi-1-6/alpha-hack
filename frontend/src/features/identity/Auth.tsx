@@ -1,6 +1,14 @@
 import React, { useState } from "react";
 import { api, User, errorMessage as message } from "../../api";
-import { Icon, Brand, DemoBadge, ErrorNotice } from "../../components";
+import { Icon, Brand, ErrorNotice } from "../../components";
+
+/** The seeded profiles behind the quick-login buttons (their password is documented, never shown on the page). */
+const QUICK_LOGINS = [
+  { label: "Войти как клиент", email: "client@demo.local" },
+  { label: "Войти как специалист", email: "officer@demo.local" },
+  { label: "Новый клиент", email: "other@demo.local" },
+];
+const SEED_PASSWORD = "DemoCredit2026!";
 export function Auth({ onAuth }: { onAuth: (u: User) => void }) {
   const [register, setRegister] = useState(false),
     [email, setEmail] = useState(""),
@@ -23,11 +31,11 @@ export function Auth({ onAuth }: { onAuth: (u: User) => void }) {
       setBusy(false);
     }
   }
-  async function demo(email: string) {
+  async function quickLogin(email: string) {
     setBusy(true);
     setError("");
     try {
-      onAuth((await api.login(email, "DemoCredit2026!")).user);
+      onAuth((await api.login(email, SEED_PASSWORD)).user);
     } catch (e) {
       setError(message(e));
     } finally {
@@ -75,20 +83,20 @@ export function Auth({ onAuth }: { onAuth: (u: User) => void }) {
         </div>
         <div className="story-foot">
           <Icon name="shield" />
-          Только синтетические данные. Без обращения в банк.
+          Кредитная история запрашивается только с вашего согласия.
         </div>
       </aside>
       <main className="auth-main">
         <div className="auth-top">
-          <span>Демонстрационный кабинет</span>
-          <DemoBadge />
+          <span>Кабинет для бизнеса</span>
+          <span>ИП и ООО</span>
         </div>
         <div className="auth-card">
           <div className="eyebrow accent">Кредитный маршрут</div>
           <h2>{register ? "Создать аккаунт" : "С возвращением"}</h2>
           <p className="muted">
             {register
-              ? "Добавьте компанию и проверьте её демо-профиль."
+              ? "Добавьте компанию и подберите для неё финансирование."
               : "Войдите, чтобы продолжить работу с компанией."}
           </p>
           <div className="tabs" aria-label="Режим входа">
@@ -162,42 +170,34 @@ export function Auth({ onAuth }: { onAuth: (u: User) => void }) {
               <Icon />
             </button>
           </form>
-          <div className="demo-access">
-            <div className="demo-heading">
+          <div className="quick-access">
+            <div className="quick-heading">
               <Icon name="route" />
-              <b>Попробуйте без регистрации</b>
+              <b>Быстрый вход</b>
             </div>
-            <p>Готовые синтетические профили для знакомства с сервисом.</p>
-            <div className="demo-buttons">
-              <button disabled={busy} onClick={() => demo("client@demo.local")}>
-                Демо-клиент <Icon size={16} />
-              </button>
-              <button
-                disabled={busy}
-                onClick={() => demo("officer@demo.local")}
-              >
-                Специалист <Icon size={16} />
-              </button>
-              <button disabled={busy} onClick={() => demo("other@demo.local")}>
-                Новый клиент <Icon size={16} />
-              </button>
+            <p>
+              Готовые профили: клиент с компаниями, кредитный специалист или
+              новый клиент без компаний.
+            </p>
+            <div className="quick-buttons">
+              {QUICK_LOGINS.map((profile) => (
+                <button
+                  key={profile.email}
+                  disabled={busy}
+                  onClick={() => void quickLogin(profile.email)}
+                >
+                  {profile.label} <Icon size={16} />
+                </button>
+              ))}
             </div>
-            <details>
-              <summary>Данные для ручного входа</summary>
-              <p>
-                client@demo.local · other@demo.local · officer@demo.local
-                <br />
-                Пароль: <code>DemoCredit2026!</code>
-              </p>
-            </details>
           </div>
           <p className="auth-note">
-            Локальная демонстрация. Не вводите реальные персональные данные или
-            банковские реквизиты.
+            Не вводите реальные персональные данные или банковские реквизиты:
+            сервис работает с синтетическими профилями компаний.
           </p>
         </div>
         <footer>
-          © 2026 Кредитный маршрут <span>Прототип для бизнеса</span>
+          © 2026 Кредитный маршрут <span>Финансирование для бизнеса</span>
         </footer>
       </main>
     </div>

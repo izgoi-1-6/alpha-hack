@@ -64,7 +64,7 @@ export function ApplicationPage({
   onOpenList: () => void;
   onOpenApplication: (id: string) => void;
   onRecommend: (companyId: string) => void;
-  /** Opens the local Alfa-Business demo page of an approved application. */
+  /** Opens the local Alfa-Business hand-off page of an approved application. */
   onOpenHandoff: (path: string) => void;
   /** The wizard registers how to leave it; the App consults it before any navigation. */
   onLeaveGuard: (guard: LeaveGuard | null) => void;

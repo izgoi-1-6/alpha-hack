@@ -1,5 +1,4 @@
 import { ReactNode } from "react";
-import { DemoBadge } from "../../components";
 import { formatDateTime, rub, rubOrNone } from "../applications/format";
 import { formatDay } from "../applications/fields";
 import { FinanceEvidence, SourceStatus, StaffDetail } from "./officerApi";
@@ -37,14 +36,13 @@ function SourceRow({
         <span className={"status " + (status ? tone(status) : "neutral")}>
           {status ? SOURCE_STATUS[status] : "Не запрашивался"}
         </span>
-        <DemoBadge />
       </div>
       <p>{children}</p>
     </li>
   );
 }
 
-/** Registry, turnover and BKI as the mocks answered them; every source is a labelled local imitation. */
+/** Registry, turnover and BKI as the sources answered them for this application. */
 export function SourcesPanel({
   evidence,
 }: {
@@ -55,7 +53,7 @@ export function SourcesPanel({
   return (
     <section className="card evidence-card" aria-labelledby="sources-heading">
       <div className="panel-title">
-        <h2 id="sources-heading">Демо-источники</h2>
+        <h2 id="sources-heading">Источники данных</h2>
       </div>
       <ul className="source-list">
         <SourceRow name="Реестр" status={precheck.registry_source_status}>
@@ -83,7 +81,7 @@ export function SourcesPanel({
                 bki.reused_from_evaluation_id &&
                   "ответ взят из прежней проверки",
               )
-            : "Запрос в демо-БКИ по заявке не выполнялся"}
+            : "Запрос в БКИ по заявке не выполнялся"}
         </SourceRow>
       </ul>
     </section>

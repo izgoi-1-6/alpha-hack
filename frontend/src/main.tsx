@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import {
   api,
   ApiError,
-  AuthorityVerification,
   Company,
   CompanyResult,
   ConsentDocument,
@@ -11,7 +10,7 @@ import {
   User,
   errorMessage as message,
 } from "./api";
-import { Brand, Icon, DemoBadge, Loading, ErrorNotice } from "./components";
+import { Brand, Icon, Loading, ErrorNotice } from "./components";
 import { Auth } from "./features/identity/Auth";
 import { Onboarding } from "./features/companies/Onboarding";
 import { CompanyDetail } from "./features/companies/CompanyDetail";
@@ -66,7 +65,7 @@ function App() {
   const recommending = url.searchParams.get("view") === "recommendations";
   const applicationList = url.searchParams.get("view") === "applications";
   const applicationId = url.searchParams.get("application");
-  // The one pathname route: the local Alfa-Business demo page of an approved application.
+  // The one pathname route: the local Alfa-Business hand-off page of an approved application.
   const handoffId = handoffIdOf(url.pathname);
   const inApplications = applicationList || !!applicationId || !!handoffId;
   const queueView = url.searchParams.get("view") === "queue";
@@ -152,7 +151,7 @@ function App() {
       changeView(next);
     });
   }
-  /** Opens an in-app path (the demo hand-off page) through the same leave guard as `navigate`. */
+  /** Opens an in-app path (the hand-off page) through the same leave guard as `navigate`. */
   function openPath(path: string) {
     const next = new URL(path, window.location.origin);
     afterLeaving(() => {
@@ -253,25 +252,6 @@ function App() {
       if (scope.session === generation.current.session) changeAccount(null);
     } catch (e) {
       if (isCurrent(scope)) setActionError(message(e));
-    } finally {
-      if (isCurrent(scope)) setBusy(false);
-    }
-  }
-  async function verifyAuthority(
-    inn: string,
-  ): Promise<AuthorityVerification | null> {
-    const scope = captureScope();
-    setBusy(true);
-    setActionError("");
-    try {
-      // Each confirmation is a new one: a lost response is simply confirmed again.
-      const result = await api.verifyAuthority(inn, crypto.randomUUID());
-      return isCurrent(scope) ? result : null;
-    } catch (e) {
-      if (!isCurrent(scope)) return null;
-      if (e instanceof ApiError && e.status === 401) changeAccount(null);
-      else setActionError(message(e));
-      return null;
     } finally {
       if (isCurrent(scope)) setBusy(false);
     }
@@ -383,8 +363,11 @@ function App() {
           )}
         </nav>
         <div className="sidebar-note">
-          <span className="small-red-dot" /> Демонстрационный сервис
-          <p>Реестр, обороты и проверки — локальные имитации.</p>
+          <span className="small-red-dot" /> Финансирование для ИП и ООО
+          <p>
+            Сведения о компании — из реестра и открытых источников, кредитная
+            история — только с согласия клиента.
+          </p>
         </div>
         <div className="account">
           <span className="avatar">
@@ -393,9 +376,7 @@ function App() {
           <div>
             <strong>{user.display_name}</strong>
             <small>
-              {user.role === "CLIENT"
-                ? "Клиент · демо"
-                : "Кредитный специалист"}
+              {user.role === "CLIENT" ? "Клиент" : "Кредитный специалист"}
             </small>
           </div>
           <button
@@ -421,7 +402,7 @@ function App() {
           <span className="breadcrumbs">
             Бизнес <span>/</span>{" "}
             {handoffId
-              ? "Альфа-Бизнес (демо)"
+              ? "Альфа-Бизнес"
               : officer
                 ? applicationId
                   ? "Рассмотрение заявки"
@@ -433,7 +414,6 @@ function App() {
                     : "Мои компании"}
           </span>
           <div className="topbar-right">
-            <DemoBadge />
             <span className="account-email">{user.email}</span>
           </div>
         </header>
@@ -442,7 +422,7 @@ function App() {
           {officer ? (
             handoffId ? (
               <NoAccess
-                text="Страница перехода в Альфа-Бизнес (демо) открывается только владельцу одобренной заявки."
+                text="Страница перехода в Альфа-Бизнес открывается только владельцу одобренной заявки."
                 action="Перейти к очереди заявок"
                 onAction={() => navigate(undefined, "queue")}
               />
@@ -533,16 +513,17 @@ function App() {
               fixtures={fixtures}
               consents={consents}
               busy={busy}
-              onVerify={verifyAuthority}
               onSubmit={(inn, verificationId) =>
                 void addCompany(inn, verificationId)
               }
               onCancel={() => navigate()}
+              onUnauthorized={() => changeAccount(null)}
               error={actionError}
             />
           ) : (
             <>
-              {companies.length > 0 && (
+              {/* The product choice keeps the amount as its only input: switching companies is on the profile. */}
+              {companies.length > 0 && !(data && recommending) && (
                 <div className="company-switcher">
                   <label htmlFor="company-select">Ваша компания</label>
                   <select
@@ -604,9 +585,8 @@ function App() {
                     </span>
                     <h2>Здесь появятся ваши компании</h2>
                     <p>
-                      Понадобится только ИНН и согласие на проверку
-                      синтетических сведений. Начните с одного из готовых
-                      демо-профилей.
+                      Понадобится ИНН, подтверждение полномочий через Госуслуги
+                      и согласие на проверку сведений компании.
                     </p>
                     <button
                       className="button primary"

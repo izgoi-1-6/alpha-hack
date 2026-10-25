@@ -198,6 +198,74 @@ export function formatAnswer(
   }
 }
 
+/** A source-owned answer as the client sees it: the source's value, where it comes from, or why it is missing. */
+export type SourceReading = {
+  value: string;
+  /** Short origin tag for the review, empty when the value itself says what is missing. */
+  origin: string;
+  note: string;
+  caution: boolean;
+};
+
+export function sourceReading(field: FieldDescriptor): SourceReading {
+  const source = field.source;
+  const shown = formatAnswer(field, source?.value ?? null);
+  if (source?.name === "gosuslugi")
+    return source.status === "available" && shown !== null
+      ? {
+          value: shown,
+          origin: "подтверждено через Госуслуги",
+          note: "Подтверждено через Госуслуги: в анкете не меняется.",
+          caution: false,
+        }
+      : {
+          value: "Нет подтверждения через Госуслуги",
+          origin: "",
+          note: "Полномочия не подтверждены через Госуслуги: компания добавлена без подтверждения, поэтому заявку по ней не отправить.",
+          caution: true,
+        };
+  if (source?.status === "unavailable")
+    return {
+      value: shown ?? "Нет данных источника",
+      origin: "реестр временно недоступен",
+      note: "Реестр временно недоступен: значение уточнится после повторной проверки.",
+      caution: true,
+    };
+  return shown === null
+    ? {
+        value: "Нет данных источника",
+        origin: "",
+        note: "Источник не передал значение: в анкете его не указывают.",
+        caution: false,
+      }
+    : {
+        value: shown,
+        origin: "из открытых источников",
+        note: "Из открытых источников: в анкете не меняется.",
+        caution: false,
+      };
+}
+
+/**
+ * The term field as the purpose being chosen bounds it: a per-purpose maximum while that purpose is picked (saved or
+ * not yet), otherwise the product's maximum. `scope` names what the range belongs to.
+ */
+export function termFor(
+  field: FieldDescriptor,
+  purpose: string | null,
+  productMax: number | null | undefined,
+  purposeLabel: string | undefined,
+): { field: FieldDescriptor; scope: string } {
+  const lowered = purpose ? field.max_by_purpose?.[purpose] : undefined;
+  return {
+    field: { ...field, max: lowered ?? productMax ?? field.max },
+    scope:
+      lowered !== undefined && purposeLabel
+        ? `Для цели «${purposeLabel}»`
+        : "Для продукта",
+  };
+}
+
 const PLEDGE_LABELS: Record<string, string> = {
   type: "тип",
   declared_value_rub: "стоимость",

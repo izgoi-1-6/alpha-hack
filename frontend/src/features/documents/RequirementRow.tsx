@@ -42,7 +42,7 @@ function UploadState({
         <span>
           {percent < 100
             ? `Загружаем «${name}»: ${percent} %`
-            : `Файл «${name}» получен, идёт демонстрационная проверка…`}
+            : `Файл «${name}» получен, идёт проверка…`}
         </span>
         <progress max={100} value={percent} aria-label={`Загрузка файла «${name}»`} />
       </div>

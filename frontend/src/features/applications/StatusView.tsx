@@ -6,7 +6,7 @@ import {
   DocumentChecklist as Checklist,
   HistoryItem,
 } from "../../api";
-import { DemoBadge, Icon } from "../../components";
+import { Icon } from "../../components";
 import { DocumentChecklist } from "../documents/DocumentChecklist";
 import { HandoffAction } from "../documents/HandoffAction";
 import { Amount } from "./Amount";
@@ -42,12 +42,12 @@ function explanation(application: Application, byOfficer: boolean) {
   const request = application.open_info_request;
   switch (application.status) {
     case "CHECKING":
-      return "Проверка демо-источников и скоринг ещё идут. Обновите страницу через несколько секунд.";
+      return "Проверка источников данных и скоринг ещё идут. Обновите страницу через несколько секунд.";
     case "WAIT_EXTERNAL":
-      return "Один из демо-источников не ответил, поэтому решение пока не принято. Нажмите «Повторить проверку»: запрос выполнится по согласию, которое вы уже дали.";
+      return "Один из источников данных не ответил, поэтому решение пока не принято. Нажмите «Повторить проверку»: запрос выполнится по согласию, которое вы уже дали.";
     case "NEED_INFO":
       return request?.kind === "trusted_source"
-        ? "Демо-источник ответил не полностью. Эти сведения нельзя указать в анкете — их даёт только источник. Нажмите «Повторить проверку»."
+        ? "Источник данных ответил не полностью. Эти сведения нельзя указать в анкете — их даёт только источник. Нажмите «Повторить проверку»."
         : request?.requested_by === "officer"
           ? "Кредитному специалисту нужны дополнительные сведения. Ответьте на запрос ниже — заявка вернётся на рассмотрение к тому же специалисту."
           : "Для продолжения нужны дополнительные сведения по анкете: ответьте на запрос ниже.";
@@ -60,7 +60,7 @@ function explanation(application: Application, byOfficer: boolean) {
     case "DOCS_REWORK":
       return "Специалист отклонил документ — причина указана ниже. Замените его и отправьте комплект снова: срок предварительного одобрения при этом не продлевается.";
     case "APPROVED":
-      return "Это демонстрационное решение: деньги не перечисляются, договор не подписывается. Итоговая сумма показана ниже рядом с запрошенной и предварительно одобренной.";
+      return "Кредитный специалист одобрил заявку: итоговая сумма показана ниже рядом с запрошенной и предварительно одобренной. Договор и выдача оформляются в Альфа-Бизнесе — в «Кредитном маршруте» деньги не перечисляются и договор не подписывается.";
     case "REJECTED":
       return byOfficer
         ? "Решение принял кредитный специалист — его комментарий ниже. Можно подобрать другой продукт или изменить параметры."
@@ -100,7 +100,7 @@ export function StatusView({
   focusOnMount: boolean;
   onOpenList: () => void;
   onRecommend: (companyId: string) => void;
-  /** Opens the local Alfa-Business demo page (a path the server returned). */
+  /** Opens the local Alfa-Business hand-off page (a path the server returned). */
   onOpenHandoff: (path: string) => void;
   onUnauthorized: () => void;
 }) {
@@ -288,10 +288,10 @@ export function StatusView({
         )}
         {application.final_amount_rub !== null && (
           <Amount
-            label="Итоговая сумма (демо-решение)"
+            label="Итоговая сумма"
             tone="approved"
             value={rub(application.final_amount_rub)}
-            note="Демонстрационное решение: деньги не перечисляются, договор не подписывается."
+            note="Окончательное решение по заявке. Здесь деньги не перечисляются: договор и выдача — в Альфа-Бизнесе."
           />
         )}
       </div>
@@ -315,7 +315,6 @@ export function StatusView({
         >
           <div className="panel-title">
             <h2 id="result-heading">Результат проверки</h2>
-            <DemoBadge />
           </div>
           {evaluation ? (
             <>
@@ -327,7 +326,7 @@ export function StatusView({
               <dl className="result-meta">
                 {evaluation.score !== null && (
                   <div>
-                    <dt>Демо-скоринг</dt>
+                    <dt>Скоринг</dt>
                     <dd>
                       {points(evaluation.score)}
                       {evaluation.risk ? ` · ${RISK[evaluation.risk]}` : ""}
@@ -340,8 +339,7 @@ export function StatusView({
                     <dd>
                       {rub(evaluation.scored_limit_rub)}
                       <small>
-                        Расчёт демо-скоринга — не предложение и не решение
-                        банка.
+                        Расчёт скоринга — не предложение и не решение банка.
                       </small>
                     </dd>
                   </div>
@@ -361,8 +359,10 @@ export function StatusView({
       <div className="notice quiet">
         <Icon name="shield" />
         <span>
-          Реестр, обороты, БКИ и уведомления — локальные имитации. Решения
-          демонстрационные: договор не подписывается, деньги не перечисляются.
+          Скоринг и предварительные оценки — не предложение банка: итоговую
+          сумму определяет кредитный специалист после проверки документов. В
+          «Кредитном маршруте» договор не подписывается и деньги не
+          перечисляются.
         </span>
       </div>
     </div>

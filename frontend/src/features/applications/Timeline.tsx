@@ -1,16 +1,16 @@
 import { HistoryItem } from "../../api";
-import { DemoBadge } from "../../components";
+import { Icon } from "../../components";
 import { formatDateTime, keepAmountsTogether, statusLabel } from "./format";
 
 const ACTOR_LABELS: Record<HistoryItem["actor_role"], string> = {
   client: "Вы",
   officer: "Сотрудник банка",
-  system: "Система · демо-проверка",
+  system: "Система · автоматическая проверка",
 };
 
 /**
- * The application's history in order; each simulated in-app notification is labelled as an imitation. Actors are
- * named from the customer's point of view unless the staff page passes its own `actorLabel`.
+ * The application's history in order, each change with the in-app notification it sent. Actors are named from the
+ * customer's point of view unless the staff page passes its own `actorLabel`.
  */
 export function Timeline<T extends HistoryItem>({
   items,
@@ -42,7 +42,10 @@ export function Timeline<T extends HistoryItem>({
               <small>{actorLabel(item)}</small>
               {item.notification && (
                 <div className="timeline-notification">
-                  <DemoBadge label="Демо · имитация уведомления" />
+                  <span>
+                    <Icon name="info" size={15} />
+                    Уведомление в кабинете
+                  </span>
                   <p>{keepAmountsTogether(item.notification.message)}</p>
                 </div>
               )}

@@ -1,6 +1,7 @@
 import { test, expect, Page } from "@playwright/test";
 import {
   acceptAndSubmit,
+  address,
   artifacts,
   bkiConsent,
   expectNoPageOverflow,
@@ -17,6 +18,7 @@ import {
   openRecommendations,
   processingConsent,
   registerClient,
+  revision,
   saveAndContinue,
   securedCard,
   termCard,
@@ -54,7 +56,7 @@ async function completeQuestionnaire(page: Page, check?: () => Promise<void>) {
   await expectStage(page, 6, "Проверка и согласия");
 }
 
-test("strong company: card → saved six-stage questionnaire → reload resumes → explicit consents → preliminary approval with distinct amounts and labelled simulated notifications", async ({
+test("strong company: card → saved six-stage questionnaire → reload resumes → explicit consents → preliminary approval with distinct amounts and in-app notifications", async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -90,7 +92,7 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
       .getByRole("group", { name: "Цель финансирования" })
       .getByLabel("Пополнение оборотных средств"),
   ).not.toBeChecked();
-  await expect(page.getByLabel("Сумма, ₽")).toHaveValue("1500000");
+  await expect(page.getByLabel("Сумма, ₽")).toHaveValue("2000000");
   await expect(page.getByLabel("Срок, мес.")).toHaveValue("");
   await fillParametersStage(page);
   await page.getByLabel("Сумма, ₽").fill("2000000");
@@ -103,9 +105,8 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
   );
   await expect(revenue).toHaveValue("800000");
   const revenueField = page.locator(".field").filter({ has: revenue });
-  await expect(revenueField).toContainText("Демо-источник оборотов");
+  await expect(revenueField).toContainText("Источник оборотов");
   await expect(revenueField).toContainText("800 000 ₽");
-  await expect(revenueField).toContainText("Демо · имитация");
   await revenue.fill("900000");
   await expect(revenueField).toContainText("проверит кредитный специалист");
   await revenue.fill("800000");
@@ -130,7 +131,7 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
   await expectStage(page, 6, "Проверка и согласия");
 
   const review = page.locator(".review");
-  await expect(review).toContainText("Демо-город, ул. Синтетическая, 1");
+  await expect(review).toContainText(address);
   await expect(review).toContainText("2 000 000 ₽");
   // Source-owned answers: the registry's tax regime and staff, the representative from the Госуслуги check.
   await expect(review).toContainText("ОСН");
@@ -200,7 +201,7 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
   await expect(indicative).toContainText("2 400 000 ₽");
   await expect(indicative).toContainText("не предложение");
   await expect(page.locator(".result-meta")).toContainText(
-    "Расчёт демо-скоринга — не предложение",
+    "Расчёт скоринга — не предложение",
   );
   await expect(preapproved).toContainText("2 000 000 ₽");
   await expect(preapproved).toContainText("не окончательное решение");
@@ -210,9 +211,7 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
 
   const timeline = page.getByRole("list", { name: "История заявки" });
   await expect(timeline.getByRole("listitem")).toHaveCount(3);
-  await expect(timeline.getByText("Демо · имитация уведомления")).toHaveCount(
-    3,
-  );
+  await expect(timeline.locator(".timeline-notification")).toHaveCount(3);
   await expect(timeline).toContainText(
     "Заявка предварительно одобрена на 2 000 000 ₽",
   );
@@ -247,7 +246,7 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
   );
 });
 
-test("unavailable demo BKI: lost submit and retry responses replay their keys; WAIT_EXTERNAL recovers with one decision", async ({
+test("unavailable BKI: lost submit and retry responses replay their keys; WAIT_EXTERNAL recovers with one decision", async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -281,9 +280,12 @@ test("unavailable demo BKI: lost submit and retry responses replay their keys; W
   await expect(page.getByRole("alert")).toContainText("Нет связи с сервером");
   await page.getByRole("button", { name: "Отправить заявку" }).click();
   await expect(
-    page.getByRole("heading", { level: 1, name: "Ждём ответа демо-источника" }),
+    page.getByRole("heading", {
+      level: 1,
+      name: "Ждём ответа источника данных",
+    }),
   ).toBeVisible();
-  await expect(page.locator(".status-pill")).toHaveText("Ждём демо-источник");
+  await expect(page.locator(".status-pill")).toHaveText("Ждём источник данных");
   await expect(page.locator(".status-result")).toContainText(
     "БКИ временно недоступно",
   );
@@ -302,7 +304,7 @@ test("unavailable demo BKI: lost submit and retry responses replay their keys; W
   );
   await expect(
     page.getByRole("group", { name: "Предварительно одобрено" }),
-  ).toContainText("1 500 000 ₽");
+  ).toContainText("2 000 000 ₽");
 
   expect(commands.submit).toHaveLength(2);
   expect(commands.submit[1]).toEqual(commands.submit[0]);
@@ -355,9 +357,7 @@ test("My Applications lists every application with status and next step; cancel 
   await openRecommendations(page);
   const lineId = await startDraft(page, lineCard);
   // Leaving through the wizard's back link saves the open stage's edits first.
-  await page
-    .getByLabel("Фактический адрес")
-    .fill("Демо-город, пр. Черновой, 2");
+  await page.getByLabel("Фактический адрес").fill("г. Тверь, пр. Черновой, 2");
   await page.getByRole("button", { name: "← Мои заявки" }).click();
   await expect(
     page.getByRole("heading", { level: 1, name: "Мои заявки" }),
@@ -366,7 +366,7 @@ test("My Applications lists every application with status and next step; cancel 
     await page.request.get(`/api/v1/applications/${lineId}`)
   ).json();
   expect(saved.application.answers.actual_address).toBe(
-    "Демо-город, пр. Черновой, 2",
+    "г. Тверь, пр. Черновой, 2",
   );
   const rows = page.locator(".application-row");
   await expect(rows).toHaveCount(2);
@@ -439,7 +439,7 @@ test("open-stage edits are saved when leaving through the sidebar or the browser
   };
 
   // A sidebar destination: the edit is saved before the company page opens.
-  await page.getByLabel("Фактический адрес").fill("Демо-город, ул. Боковая, 3");
+  await page.getByLabel("Фактический адрес").fill("г. Тверь, ул. Боковая, 3");
   await page
     .locator(".sidebar")
     .getByRole("button", { name: "Мои компании" })
@@ -449,13 +449,11 @@ test("open-stage edits are saved when leaving through the sidebar or the browser
   ).toBeVisible();
   await reopen();
   await expect(page.getByLabel("Фактический адрес")).toHaveValue(
-    "Демо-город, ул. Боковая, 3",
+    "г. Тверь, ул. Боковая, 3",
   );
 
   // Browser Back: saved as well; Forward reopens the application.
-  await page
-    .getByLabel("Фактическая деятельность")
-    .fill("Розничная торговля (демо)");
+  await page.getByLabel("Фактическая деятельность").fill("Розничная торговля");
   await page.goBack();
   await expect(
     page.getByRole("heading", { level: 1, name: "Мои заявки" }),
@@ -463,13 +461,13 @@ test("open-stage edits are saved when leaving through the sidebar or the browser
   await page.goForward();
   await expectStage(page, 1, "Компания");
   await expect(page.getByLabel("Фактическая деятельность")).toHaveValue(
-    "Розничная торговля (демо)",
+    "Розничная торговля",
   );
   const { application } = await (
     await page.request.get(`/api/v1/applications/${id}`)
   ).json();
-  expect(application.answers.actual_address).toBe("Демо-город, ул. Боковая, 3");
-  expect(application.answers.actual_activity).toBe("Розничная торговля (демо)");
+  expect(application.answers.actual_address).toBe("г. Тверь, ул. Боковая, 3");
+  expect(application.answers.actual_activity).toBe("Розничная торговля");
   expect(application.current_stage).toBe(1);
 });
 
@@ -521,7 +519,7 @@ test("a value that cannot be saved is never dropped silently: stay and fix, or l
     await page.request.get(`/api/v1/applications/${id}`)
   ).json();
   expect(application.answers.term_months).toBe(18);
-  expect(application.answers.requested_amount_rub).toBe(1500000);
+  expect(application.answers.requested_amount_rub).toBe(2000000);
 });
 
 test("a save from an outdated tab gets the stale-version reply: the page reloads, says so and keeps the unsaved edit", async ({
@@ -594,9 +592,7 @@ test("submitting a second draft for a product already in progress explains the c
   await expect(page.getByRole("alert")).toContainText(
     "уже есть заявка в работе",
   );
-  await expect(page.locator(".review")).toContainText(
-    "Демо-город, ул. Синтетическая, 1",
-  );
+  await expect(page.locator(".review")).toContainText(address);
   await page.getByRole("button", { name: "Открыть заявку в работе" }).click();
   await expect(page).toHaveURL(new RegExp(`application=${first}`));
   await expect(
@@ -637,7 +633,7 @@ test("secured product: an unknown pledge must be declared before submission", as
   await pledge.getByLabel("Залог заявлен").check();
   await pledge.getByLabel("Недвижимость").check();
   await pledge.getByLabel("Заявленная стоимость, ₽").fill("4000000");
-  await pledge.getByLabel("Описание залога").fill("Демо склад");
+  await pledge.getByLabel("Описание залога").fill("Склад");
   await pledge.getByLabel("Подтверждаю собственность на залог").check();
   await page
     .getByRole("navigation", { name: "Шаги анкеты" })
@@ -701,9 +697,7 @@ test("fault injection: a stale recommendation on create and on submit is explain
   await expect(page.getByRole("alert")).toContainText(
     "Условия продуктов изменились",
   );
-  await expect(page.locator(".review")).toContainText(
-    "Демо-город, ул. Синтетическая, 1",
-  );
+  await expect(page.locator(".review")).toContainText(address);
   await page.getByRole("button", { name: "Пересчитать оценку" }).click();
   await expect(
     page.getByRole("heading", { name: "Найдём подходящий маршрут" }),
@@ -773,3 +767,172 @@ for (const viewport of [
     expect((await history(page, id)).at(-1)?.to_status).toBe("PREAPPROVED");
   });
 }
+
+test("stage 2 follows each product's contract: a pledge for the secured loan, no term for the revolving line, a per-purpose term for the gov credit, an optional pledge for the universal limit", async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
+  await registerClient(page, "app-stage2");
+  await onboard(page, "Сильный бизнес");
+  const toStage2 = async (card: string) => {
+    await page
+      .locator(".sidebar")
+      .getByRole("button", { name: "Мои компании" })
+      .click();
+    await openRecommendations(page);
+    await startDraft(page, card);
+    await fillCompanyStage(page);
+    await saveAndContinue(page);
+    await expectStage(page, 2, "Параметры");
+  };
+  const purpose = page.getByRole("group", { name: "Цель финансирования" });
+  const amountHint = page.locator("#answer-requested_amount_rub-hint");
+  const termHint = page.locator("#answer-term_months-hint");
+  const pledge = page.getByRole("group", { name: "Залог", exact: true });
+
+  // The secured term loan: its three purposes, its bounds, and a pledge it cannot do without.
+  await toStage2(securedCard);
+  await expect(purpose.getByRole("radio")).toHaveCount(3);
+  await expect(amountHint).toContainText(
+    "Для продукта: от 500 000 ₽ до 150 000 000 ₽.",
+  );
+  await expect(termHint).toContainText("Для продукта: от 12 до 120 мес.");
+  await expect(pledge).toContainText("Для кредита с залогом заявите залог");
+  await expect(pledge.getByRole("radio")).toHaveCount(3);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({
+    path: `${revision}/task-11-stage2-secured.png`,
+    fullPage: true,
+  });
+
+  // The revolving line: its single purpose preselected, no term to choose, no pledge.
+  await toStage2(lineCard);
+  await expect(purpose.getByRole("radio")).toHaveCount(1);
+  await expect(
+    purpose.getByLabel("Пополнение оборотных средств"),
+  ).toBeChecked();
+  await expect(page.getByLabel("Срок, мес.")).toHaveCount(0);
+  await expect(
+    page.getByRole("group", { name: "Срок", exact: true }),
+  ).toContainText("Без фиксированного срока");
+  await expect(pledge).toContainText("Не требуется");
+  await expect(pledge.getByRole("radio")).toHaveCount(0);
+  await expect(page.locator(".draft-summary")).toContainText(
+    "Без фиксированного срока",
+  );
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({
+    path: `${revision}/task-11-stage2-line.png`,
+    fullPage: true,
+  });
+
+  // The gov credit: the term range follows the purpose being chosen, before anything is saved.
+  await toStage2('[data-product-id="alfa_goscredit_zont"]');
+  await expect(pledge).toContainText("Не требуется");
+  await purpose.getByLabel("Пополнение оборотных средств").check();
+  await expect(termHint).toContainText(
+    "Для цели «Пополнение оборотных средств»: от 6 до 36 мес.",
+  );
+  await purpose.getByLabel("Инвестиции").check();
+  await expect(termHint).toContainText("Для продукта: от 6 до 60 мес.");
+
+  // The universal limit: the pledge is optional (so labelled) and can raise the limit.
+  await toStage2('[data-product-id="alfa_universal_limit"]');
+  const optionalPledge = page.getByRole("group", {
+    name: "Залог необязательно",
+    exact: true,
+  });
+  await expect(optionalPledge).toContainText("Залог по желанию");
+  await expect(optionalPledge.getByRole("radio")).toHaveCount(3);
+});
+
+test("source-owned answers are static values with their source: the registry's tax regime and staff, the Госуслуги representative; never sent, shown in the review, and a missing confirmation is said so", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await registerClient(page, "app-sources");
+  await onboard(page, "Сильный бизнес");
+  await openRecommendations(page);
+  await startDraft(page, termCard);
+  const patched: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "PATCH" && request.url().endsWith("/answers"))
+      patched.push(...Object.keys(request.postDataJSON().answers));
+  });
+  await fillCompanyStage(page);
+  await saveAndContinue(page);
+  await fillParametersStage(page);
+  await saveAndContinue(page);
+  await expectStage(page, 3, "Бизнес и финансы");
+  for (const [name, value] of [
+    ["Налоговый режим", "ОСН"],
+    ["Число сотрудников", "24"],
+  ]) {
+    const field = page.getByRole("group", { name, exact: true });
+    await expect(field.locator(".read-only-value")).toHaveText(value);
+    await expect(field).toContainText("Из открытых источников");
+    await expect(field.locator("input, select, textarea")).toHaveCount(0);
+  }
+  await page
+    .locator(".stage-card")
+    .screenshot({ path: `${revision}/task-11-stage3-read-only.png` });
+  await fillFinanceStage(page);
+  await saveAndContinue(page);
+  await fillObligationsStage(page);
+  await saveAndContinue(page);
+  await expectStage(page, 5, "Руководитель и владельцы");
+  const representative = page.getByRole("group", {
+    name: "ФИО представителя",
+    exact: true,
+  });
+  await expect(representative.locator(".read-only-value")).toHaveText(
+    "Соколов Андрей Викторович",
+  );
+  await expect(representative).toContainText("Подтверждено через Госуслуги");
+  await fillRepresentativeStage(page);
+  await saveAndContinue(page);
+  await expectStage(page, 6, "Проверка и согласия");
+  const review = page.locator(".review");
+  await expect(review).toContainText("ОСН");
+  await expect(review).toContainText("из открытых источников");
+  await expect(review).toContainText("через Госуслуги");
+  // The client never sends a source-owned answer.
+  expect(
+    patched.filter((name) =>
+      [
+        "tax_regime",
+        "employees",
+        "representative_name",
+        "representative_authority_confirmed",
+      ].includes(name),
+    ),
+  ).toEqual([]);
+
+  // A company added before the Госуслуги check has no confirmation: the dialog reply is changed by this route to
+  // the server's `missing` status (no such company can be created any more), and the note says so instead.
+  await page.route(/\/api\/v1\/applications\/[^/]+\/dialog$/, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    for (const stage of body.stages)
+      for (const field of stage.fields)
+        if (field.source?.name === "gosuslugi") {
+          field.source = { ...field.source, status: "missing", value: null };
+          body.answers[field.name] = null;
+        }
+    await route.fulfill({ response, json: body });
+  });
+  await page.reload();
+  await expectStage(page, 6, "Проверка и согласия");
+  await expect(review).toContainText("Нет подтверждения через Госуслуги");
+  await page
+    .getByRole("button", { name: "Изменить шаг 5: Руководитель и владельцы" })
+    .click();
+  await expectStage(page, 5, "Руководитель и владельцы");
+  await expect(representative).toContainText(
+    "Полномочия не подтверждены через Госуслуги",
+  );
+  await expect(representative).not.toContainText(
+    "Подтверждено через Госуслуги",
+  );
+  await page.unroute(/\/api\/v1\/applications\/[^/]+\/dialog$/);
+});

@@ -1,4 +1,4 @@
-/* The document phase: the customer's checklist, the officer's document review and the demo hand-off page.
+/* The document phase: the customer's checklist, the officer's document review and the hand-off page.
    Text stays at 12px or larger, interactive targets at 44px or taller, and every status colour is paired with text.
    Builds on applications.css (fields, pills, confirmations, amount tiles). */
 
@@ -266,7 +266,7 @@
   margin: 0;
 }
 
-/* The approved application's hand-off and the demo page */
+/* The approved application's hand-off action and page */
 .handoff-action {
   display: grid;
   gap: 8px;

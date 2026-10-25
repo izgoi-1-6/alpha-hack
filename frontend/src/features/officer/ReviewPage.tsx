@@ -87,7 +87,7 @@ export function ReviewPage({
 
   const actorLabel = (item: StaffHistoryItem) =>
     item.actor_role === "system"
-      ? "Система · демо-проверка"
+      ? "Система · автоматическая проверка"
       : item.actor_role === "client"
         ? `Клиент · ${item.actor?.display_name ?? "владелец заявки"}`
         : item.actor?.id === userId
@@ -181,8 +181,9 @@ export function ReviewPage({
         <div className="notice quiet">
           <Icon name="shield" />
           <span>
-            Реестр, обороты, БКИ и уведомления — локальные имитации. Решения
-            демонстрационные: договор не подписывается, деньги не перечисляются.
+            Скоринг и источники данных — основание для решения специалиста, а не
+            решение банка. Договор и выдача оформляются в Альфа-Бизнесе после
+            окончательного одобрения.
           </span>
         </div>
       </>

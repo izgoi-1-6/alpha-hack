@@ -1,17 +1,17 @@
 import { useState } from "react";
 import { ConsentDocument, Dialog, FieldDescriptor } from "../../api";
-import { DemoBadge, Icon } from "../../components";
+import { Icon } from "../../components";
 import { CommandProblem } from "./commands";
-import { FieldDraft, formatAnswer, locate } from "./fields";
+import { FieldDraft, formatAnswer, locate, sourceReading } from "./fields";
 import { keepAmountsTogether } from "./format";
 import { StageField } from "./StageFields";
 
 const CONSENT_TITLES: Record<string, string> = {
   APPLICATION_PROCESSING: "Обработка данных заявки",
-  BKI: "Запрос кредитной истории в демо-БКИ",
+  BKI: "Запрос кредитной истории в БКИ",
 };
 const ORIGINS: Record<string, string> = {
-  source: "из демо-источника",
+  source: "из источника данных",
   override: "изменено вами — проверит специалист",
   declared: "заявлено вами — проверит специалист",
 };
@@ -166,6 +166,21 @@ export function ReviewStage({
               </div>
               <dl>
                 {stage.fields.map((field) => {
+                  if (field.read_only) {
+                    // A source-owned answer reads as its source gives it, with where it comes from.
+                    const reading = sourceReading(field);
+                    return (
+                      <div key={field.name}>
+                        <dt>{field.label}</dt>
+                        <dd className={reading.caution ? "caution" : undefined}>
+                          {reading.value}
+                          {reading.origin && (
+                            <small className="origin">{reading.origin}</small>
+                          )}
+                        </dd>
+                      </div>
+                    );
+                  }
                   const shown = formatAnswer(field, dialog.answers[field.name]);
                   return (
                     <div key={field.name}>
@@ -227,7 +242,7 @@ export function ReviewStage({
         <legend>Согласия для отправки</legend>
         <p className="field-note">
           Каждое согласие отмечается отдельно. Кредитная история запрашивается в
-          демо-БКИ только после отправки заявки.
+          бюро кредитных историй только после отправки заявки.
         </p>
         {consents.map((doc) => (
           <label key={doc.code} className="check-row consent-row">
@@ -240,10 +255,7 @@ export function ReviewStage({
               }
             />
             <span>
-              <b>
-                {CONSENT_TITLES[doc.code] ?? doc.code}
-                {doc.code === "BKI" && <DemoBadge />}
-              </b>
+              <b>{CONSENT_TITLES[doc.code] ?? doc.code}</b>
               {doc.text}
               <small>Версия {doc.version}</small>
             </span>
@@ -272,11 +284,11 @@ export function ReviewStage({
         <p id="submit-state" className="submit-state">
           {!canSubmit
             ? dialog.company.registry_status === "inactive"
-              ? "Компания не действует по данным демо-реестра: отправить заявку нельзя."
+              ? "Компания не действует по данным реестра: отправить заявку нельзя."
               : "Отправка этой заявки недоступна."
             : remaining.length
               ? `Осталось: ${remaining.join("; ")}.`
-              : "Всё готово. После отправки демо-БКИ запросит кредитную историю, и вы сразу увидите результат проверки."}
+              : "Всё готово. После отправки банк запросит кредитную историю в БКИ, и вы сразу увидите результат проверки."}
         </p>
         {canSubmit && (
           <button

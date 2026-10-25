@@ -60,7 +60,7 @@ function idleNote(application: StaffApplication, mine: boolean) {
   if (application.status === "NEED_INFO")
     return "Ждём ответа клиента на запрос сведений: после ответа заявка вернётся на рассмотрение.";
   if (application.status === "WAIT_EXTERNAL" || application.status === "CHECKING")
-    return "Заявка ждёт ответа демо-источника: решение специалиста пока не требуется.";
+    return "Заявка ждёт ответа источника данных: решение специалиста пока не требуется.";
   return "Сейчас по заявке нет действий для специалиста.";
 }
 
@@ -230,7 +230,7 @@ export function DecisionPanel({
                 body,
                 (key) => officerApi.approve(application.id, body, key),
                 (next) =>
-                  `Заявка окончательно одобрена на ${rub(next.final_amount_rub ?? amount)} (демонстрационное решение).`,
+                  `Заявка окончательно одобрена на ${rub(next.final_amount_rub ?? amount)}.`,
               );
             }}
           />

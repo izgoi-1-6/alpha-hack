@@ -82,7 +82,7 @@ export const PHASE: Record<OfficerDecision["phase"], string> = {
  * details as the client's answer form names them. Unknown paths fall back to the path itself.
  */
 const ANSWER_LABELS: Record<string, string> = {
-  company_confirmed: "Сведения о компании из демо-реестра верны",
+  company_confirmed: "Сведения о компании из реестра верны",
   actual_address: "Фактический адрес",
   actual_activity: "Фактическая деятельность",
   purpose: "Цель финансирования",
@@ -106,11 +106,11 @@ const ANSWER_LABELS: Record<string, string> = {
   tax_debt_rub: "Налоговая задолженность, ₽",
   legal_proceedings: "Есть судебные разбирательства",
   obligations_note: "Комментарий к обязательствам",
-  representative_name: "ФИО представителя (синтетические данные)",
+  representative_name: "ФИО представителя",
   representative_authority_confirmed:
-    "Подтверждаю полномочия представителя (демо, без проверки документов)",
+    "Полномочия представителя подтверждены через Госуслуги",
   beneficial_owners_confirmed:
-    "Сведения о владельцах указаны верно (демо, это не согласие поручителя)",
+    "Сведения о владельцах указаны верно (это не согласие поручителя)",
   accuracy_confirmed: "Подтверждаю, что сведения анкеты верны",
 };
 

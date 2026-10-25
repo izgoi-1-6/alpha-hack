@@ -8,7 +8,7 @@ import {
   responseError,
 } from "../../api";
 
-/** The customer's document routes under /applications/{id}/documents and the simulated Alfa-Business link. */
+/** The customer's document routes under /applications/{id}/documents and the local Alfa-Business hand-off link. */
 
 type ApplicationBody = { application: Application };
 const documentsPath = (applicationId: string) =>
@@ -84,7 +84,7 @@ export const documentsApi = {
       body,
       idempotencyKey: key,
     }),
-  /** APPROVED only: the address of the local demo page. Nothing leaves the stand. */
+  /** APPROVED only: the address of the local hand-off page. Nothing is sent to a bank. */
   handoffLink: (body: { application_id: string }, key: string) =>
     request<{ url: string; simulated: true }>(
       "/integrations/alfa-business/link",

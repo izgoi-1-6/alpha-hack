@@ -1,0 +1,179 @@
+/* Onboarding: the Госуслуги step, its dialog and what is still missing before a company can be added. */
+.authority-step {
+  margin-bottom: 4px;
+}
+.authority-pending {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
+  margin-bottom: 23px;
+}
+.authority-pending .field-note {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+  max-width: 520px;
+}
+.authority-pending .button {
+  font-size: 14px;
+}
+.authority-confirmed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+  border: 1px solid #cfe6d8;
+  background: #f1f8f4;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 23px;
+}
+.authority-confirmed-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 260px;
+  border-radius: 8px;
+}
+.authority-confirmed-text:focus-visible {
+  outline: 3px solid #e5322b66;
+  outline-offset: 4px;
+}
+.authority-check {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 50%;
+  background: #1e8449;
+  color: white;
+}
+.authority-confirmed-text strong {
+  display: block;
+  font-size: 14px;
+  color: #1d5c37;
+}
+.authority-confirmed-text p {
+  font-size: 14px;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.authority-confirmed-text small {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.authority-confirmed .text-button {
+  min-height: 44px;
+  padding: 4px 2px;
+}
+.onboarding-remaining {
+  font-size: 13px;
+  color: var(--muted);
+  margin: -4px 0 14px;
+  line-height: 1.6;
+}
+
+/* A neutral confirmation dialog: the app's own surface, no colours or marks of the real service. */
+.gosuslugi-dialog {
+  width: min(500px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 18px 48px #1c1a1d33;
+  color: #1c1a1d;
+  background: white;
+}
+.gosuslugi-dialog::backdrop {
+  background: #1c1a1d66;
+}
+.gosuslugi-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.gosuslugi-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 12px;
+  background: #f1eeee;
+  color: #4b454d;
+}
+.gosuslugi-head h2 {
+  font-size: 19px;
+  line-height: 1.3;
+}
+.gosuslugi-head p {
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.55;
+}
+.gosuslugi-facts {
+  margin: 20px 0 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px 16px;
+  background: #fbfafa;
+}
+.gosuslugi-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  font-size: 14px;
+}
+.gosuslugi-facts > div + div {
+  border-top: 1px solid #efebeb;
+}
+.gosuslugi-facts dd {
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.gosuslugi-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 18px;
+}
+.gosuslugi-note {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 14px;
+}
+.gosuslugi-dialog .notice {
+  margin: 18px 0 0;
+}
+.gosuslugi-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+.gosuslugi-actions .button {
+  flex: 1 1 160px;
+}
+@media (max-width: 480px) {
+  .gosuslugi-dialog {
+    padding: 20px 18px;
+  }
+  .gosuslugi-facts > div {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .gosuslugi-facts dd {
+    text-align: left;
+  }
+}

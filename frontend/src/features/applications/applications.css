@@ -9,11 +9,6 @@
 .applications-index .eyebrow {
   font-size: 12px;
 }
-.application-page .demo-badge,
-.application-page .panel-title .demo-badge {
-  font-size: 12px;
-  padding: 6px 9px;
-}
 .status-pill {
   font-size: 12px;
   padding: 7px 12px;
@@ -396,6 +391,44 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 8px;
+}
+/* Source-owned answers and product facts: static values with where they come from, no input. */
+.read-only-field {
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fbfafa;
+}
+.read-only-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.read-only-value {
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.read-only-source {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.read-only-source svg {
+  margin-top: 2px;
+  color: #6b5f70;
+}
+.read-only-field.caution {
+  background: #fbf1df;
+  border-color: #eedcbc;
+}
+.read-only-field.caution .read-only-source,
+.read-only-field.caution .read-only-source svg,
+.review dd.caution {
+  color: #84570e;
 }
 .collateral-details {
   display: grid;
@@ -828,6 +861,14 @@
   padding: 10px 12px;
   border-radius: 10px;
   background: #f6f4f4;
+}
+.timeline-notification > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #5d5662;
 }
 
 /* My Applications */

@@ -1,5 +1,5 @@
 import { Application } from "../../api";
-import { DemoBadge, Icon } from "../../components";
+import { Icon } from "../../components";
 import { CommandAttempts } from "../applications/commands";
 import { useCommand } from "../applications/useCommand";
 import { documentsApi } from "./documentsApi";
@@ -19,8 +19,8 @@ export function handoffIdOf(pathname: string) {
 }
 
 /**
- * «Перейти в Альфа-Бизнес (демо)» for an APPROVED application: asks the server for the link, then opens the local
- * demo page. Nothing leaves the stand: no bank redirect, no signing, no disbursement.
+ * «Перейти в Альфа-Бизнес» for an APPROVED application: asks the server for the link, then opens the local hand-off
+ * page. Nothing is sent to a bank: no redirect, no signing, no disbursement.
  */
 export function HandoffAction({
   application,
@@ -61,12 +61,12 @@ export function HandoffAction({
         disabled={!!command.busy}
         onClick={() => void open()}
       >
-        {command.busy ? "Открываем…" : "Перейти в Альфа-Бизнес (демо)"}
+        {command.busy ? "Открываем…" : "Перейти в Альфа-Бизнес"}
         <Icon />
       </button>
       <p className="field-note">
-        <DemoBadge /> Откроется локальная демонстрационная страница: перехода в
-        банк, подписания договора и выдачи денег нет.
+        Откроется страница перехода в Альфа-Бизнес: в «Кредитном маршруте»
+        договор не подписывается и деньги не перечисляются.
       </p>
       {command.problem && (
         <div className="notice error" role="alert">

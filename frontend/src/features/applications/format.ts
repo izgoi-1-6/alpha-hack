@@ -85,8 +85,8 @@ export const STATUS: Record<
     tone: "neutral",
   },
   WAIT_EXTERNAL: {
-    label: "Ждём демо-источник",
-    headline: "Ждём ответа демо-источника",
+    label: "Ждём источник данных",
+    headline: "Ждём ответа источника данных",
     tone: "warning",
   },
   NEED_INFO: {
@@ -115,8 +115,8 @@ export const STATUS: Record<
     tone: "warning",
   },
   APPROVED: {
-    label: "Одобрена (демо)",
-    headline: "Заявка одобрена (демонстрационное решение)",
+    label: "Одобрена",
+    headline: "Заявка одобрена",
     tone: "success",
   },
   REJECTED: { label: "Отказ", headline: "По заявке отказ", tone: "danger" },
@@ -144,10 +144,10 @@ export function nextStep(application: Application): string {
     case "CHECKING":
       return "Дождитесь результата проверки";
     case "WAIT_EXTERNAL":
-      return "Повторите проверку: демо-источник был недоступен";
+      return "Повторите проверку: источник данных был недоступен";
     case "NEED_INFO":
       return request?.kind === "trusted_source"
-        ? "Повторите проверку: нужен повторный запрос к демо-источнику"
+        ? "Повторите проверку: нужен повторный запрос к источнику данных"
         : "Ответьте на запрос сведений";
     case "MANUAL_REVIEW":
       return "Дождитесь решения кредитного специалиста";
@@ -160,7 +160,7 @@ export function nextStep(application: Application): string {
     case "DOCS_REWORK":
       return "Замените отклонённые документы";
     case "APPROVED":
-      return "Демонстрационное решение: деньги не перечисляются";
+      return "Перейдите в Альфа-Бизнес для оформления";
     case "REJECTED":
       return "Можно подобрать другой продукт";
     case "CANCELLED":
@@ -171,4 +171,4 @@ export function nextStep(application: Application): string {
 }
 
 export const productName = (application: Pick<Application, "product">) =>
-  application.product.name ?? "Демо-продукт";
+  application.product.name ?? "Продукт больше не предлагается";

@@ -1,5 +1,5 @@
 import { CompanyResult } from "../../api";
-import { Icon, DemoBadge, ErrorNotice } from "../../components";
+import { Icon, ErrorNotice } from "../../components";
 const formatMoney = (value: number | null) =>
   value === null
     ? "Нет данных"
@@ -59,7 +59,7 @@ export function CompanyDetail({
             </strong>
             <p>
               {unknown
-                ? "Не можем подтвердить статус компании. Повторите проверку, чтобы получить актуальные демо-сведения."
+                ? "Не можем подтвердить статус компании. Повторите проверку, чтобы получить актуальные сведения."
                 : "Заявку можно отправить только для действующей компании. Сведения сохранены для ознакомления."}
             </p>
           </div>
@@ -69,7 +69,8 @@ export function CompanyDetail({
         <div>
           <h2>От задачи — к подходящему продукту</h2>
           <p>
-            Сравните три демо-продукта и оцените платёж по обороту компании.
+            Выберите сумму — сравним продукты каталога и оценим платёж по
+            обороту компании.
           </p>
         </div>
         <button className="button primary" onClick={onRecommend}>
@@ -78,9 +79,7 @@ export function CompanyDetail({
       </div>
       <div className="summary-grid">
         <section className="card finance-card">
-          <span className="card-label">
-            Среднемесячный оборот <DemoBadge />
-          </span>
+          <span className="card-label">Среднемесячный оборот</span>
           <div className="money">{formatMoney(p.monthly_revenue_rub)}</div>
           <p>
             {p.monthly_revenue_rub === null
@@ -130,7 +129,6 @@ export function CompanyDetail({
             <div className="eyebrow">Прозрачная проверка</div>
             <h2>Что удалось узнать</h2>
           </div>
-          <DemoBadge />
         </div>
         <div className="source-row">
           <span className="source-icon">
@@ -163,7 +161,7 @@ export function CompanyDetail({
             <b>Обороты бизнеса</b>
             <p>
               {p.turnover_source_status === "available"
-                ? "Демо-сведения о выручке доступны для дальнейшей оценки."
+                ? "Сведения о выручке получены для дальнейшей оценки."
                 : "Источник не предоставил данные. Финансовая оценка пока недоступна."}
             </p>
           </div>

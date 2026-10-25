@@ -94,14 +94,6 @@ export function Brand() {
     </div>
   );
 }
-export function DemoBadge({ label = "Демо · имитация" }: { label?: string }) {
-  return (
-    <span className="demo-badge">
-      <span />
-      {label}
-    </span>
-  );
-}
 export function ErrorNotice({
   error,
   onRetry,

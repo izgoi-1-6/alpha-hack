@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ApiError, Application, applicationsApi, errorMessage } from "../../api";
-import { DemoBadge, ErrorNotice, Icon, Loading } from "../../components";
+import { ErrorNotice, Icon, Loading } from "../../components";
 import { Amount } from "../applications/Amount";
 import { productName, rub, statusLabel } from "../applications/format";
 import { shortId } from "../officer/officerFormat";
@@ -13,9 +13,9 @@ type State =
   | { kind: "loaded"; application: Application };
 
 /**
- * `/alfa-business/{id}`: the local page the approved customer reaches through «Перейти в Альфа-Бизнес (демо)»,
- * also by a direct link. It reads the application as its owner (another client gets the server's 404) and confirms a
- * simulation only for an APPROVED one: no bank redirect, signing or disbursement, and APPROVED is not money issued.
+ * `/alfa-business/{id}`: the local page the approved customer reaches through «Перейти в Альфа-Бизнес», also by a
+ * direct link. It reads the application as its owner (another client gets the server's 404) and shows the hand-off
+ * only for an APPROVED one: no bank redirect, signing or disbursement happens here, and APPROVED is not money issued.
  */
 export function HandoffPage({
   applicationId,
@@ -53,7 +53,7 @@ export function HandoffPage({
     return state.notFound ? (
       <div className="handoff-page">
         <div className="page-heading">
-          <div className="eyebrow accent">Альфа-Бизнес · демо</div>
+          <div className="eyebrow accent">Переход в Альфа-Бизнес</div>
           <h1>Страница недоступна</h1>
           <p>Заявка не найдена или принадлежит другому клиенту.</p>
         </div>
@@ -71,11 +71,11 @@ export function HandoffPage({
     return (
       <div className="handoff-page">
         <div className="page-heading">
-          <div className="eyebrow accent">Альфа-Бизнес · демо</div>
+          <div className="eyebrow accent">Переход в Альфа-Бизнес</div>
           <h1>Переход пока недоступен</h1>
           <p>
-            Демонстрационная страница открывается только после окончательного
-            одобрения заявки. Сейчас статус заявки — «{statusLabel(application.status)}».
+            Переход открывается только после окончательного одобрения заявки.
+            Сейчас статус заявки — «{statusLabel(application.status)}».
           </p>
         </div>
         <button
@@ -93,42 +93,41 @@ export function HandoffPage({
     <div className="handoff-page">
       <div className="page-heading handoff-heading">
         <div>
-          <div className="eyebrow accent">Демонстрационный переход · заявка № {shortId(application.id)}</div>
-          <h1>Альфа-Бизнес (демо)</h1>
+          <div className="eyebrow accent">Заявка № {shortId(application.id)} · одобрена</div>
+          <h1>Переход в Альфа-Бизнес</h1>
           <p>
             {application.company.name} · ИНН {application.company.inn} · {productName(application)}
           </p>
         </div>
-        <DemoBadge />
       </div>
       <section className="card handoff-card" aria-labelledby="handoff-heading">
-        <h2 id="handoff-heading">Это имитация перехода в интернет-банк</h2>
+        <h2 id="handoff-heading">Оформление продолжается в Альфа-Бизнесе</h2>
         <p>
-          Настоящего Альфа-Бизнеса здесь нет: страница — часть демо-стенда
-          «Кредитный маршрут». Одобрение заявки — демонстрационное решение, а не
-          выданный кредит.
+          Заявка окончательно одобрена. Подписание договора и выдача денег
+          проходят в интернет-банке Альфа-Бизнес — в «Кредитном маршруте» этих
+          шагов нет.
         </p>
         <ul className="handoff-facts">
           <li>
             <Icon name="shield" size={18} />
-            Деньги не перечисляются: счёт и платежи не открываются.
+            Деньги не перечисляются: в «Кредитном маршруте» счёт и платежи не открываются.
           </li>
           <li>
             <Icon name="shield" size={18} />
-            Кредитный договор не подписывается — ни электронной подписью, ни иначе.
+            В «Кредитном маршруте» договор не подписывается — ни электронной подписью, ни иначе.
           </li>
           <li>
             <Icon name="shield" size={18} />
-            Сведения никуда не передаются: стенд не обращается к банку.
+            Сведения заявки не передаются в банк автоматически.
           </li>
         </ul>
       </section>
       <div className="amounts">
         <Amount
-          label="Итоговая сумма (демо-решение)"
+          label="Итоговая сумма"
           tone="approved"
           value={application.final_amount_rub !== null ? rub(application.final_amount_rub) : "Не указана"}
-          note="Демонстрационное решение: деньги не перечисляются."
+          note="Окончательное решение по заявке. Здесь деньги не перечисляются."
         />
       </div>
       <div className="status-actions">

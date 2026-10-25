@@ -97,8 +97,8 @@ export function FinalApproveForm({
         }}
       />
       <p className="decision-caveat">
-        Демонстрационное решение: договор не подписывается, деньги не
-        перечисляются.
+        Окончательное решение: клиент перейдёт в Альфа-Бизнес, в «Кредитном
+        маршруте» договор не подписывается и деньги не перечисляются.
       </p>
       {!confirming ? (
         <button type="submit" className="button primary" disabled={busy || !ready}>
@@ -109,7 +109,7 @@ export function FinalApproveForm({
           <h4 id="approve-confirm-title">Одобрить заявку окончательно?</h4>
           <p>
             Итоговая сумма — {parsed.value !== null ? rub(parsed.value) : "—"}.
-            Решение нельзя отменить: заявка закроется одобрением (демо).
+            Решение нельзя отменить: заявка закроется одобрением.
           </p>
           <div className="form-actions">
             <button

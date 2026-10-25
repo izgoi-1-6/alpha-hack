@@ -1,6 +1,7 @@
 import { test, expect, Locator, Page } from "@playwright/test";
 import {
   artifacts,
+  expectNoDemoWording,
   expectNoPageOverflow,
   expectTouchTargets,
   officerPage,
@@ -94,7 +95,7 @@ async function review(
   );
 }
 
-test("A09 journey: preapproval → sequential uploads with progress → unsafe file refused → officer rejects one → replacement → all accepted → final approval → simulated Alfa-Business page", async ({
+test("A09 journey: preapproval → sequential uploads with progress → unsafe file refused → officer rejects one → replacement → all accepted → final approval → the Alfa-Business hand-off page", async ({
   page,
   browser,
 }) => {
@@ -108,7 +109,7 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
   expect(before.preapproved_amount_rub).toBe(2400000);
 
   const card = documents(page);
-  await expect(card).toContainText("Демонстрационная проверка документов");
+  await expect(card).toContainText("Проверка документов: тип и структура файла");
   await expect(card).toContainText("Это не антивирусная проверка");
   const deadline = card.locator(".documents-deadline");
   await expect(deadline).toContainText("Загрузка и замена документов срок не продлевают");
@@ -204,7 +205,7 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
   await decision.getByRole("button", { name: "Взять в работу" }).click();
   await expect(decision).toContainText("Ответственный: Я");
   const staff = reviewDocuments(officer);
-  await expect(staff).toContainText("Демонстрационная проверка документов");
+  await expect(staff).toContainText("Проверка документов: тип и структура файла");
   const staffStatement = requirement(staff, "BANK_STATEMENT");
   const detail = await staffDetail(officer, id);
   const stored = detail.documents.find((row: { document_type: string }) => row.document_type === "BANK_STATEMENT");
@@ -220,12 +221,12 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
   // The review form of one document, captured with a decision and a reason typed in.
   const staffReport = requirement(staff, "FINANCIAL_REPORT");
   await staffReport.getByLabel("Отклонить", { exact: true }).check();
-  await staffReport.getByLabel("Причина отклонения").fill("Черновик причины (демо).");
+  await staffReport.getByLabel("Причина отклонения").fill("Черновик причины.");
   await staff.scrollIntoViewIfNeeded();
   await staff.screenshot({ path: `${artifacts}/task-6b-officer-review-form.png` });
-  await review(officer, "BANK_STATEMENT", "Принять", "Обороты по выписке совпадают с анкетой (демо).");
+  await review(officer, "BANK_STATEMENT", "Принять", "Обороты по выписке совпадают с анкетой.");
   await expect(officer.locator(".officer-live")).toContainText("принят");
-  const rejection = "Отчётность за другой период: нужна за период из анкеты (демо).";
+  const rejection = "Отчётность за другой период: нужна за период из анкеты.";
   await officer.evaluate(() => window.scrollTo(0, 0));
   await review(officer, "FINANCIAL_REPORT", "Отклонить", rejection);
   await expect(statusPill(officer)).toHaveText("Замена документов");
@@ -257,51 +258,53 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
 
   // All accepted: the final approval form opens at the server's upper bound with its bounds shown.
   await officer.reload();
-  await review(officer, "FINANCIAL_REPORT", "Принять", "Отчётность за нужный период (демо).");
+  await review(officer, "FINANCIAL_REPORT", "Принять", "Отчётность за нужный период.");
   const amount = decision.getByLabel("Итоговая сумма, ₽");
   await expect(amount).toHaveValue("2400000");
   await expect(decision).toContainText("от 300 000 ₽ до 2 400 000 ₽");
   await amount.fill("2000000");
-  const approval = "Документы приняты, одобряем 2 000 000 ₽ (демо).";
+  const approval = "Документы приняты, одобряем 2 000 000 ₽.";
   await decision.getByLabel("Основание решения").fill(approval);
   await decision.getByRole("button", { name: "Одобрить окончательно" }).click();
   await expect(decision.getByRole("group", { name: "Одобрить заявку окончательно?" })).toBeVisible();
   await decision.screenshot({ path: `${artifacts}/task-6b-final-approve.png` });
   await decision.getByRole("button", { name: "Да, одобрить" }).click();
-  await expect(statusPill(officer)).toHaveText("Одобрена (демо)");
-  await expect(officer.getByRole("group", { name: "Итоговая сумма (демо-решение)" })).toContainText("2 000 000 ₽");
+  await expect(statusPill(officer)).toHaveText("Одобрена");
+  await expect(officer.getByRole("group", { name: "Итоговая сумма" })).toContainText("2 000 000 ₽");
   await expect(decision.getByRole("button")).toHaveCount(0);
+  await expectNoDemoWording(officer);
 
-  // The customer's outcome: a demo decision, no money issued, each amount on its own tile.
+  // The customer's outcome: the final decision, no money issued here, each amount on its own tile.
   await page.reload();
   await expect(
-    page.getByRole("heading", { level: 1, name: "Заявка одобрена (демонстрационное решение)" }),
+    page.getByRole("heading", { level: 1, name: "Заявка одобрена" }),
   ).toBeVisible();
   await expect(page.locator(".status-next")).toContainText("деньги не перечисляются");
   await expect(page.locator(".status-next")).toContainText(approval);
   await expect(page.getByRole("group", { name: "Запрошенная сумма" })).toContainText("2 500 000 ₽");
   await expect(page.getByRole("group", { name: "Предварительно одобрено" })).toContainText("2 400 000 ₽");
-  const final = page.getByRole("group", { name: "Итоговая сумма (демо-решение)" });
+  const final = page.getByRole("group", { name: "Итоговая сумма" });
   await expect(final).toContainText("2 000 000 ₽");
   await expect(final).toContainText("деньги не перечисляются");
   await expect(card.getByRole("button", { name: /Загрузить файл|Заменить файл|Удалить файл/ })).toHaveCount(0);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: `${artifacts}/task-6b-approved.png`, fullPage: true });
+  await expectNoDemoWording(page);
 
-  await page.getByRole("button", { name: "Перейти в Альфа-Бизнес (демо)" }).click();
+  await page.getByRole("button", { name: "Перейти в Альфа-Бизнес" }).click();
   // The address bar shows the hand-off path right after the origin, with no demo segment.
   await expect(page).toHaveURL(new RegExp(`^https?://[^/]+/alfa-business/${id}$`));
-  await expect(page.getByRole("heading", { level: 1, name: "Альфа-Бизнес (демо)" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Переход в Альфа-Бизнес" })).toBeVisible();
   const handoff = page.locator("main");
-  await expect(handoff).toContainText("имитация");
   await expect(handoff).toContainText("Деньги не перечисляются");
   await expect(handoff).toContainText("договор не подписывается");
   await expect(handoff).toContainText("2 000 000 ₽");
   await expect(handoff).toContainText("ООО «Сильный бизнес»");
   await page.screenshot({ path: `${artifacts}/task-6b-handoff.png`, fullPage: true });
+  await expectNoDemoWording(page);
   await page.getByRole("button", { name: "Вернуться к заявке" }).click();
   await expect(
-    page.getByRole("heading", { level: 1, name: "Заявка одобрена (демонстрационное решение)" }),
+    page.getByRole("heading", { level: 1, name: "Заявка одобрена" }),
   ).toBeVisible();
   expect(new URL(page.url()).pathname).toBe("/");
 
@@ -331,7 +334,7 @@ test("secured product: four documents, the valuation is accepted only with a ver
   const id = await submitApplication(
     page,
     securedCard,
-    { amount: "4000000", debt: "300000", pledge: { value: "8000000", description: "Демо производственная линия" } },
+    { amount: "4000000", debt: "300000", pledge: { value: "8000000", description: "Производственная линия" } },
     preapproved,
   );
   const card = documents(page);
@@ -356,12 +359,12 @@ test("secured product: four documents, the valuation is accepted only with a ver
   await decision.getByRole("button", { name: "Взять в работу" }).click();
   await expect(decision).toContainText("Ответственный: Я");
   for (const type of ["BANK_STATEMENT", "FINANCIAL_REPORT", "COLLATERAL_OWNERSHIP"]) {
-    await review(officer, type, "Принять", "Документ соответствует заявке (демо).");
+    await review(officer, type, "Принять", "Документ соответствует заявке.");
   }
   // Accepting the valuation needs a positive whole-ruble verified value; nothing is sent without one.
   const valuation = requirement(reviewDocuments(officer), "COLLATERAL_VALUATION");
   await valuation.getByLabel("Принять", { exact: true }).check();
-  await valuation.getByLabel("Комментарий к проверке").fill("Оценка проверена (демо).");
+  await valuation.getByLabel("Комментарий к проверке").fill("Оценка проверена.");
   const value = valuation.getByLabel("Проверенная стоимость залога, ₽");
   await expect(value).toBeVisible();
   await expect(valuation.getByRole("button", { name: "Принять документ" })).toBeDisabled();
@@ -383,7 +386,7 @@ test("secured product: four documents, the valuation is accepted only with a ver
   await expect(decision).toContainText("от 500 000 ₽ до 3 500 000 ₽");
   await expect(officer.getByRole("group", { name: "Допустимая итоговая сумма" })).toContainText("до 3 500 000 ₽");
   await amount.fill("4000000");
-  await decision.getByLabel("Основание решения").fill("Одобряем в пределах проверенного залога (демо).");
+  await decision.getByLabel("Основание решения").fill("Одобряем в пределах проверенного залога.");
   await decision.getByRole("button", { name: "Одобрить окончательно" }).click();
   await decision.getByRole("button", { name: "Да, одобрить" }).click();
   await expect(decision.locator("#approve-amount-error")).toContainText("до 3 500 000 ₽");
@@ -392,14 +395,14 @@ test("secured product: four documents, the valuation is accepted only with a ver
   await amount.fill("3500000");
   await decision.getByRole("button", { name: "Одобрить окончательно" }).click();
   await decision.getByRole("button", { name: "Да, одобрить" }).click();
-  await expect(statusPill(officer)).toHaveText("Одобрена (демо)");
+  await expect(statusPill(officer)).toHaveText("Одобрена");
 
-  // Direct navigation to the hand-off address now shows the simulation; the customer sees the verified value.
+  // Direct navigation to the hand-off address now shows the hand-off; the customer sees the verified value.
   await page.goto(`/alfa-business/${id}`);
-  await expect(page.getByRole("heading", { level: 1, name: "Альфа-Бизнес (демо)" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Переход в Альфа-Бизнес" })).toBeVisible();
   await expect(page.locator("main")).toContainText("3 500 000 ₽");
   await page.goto(`/?application=${id}`);
-  await expect(page.getByRole("group", { name: "Итоговая сумма (демо-решение)" })).toContainText("3 500 000 ₽");
+  await expect(page.getByRole("group", { name: "Итоговая сумма" })).toContainText("3 500 000 ₽");
   await expect(page.getByRole("group", { name: "Предварительно одобрено" })).toContainText("4 000 000 ₽");
   await expect(requirement(card, "COLLATERAL_VALUATION")).toContainText("Принят");
 });
@@ -496,7 +499,7 @@ test("packet edits: browser checks, server refusals on the row, a lost upload re
   const decision = decisionPanel(officer);
   await decision.getByRole("button", { name: "Взять в работу" }).click();
   await expect(decision).toContainText("Окончательный отказ");
-  const reason = "Выписка не загружена в срок, отказываем на этапе документов (демо).";
+  const reason = "Выписка не загружена в срок, отказываем на этапе документов.";
   await decision.getByLabel("Причина отказа").fill(reason);
   await decision.getByRole("button", { name: "Отказать", exact: true }).click();
   await decision.getByRole("button", { name: "Да, отказать" }).click();

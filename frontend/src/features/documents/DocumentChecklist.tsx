@@ -1,5 +1,5 @@
 import { Application, DocumentChecklist as Checklist } from "../../api";
-import { DemoBadge, Icon } from "../../components";
+import { Icon } from "../../components";
 import { CommandAttempts } from "../applications/commands";
 import { useCommand } from "../applications/useCommand";
 import { documentTitle, formatMoment } from "./documentFormat";
@@ -81,7 +81,6 @@ export function DocumentChecklist({
     <section className="card documents-card" aria-labelledby="documents-heading">
       <div className="panel-title">
         <h2 id="documents-heading">Документы по заявке</h2>
-        <DemoBadge label="Демонстрационная проверка документов" />
       </div>
       <p className="documents-notice">{checklist.notice}</p>
       {DOCUMENT_PHASE.includes(status) && application.preapproval_expires_at && (
@@ -174,7 +173,7 @@ export function DocumentChecklist({
           )}
           <p className="field-note">
             PDF, JPEG или PNG до 20 МБ, по одному файлу на документ. Загружайте
-            только синтетические демо-файлы.
+            только синтетические файлы без реальных персональных данных.
           </p>
         </div>
       )}

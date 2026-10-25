@@ -5,17 +5,22 @@ import { expect, Browser, Page, test } from "@playwright/test";
 // officer, and the queue also holds other tests' applications, so rows are always located by the application id.
 
 export const artifacts = "../.superpowers/sdd/2026-10-24-credit-route";
+/** Evidence of the catalog and UX revision (Task 11 on). */
+export const revision = "../.superpowers/sdd/2026-10-25-catalog-ux-revision";
 export const termCard = '[data-product-id="alfa_term_loan_unsecured"]';
 export const lineCard = '[data-product-id="alfa_revolving_line_unsecured"]';
 export const securedCard = '[data-product-id="alfa_term_loan_secured"]';
 export const password = "DemoCredit2026!";
+
+/** Text as the UI renders amounts: non-breaking spaces between digit groups and before «₽». */
+export const nbsp = (text: string) => text.replace(/ /g, " ");
 
 /** Registers a new synthetic client from the login page and returns its e-mail. */
 export async function registerClient(page: Page, prefix = "client") {
   const email = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
   await page.goto("/");
   await page.getByRole("button", { name: "Регистрация", exact: true }).click();
-  await page.getByLabel("Ваше имя").fill("Демо Предприниматель");
+  await page.getByLabel("Ваше имя").fill("Пётр Предприниматель");
   await page.getByLabel("Электронная почта").fill(email);
   await page.getByLabel("Пароль", { exact: true }).fill(password);
   await page
@@ -27,11 +32,28 @@ export async function registerClient(page: Page, prefix = "client") {
   return email;
 }
 
-/** Confirms the representative's authority for the chosen ИНН through the mock Госуслуги check. */
+/** The seeded client with its ten companies (read-only use: no application is ever created on them). */
+export async function loginClient(page: Page) {
+  await page
+    .getByRole("button", { name: "Войти как клиент", exact: true })
+    .click();
+  await expect(page.getByLabel("Ваша компания", { exact: true })).toBeVisible();
+}
+
+export const authorityDialog = (page: Page) =>
+  page.getByRole("dialog", {
+    name: "Подтверждение полномочий через Госуслуги",
+  });
+
+/** Confirms the representative's authority for the chosen ИНН in the Госуслуги dialog. */
 export async function confirmAuthority(page: Page) {
   await page
     .getByRole("button", { name: "Подтвердить через Госуслуги" })
     .click();
+  const dialog = authorityDialog(page);
+  await expect(dialog.getByRole("button", { name: "Подтвердить" })).toBeFocused();
+  await dialog.getByRole("button", { name: "Подтвердить" }).click();
+  await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("status")).toContainText(
     "Полномочия подтверждены через Госуслуги",
   );
@@ -59,7 +81,9 @@ export async function openRecommendations(page: Page) {
 }
 
 export async function loginOfficer(page: Page) {
-  await page.getByRole("button", { name: "Специалист", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Войти как специалист", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { level: 1, name: "Очередь заявок" }),
   ).toBeVisible();
@@ -89,14 +113,12 @@ export async function expectStage(page: Page, number: number, title: string) {
 export const saveAndContinue = (page: Page) =>
   page.getByRole("button", { name: "Сохранить и продолжить" }).click();
 
+export const address = "г. Тверь, ул. Синтетическая, 1";
+
 export async function fillCompanyStage(page: Page) {
   await page.getByLabel("Сведения о компании из реестра верны").check();
-  await page
-    .getByLabel("Фактический адрес")
-    .fill("Демо-город, ул. Синтетическая, 1");
-  await page
-    .getByLabel("Фактическая деятельность")
-    .fill("Оптовая торговля (демо)");
+  await page.getByLabel("Фактический адрес").fill(address);
+  await page.getByLabel("Фактическая деятельность").fill("Оптовая торговля");
 }
 
 /**
@@ -282,6 +304,43 @@ export async function expectNoPageOverflow(page: Page) {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+}
+
+/**
+ * The words the user removed from the app (any case): «демо…», «демонстрац…», «имитац…»/«имитатор», and the Latin
+ * "demo". The only Latin exception that can appear on screen is a seeded `@demo.local` e-mail (binding rule 7).
+ */
+export const DEMO_WORDS = /(?<![а-яё])(демо|имитац|имитатор)/iu;
+export const LATIN_DEMO = /demo/i;
+export const DEMO_EMAIL = /[\w.+-]+@demo\.local/gi;
+
+/**
+ * Everything the page could show or announce has no demo wording: the whole DOM text (hidden forms and closed
+ * disclosures included), the user-facing attributes, form values, the document title and the address.
+ */
+export async function expectNoDemoWording(page: Page) {
+  const texts = await page.evaluate(() => {
+    const found: string[] = [document.title, location.pathname + location.search];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode())
+      if (node.parentElement?.tagName !== "SCRIPT" && node.nodeValue?.trim())
+        found.push(node.nodeValue);
+    const attributes = ["aria-label", "aria-valuetext", "aria-description", "title", "placeholder", "alt"];
+    for (const element of document.body.querySelectorAll("*")) {
+      for (const name of attributes) {
+        const value = element.getAttribute(name);
+        if (value) found.push(`${name}: ${value}`);
+      }
+      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)
+        found.push(`value: ${element.value}`);
+    }
+    return found;
+  });
+  const offending = texts.filter(
+    (text) =>
+      DEMO_WORDS.test(text) || LATIN_DEMO.test(text.replace(DEMO_EMAIL, "")),
+  );
+  expect(offending).toEqual([]);
 }
 
 /** Every visible control in the main area is at least 44px tall. */

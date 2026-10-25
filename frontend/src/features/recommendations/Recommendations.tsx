@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
+  ApiError,
   Catalog,
   CompanyResult,
   Need,
@@ -7,15 +8,20 @@ import {
   recommendationsApi,
   errorMessage,
 } from "../../api";
-import { DemoBadge, ErrorNotice, Icon } from "../../components";
+import { ErrorNotice, Icon, Loading } from "../../components";
 import { CommandAttempts } from "../applications/commands";
+import { rub } from "../applications/format";
 import { useStartApplication } from "../applications/useStartApplication";
-import { ProductCard, money } from "./ProductCard";
+import { AmountSlider } from "./AmountSlider";
+import { ProductCard } from "./ProductCard";
+import { products } from "./productText";
+import "./recommendations.css";
 
-// The need is the amount alone: purpose, term and collateral are chosen in the questionnaire.
-const initial: Need = { requested_amount_rub: 1500000 };
-const MAX_AMOUNT = 2000000000;
-
+/**
+ * The product choice: the amount is the only input (purpose, term and collateral are chosen in the questionnaire),
+ * every catalog product is a card in the server's ranking order. Each amount change saves a new snapshot after a
+ * short pause; an older response never describes a newer amount.
+ */
 export function Recommendations({
   data,
   onBack,
@@ -29,59 +35,83 @@ export function Recommendations({
   onApplicationCreated: (applicationId: string) => void;
   onUnauthorized: () => void;
 }) {
-  const [need, setNeed] = useState<Need>(initial);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [catalogError, setCatalogError] = useState("");
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
+  // Null until the catalog gives the slider's default amount; `valid` is false while the typed amount is unusable.
+  const [need, setNeed] = useState<Need | null>(null);
+  const [valid, setValid] = useState(true);
   const [snapshot, setSnapshot] = useState<RecommendationSnapshot | null>(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(true);
   const [refresh, setRefresh] = useState(0);
-  // "catalog" is the plain baseline: fixed catalog order, no fit guidance, same figures.
-  const [mode, setMode] = useState<"guided" | "catalog">("guided");
   const requestRevision = useRef(0);
   const controller = useRef<AbortController | null>(null);
-  const currentNeed = useRef(need);
-  const valid =
-    Number.isInteger(need.requested_amount_rub) &&
-    need.requested_amount_rub > 0 &&
-    need.requested_amount_rub <= MAX_AMOUNT;
+  const amountInput = useRef<HTMLInputElement>(null);
+  // While a new amount is calculated the grid keeps its last height, so the page does not collapse and jump.
+  const grid = useRef<HTMLDivElement>(null);
+  const gridHeight = useRef(0);
+  useLayoutEffect(() => {
+    if (snapshot && grid.current)
+      gridHeight.current = grid.current.offsetHeight;
+  }, [snapshot]);
+  const unauthorized = (e: unknown) =>
+    e instanceof ApiError && e.status === 401;
 
-  function update(patch: Partial<Need>) {
-    // Invalidate immediately, before React runs effect cleanup, so an old response
-    // cannot describe freshly edited controls. The server may still save it.
+  useEffect(() => {
+    const read = new AbortController();
+    setCatalogError("");
+    recommendationsApi
+      .catalog(read.signal)
+      .then((result) => {
+        setCatalog(result);
+        setNeed(
+          (current) =>
+            current ?? {
+              requested_amount_rub: result.amount_slider.default_rub,
+            },
+        );
+      })
+      .catch((e) => {
+        if (read.signal.aborted) return;
+        if (unauthorized(e)) onUnauthorized();
+        else setCatalogError(errorMessage(e));
+      });
+    return () => read.abort();
+  }, [catalogAttempt]);
+
+  /** A new amount (null: the typed text is unusable). Invalidates at once, before React runs effect cleanup. */
+  function update(amount: number | null) {
     requestRevision.current += 1;
     controller.current?.abort();
     setSnapshot(null);
     setError("");
-    const next = { ...currentNeed.current, ...patch };
-    currentNeed.current = next;
-    setNeed(next);
-    setPending(true);
+    setValid(amount !== null);
+    if (amount !== null) setNeed({ requested_amount_rub: amount });
+    setPending(amount !== null);
   }
   useEffect(() => {
+    if (!need) return;
     const revision = ++requestRevision.current;
     const read = new AbortController();
     controller.current = read;
     const active = () =>
       !read.signal.aborted && revision === requestRevision.current;
-    setPending(true);
+    setPending(valid);
     setError("");
     const timer = window.setTimeout(async () => {
-      if (!valid) {
-        if (active()) setPending(false);
-        return;
-      }
+      if (!valid) return;
       try {
-        const [catalogResult, result] = await Promise.all([
-          catalog
-            ? Promise.resolve(catalog)
-            : recommendationsApi.catalog(read.signal),
-          recommendationsApi.calculate(data.company.id, need, read.signal),
-        ]);
-        if (!active()) return;
-        setCatalog(catalogResult);
-        setSnapshot(result);
+        const result = await recommendationsApi.calculate(
+          data.company.id,
+          need,
+          read.signal,
+        );
+        if (active()) setSnapshot(result);
       } catch (e) {
-        if (active()) setError(errorMessage(e));
+        if (!active()) return;
+        if (unauthorized(e)) onUnauthorized();
+        else setError(errorMessage(e));
       } finally {
         if (active()) setPending(false);
       }
@@ -91,7 +121,7 @@ export function Recommendations({
       read.abort();
       requestRevision.current += 1;
     };
-  }, [need, data.company.id, refresh]);
+  }, [need, valid, data.company.id, refresh]);
 
   const start = useStartApplication({
     companyId: data.company.id,
@@ -100,29 +130,27 @@ export function Recommendations({
     onCreated: onApplicationCreated,
     onUnauthorized,
   });
-  const guided = mode === "guided";
-  const cards =
-    snapshot && catalog
-      ? guided
-        ? snapshot.items
-        : catalog.products.flatMap((p) =>
-            snapshot.items.filter((i) => i.product_id === p.id),
-          )
-      : [];
   const registry = data.company.registry_status;
-  const hasTurnover = (data.precheck.monthly_revenue_rub ?? 0) > 0;
+  const revenue = data.precheck.monthly_revenue_rub;
+  const items = snapshot?.items ?? [];
+  const fitting = items.filter((item) => item.status === "fits").length;
+  const summary = !valid
+    ? "Укажите сумму в пределах шкалы, чтобы увидеть продукты."
+    : pending || !snapshot
+      ? `Пересчитываем для суммы ${need ? rub(need.requested_amount_rub) : ""}…`
+      : `${products(items.length)} для суммы ${rub(items[0]?.requested_amount_rub ?? need!.requested_amount_rub)} · подходят ${fitting} · сначала подходящие по сумме и условиям`;
+
   return (
     <>
       <button className="back-link" onClick={onBack}>
         ← Профиль компании
       </button>
-      <div className="page-heading detail-heading">
-        <div>
-          <div className="eyebrow accent">Подбор финансирования</div>
-          <h1>Найдём подходящий маршрут</h1>
-          <p>{data.company.name} · синтетические сведения</p>
-        </div>
-        <DemoBadge />
+      <div className="page-heading">
+        <div className="eyebrow accent">Подбор финансирования</div>
+        <h1>Найдём подходящий маршрут</h1>
+        <p>
+          {data.company.name} · ИНН {data.company.inn}
+        </p>
       </div>
       <div className="notice quiet">
         <Icon name="shield" />
@@ -143,7 +171,7 @@ export function Recommendations({
           </span>
         </div>
       )}
-      {!hasTurnover && (
+      {!(revenue !== null && revenue > 0) && (
         <div className="notice caution">
           <Icon name="info" />
           <span>
@@ -152,144 +180,102 @@ export function Recommendations({
           </span>
         </div>
       )}
-      <div className="recommendation-layout">
-        <section className="card need-panel" aria-labelledby="need-heading">
-          <div className="eyebrow">01 / Ваша задача</div>
-          <h2 id="need-heading">Какая сумма нужна?</h2>
-          <label htmlFor="need-amount">Сумма, ₽</label>
-          <input
-            id="need-amount"
-            type="number"
-            min="1"
-            max={MAX_AMOUNT}
-            step="1"
-            value={need.requested_amount_rub || ""}
-            onChange={(e) =>
-              update({ requested_amount_rub: e.target.valueAsNumber || 0 })
-            }
-          />
-          <input
-            className="amount-slider"
-            aria-label="Изменить сумму ползунком"
-            aria-valuetext={money(need.requested_amount_rub)}
-            type="range"
-            min="300000"
-            max="6000000"
-            step="50000"
-            value={Math.min(
-              6000000,
-              Math.max(300000, need.requested_amount_rub),
-            )}
-            onChange={(e) =>
-              update({ requested_amount_rub: Number(e.target.value) })
-            }
-          />
-          <div className="range-labels">
-            <span>300 тыс.</span>
-            <span>6 млн ₽</span>
-          </div>
-          <p className="field-hint">
-            Можно ввести от 1 ₽ до 2 млрд ₽ для сравнения с условиями
-            продуктов. Цель, срок и залог укажете в анкете выбранного продукта.
-          </p>
-          {!valid && (
-            <p className="form-error" role="alert">
-              Укажите целую положительную сумму до 2 млрд ₽.
-            </p>
-          )}
-          <div className="need-source">
-            <span>
-              Среднемесячный оборот <DemoBadge />
-            </span>
-            <strong>{money(data.precheck.monthly_revenue_rub)}</strong>
-            <small>
-              Личный лимит ограничен оборотом, даже при наличии залога.
-            </small>
-          </div>
-        </section>
-        <section
-          className="recommendation-results"
-          aria-labelledby="results-heading"
-          aria-busy={pending && valid}
-        >
-          <div className="results-heading">
-            <div>
-              <div className="eyebrow">02 / Сравнение</div>
-              <h2 id="results-heading">
-                {guided ? "Маршруты для бизнеса" : "Каталог продуктов"}
-              </h2>
+      {catalogError ? (
+        <ErrorNotice
+          error={catalogError}
+          onRetry={() => setCatalogAttempt((n) => n + 1)}
+        />
+      ) : !catalog || !need ? (
+        <Loading />
+      ) : (
+        <>
+          <AmountSlider
+            config={catalog.amount_slider}
+            amount={need.requested_amount_rub}
+            onChange={update}
+            inputRef={amountInput}
+          >
+            <div className="amount-turnover">
+              <span>Среднемесячный оборот</span>
+              <strong>{revenue === null ? "Нет данных" : rub(revenue)}</strong>
+              <small>
+                Личная оценка ограничена оборотом, даже при наличии залога.
+              </small>
             </div>
-            <label className="order-select">
-              Режим
-              <select
-                aria-label="Режим показа продуктов"
-                value={mode}
-                onChange={(e) => setMode(e.target.value as typeof mode)}
-              >
-                <option value="guided">Подбор с объяснениями</option>
-                <option value="catalog">Обычный каталог</option>
-              </select>
-            </label>
-          </div>
-          {error && (
-            <ErrorNotice
-              error={error}
-              onRetry={() => setRefresh((x) => x + 1)}
-            />
-          )}
-          {pending && valid && (
-            <div className="card calculating" role="status">
-              <Icon name="refresh" />
-              <span>Сравниваем параметры и пересчитываем платёж…</span>
+          </AmountSlider>
+          <section
+            className="recommendation-results"
+            aria-labelledby="results-heading"
+            aria-busy={pending && valid}
+          >
+            <div className="results-heading">
+              <div className="eyebrow">Сравнение</div>
+              <h2 id="results-heading">Продукты для вашего бизнеса</h2>
+              <p className="results-summary" role="status">
+                {summary}
+              </p>
             </div>
-          )}
-          {!valid && (
-            <div className="card calculating">
-              Заполните параметры слева, чтобы увидеть сравнение.
-            </div>
-          )}
-          {cards.map((item) => {
-            const product = catalog?.products.find(
-              (p) => p.id === item.product_id,
-            );
-            if (!product) return null;
-            return (
-              <ProductCard
-                key={item.product_id}
-                item={item}
-                product={product}
-                guided={guided}
-                onRecalculate={(amount) =>
-                  update({ requested_amount_rub: amount })
-                }
-                start={{
-                  pending: start.pending === item.product_id,
-                  busy: start.pending !== null,
-                  problem:
-                    start.problem?.productId === item.product_id
-                      ? start.problem.problem
-                      : null,
-                  onStart: () => void start.start(item.product_id),
-                  // A fresh calculation saves a new snapshot under the current catalog and rules.
-                  onRefresh: () => update({}),
-                }}
+            {error && (
+              <ErrorNotice
+                error={error}
+                onRetry={() => setRefresh((x) => x + 1)}
               />
-            );
-          })}
-          {snapshot && (
-            <p className="snapshot-note">
-              Оценка сохранена ·{" "}
-              {new Date(snapshot.created_at).toLocaleTimeString("ru-RU", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}{" "}
-              · {snapshot.rules_version}
-              <br />
-              Снимок {snapshot.snapshot_id}
-            </p>
-          )}
-        </section>
-      </div>
+            )}
+            <div
+              id="product-grid"
+              ref={grid}
+              className="product-grid"
+              style={
+                pending && valid && !snapshot
+                  ? { minHeight: gridHeight.current }
+                  : undefined
+              }
+            >
+              {items.map((item) => {
+                const product = catalog.products.find(
+                  (p) => p.id === item.product_id,
+                );
+                if (!product) return null;
+                return (
+                  <ProductCard
+                    key={item.product_id}
+                    item={item}
+                    product={product}
+                    onRecalculate={(amount) => {
+                      // The card is replaced by the new results: focus goes to the amount that changed.
+                      update(amount);
+                      amountInput.current?.focus();
+                    }}
+                    start={{
+                      pending: start.pending === item.product_id,
+                      busy: start.pending !== null,
+                      problem:
+                        start.problem?.productId === item.product_id
+                          ? start.problem.problem
+                          : null,
+                      onStart: () => void start.start(item.product_id),
+                      // A fresh calculation saves a new snapshot under the current catalog and rules.
+                      onRefresh: () => update(need.requested_amount_rub),
+                    }}
+                  />
+                );
+              })}
+            </div>
+            {snapshot && (
+              <p className="snapshot-note">
+                Оценка сохранена ·{" "}
+                {new Date(snapshot.created_at).toLocaleTimeString("ru-RU", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}{" "}
+                · {snapshot.rules_version}
+                <br />
+                Снимок {snapshot.snapshot_id}
+              </p>
+            )}
+          </section>
+        </>
+      )}
     </>
   );
 }

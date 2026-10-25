@@ -106,12 +106,21 @@ export function commandProblem(error: unknown): CommandProblem {
     case "COLLATERAL_INSUFFICIENT":
     case "LIMIT_BELOW_MINIMUM":
       return problem("status", error.message);
+    // An officer's request for an answer the client cannot give (source-owned, or a pledge of an unsecured
+    // application): the server's reason stays next to the picker.
+    case "FIELD_NOT_REQUESTABLE":
+      return problem(
+        "fields",
+        "Эти сведения нельзя запросить у клиента: снимите отмеченные поля и отправьте запрос снова.",
+        error.fields ?? {},
+      );
     case "VALIDATION_ERROR":
     case "CORRECTION_REQUIRED":
     case "NEED_INFO":
     case "PRODUCT_NOT_SUPPORTED":
     case "ANSWER_NOT_REQUESTED":
     case "NEED_FIELDS_LOCKED":
+    case "SOURCE_OWNED_FIELDS":
     case "AMOUNT_OUT_OF_BOUNDS":
     case "DOCUMENT_TYPE_NOT_ALLOWED":
     case "VERIFIED_VALUE_REQUIRED":

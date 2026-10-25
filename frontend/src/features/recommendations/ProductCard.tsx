@@ -1,30 +1,11 @@
 import { Product, Recommendation } from "../../api";
 import { Icon } from "../../components";
 import { CommandProblem } from "../applications/commands";
-
-export const money = (n: number | null) =>
-  n === null
-    ? "Нужно уточнить"
-    : new Intl.NumberFormat("ru-RU").format(n) + " ₽";
-const labels = {
-  fits: "Соответствует потребности",
-  needs_info: "Нужны сведения",
-  does_not_fit: "Не соответствует параметрам",
-};
-const collateralText = (product: Product) =>
-  product.collateral_mode === "required"
-    ? `С залогом · оценка до ${product.collateral_ltv_bps / 100}% его заявленной стоимости`
-    : product.collateral_mode === "optional"
-      ? "Залог по желанию"
-      : "Без залога";
-const termText = (product: Product) =>
-  product.term_min_months !== null && product.term_max_months !== null
-    ? `${product.term_min_months}–${product.term_max_months} мес.`
-    : "бессрочно";
-const rateText = (product: Product) =>
-  product.annual_rate_bps === null
-    ? "Ставка уточняется"
-    : `Ставка ${(product.annual_rate_bps / 100).toLocaleString("ru-RU")}% годовых`;
+import { keepAmountsTogether, rub } from "../applications/format";
+import { ProductConditions } from "./ProductConditions";
+import { ProductExplanation } from "./ProductExplanation";
+import { ProductFigures } from "./ProductFigures";
+import { STATUS } from "./productText";
 
 /** Starting a questionnaire from this card: only offered where the server says `can_apply`. */
 export type CardStart = {
@@ -35,169 +16,157 @@ export type CardStart = {
   onRefresh: () => void;
 };
 
+/**
+ * One catalog product for the chosen amount, in the grid's fixed rows (header, the three explanations, figures,
+ * payment note, badges, fit, conditions, action) so that both cards of a grid row line up section by section.
+ */
 export function ProductCard({
   item,
   product,
-  guided,
   onRecalculate,
   start,
 }: {
   item: Recommendation;
   product: Product;
-  guided: boolean;
   onRecalculate: (amount: number) => void;
   start: CardStart;
 }) {
+  const status = STATUS[item.status];
+  const best = item.rank === 1 && item.status === "fits";
+  const inactive = item.checks.some(
+    (check) => check.code === "company_active" && check.result === "failed",
+  );
+  const issues = item.checks.filter((check) => check.result !== "passed");
+  const limit = item.indicative_limit_rub;
+  // The amount is the one thing this screen changes: offer the product's bound when only the amount is outside it,
+  // or the personal estimate when the request is above it.
+  const failed = issues.filter((check) => check.result === "failed");
+  const onlyAmount =
+    failed.length > 0 &&
+    failed.every((check) => ["amount_min", "catalog_max"].includes(check.code));
+  const target = onlyAmount
+    ? failed[0].code === "amount_min"
+      ? product.amount_min_rub
+      : product.amount_max_rub
+    : limit !== null &&
+        limit >= product.amount_min_rub &&
+        item.requested_amount_rub > limit
+      ? limit
+      : null;
   return (
     <article
-      className={"card product-card " + (guided ? item.status : "")}
+      className={"card product-card " + item.status + (best ? " best" : "")}
       data-product-id={item.product_id}
       aria-labelledby={"product-title-" + item.product_id}
     >
-      {guided && (
+      <header className="product-head">
         <div className="product-top">
-          <span
-            className={
-              "status " +
-              (item.status === "fits"
-                ? "success"
-                : item.status === "needs_info"
-                  ? "warning"
-                  : "neutral")
-            }
-          >
-            {labels[item.status]}
+          <span className={"status product-status " + status.tone}>
+            {status.label}
           </span>
+          {best && <span className="product-tag best">Лучшее совпадение</span>}
+          {product.kind === "gov_program" && (
+            <span className="product-tag">Госпрограмма</span>
+          )}
           <span className="product-rank">
             <span aria-hidden="true">{String(item.rank).padStart(2, "0")}</span>
             <span className="sr-only">Место {item.rank}</span>
           </span>
         </div>
-      )}
-      <h3 id={"product-title-" + item.product_id}>{product.name}</h3>
-      <p className="product-subtitle">
-        {collateralText(product)} · {termText(product)}
-      </p>
-      <div className="product-metrics">
-        <div>
-          <span>Личная предварительная оценка</span>
-          <strong>{money(item.indicative_limit_rub)}</strong>
-          <small>Максимум продукта {money(item.catalog_max_rub)}</small>
-        </div>
-        <div>
-          <span>
-            {product.payment_model === "interest_full_utilization"
-              ? "Проценты в месяц"
-              : "Платёж в месяц"}
-          </span>
-          <strong>{money(item.estimated_payment_rub)}</strong>
-          <small>
-            {rateText(product)}
-            {item.payment_label && ` · ${item.payment_label}`}
-          </small>
-        </div>
-      </div>
-      <p className="payment-note">{item.payment_note}</p>
-      {guided && (
-        <div className="fit-reasons">
-          {item.reasons.map((reason) => (
-            <p key={reason}>{reason}</p>
-          ))}
-        </div>
-      )}
-      <div
-        className={
-          "application-eligibility " + (item.can_apply ? "available" : "")
-        }
-      >
-        <Icon name={item.can_apply ? "check" : "info"} size={16} />
-        <span>
-          {item.can_apply
-            ? "Можно начать анкету: итоговая сумма и решение определяются после рассмотрения."
-            : "Для начала анкеты измените несовместимые параметры или уточните статус компании."}
-        </span>
-      </div>
-      {item.can_apply && (
-        <div className="application-start">
-          <button
-            className="button primary"
-            onClick={start.onStart}
-            disabled={start.busy}
-          >
-            {start.pending ? "Создаём черновик…" : "Начать анкету"}
-            <Icon />
-          </button>
-          {start.problem && (
-            <div className="notice error" role="alert">
-              <Icon name="info" />
-              <div>
-                {start.problem.message}
-                {start.problem.kind === "stale" && (
-                  <button
-                    className="button secondary"
-                    onClick={start.onRefresh}
-                  >
-                    <Icon name="refresh" size={17} />
-                    Пересчитать оценку
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-      {guided && item.alternatives.length > 0 && (
-        <div className="product-alternatives">
-          {item.alternatives.map((text) => (
-            <p key={text}>{text}</p>
-          ))}
-          {item.indicative_limit_rub !== null &&
-            item.indicative_limit_rub >= product.amount_min_rub &&
-            item.requested_amount_rub > item.indicative_limit_rub && (
-              <button
-                className="button secondary"
-                onClick={() => onRecalculate(item.indicative_limit_rub!)}
-              >
-                Рассчитать на {money(item.indicative_limit_rub)}
-              </button>
-            )}
-        </div>
-      )}
-      {guided && (
-        <details className="criteria">
-          <summary>
-            Все критерии соответствия{" "}
+        <h3 id={"product-title-" + item.product_id}>{product.name}</h3>
+        {product.display.headline && (
+          <p className="product-headline">{product.display.headline}</p>
+        )}
+      </header>
+      <ProductExplanation product={product} />
+      <ProductFigures item={item} product={product} inactive={inactive} />
+      <p className="product-note">{keepAmountsTogether(item.payment_note)}</p>
+      <div className="product-badges">
+        {item.badges.map((badge) => (
+          <p key={badge.overlay_id} className="product-badge">
+            <Icon name="shield" size={18} />
             <span>
-              {item.checks.filter((c) => c.result === "passed").length} из{" "}
-              {item.checks.length}
+              <b>{badge.name}.</b> {badge.text}
             </span>
-          </summary>
-          <ul>
-            {item.checks.map((check) => (
-              <li key={check.code}>
-                <span
-                  className={"criterion-mark " + check.result}
-                  aria-hidden="true"
-                >
-                  {check.result === "passed"
-                    ? "✓"
-                    : check.result === "failed"
-                      ? "×"
-                      : "?"}
-                </span>
-                <span className="sr-only">
-                  {check.result === "passed"
-                    ? "Выполнено: "
-                    : check.result === "failed"
+          </p>
+        ))}
+      </div>
+      <div className="product-fit">
+        {item.status !== "fits" && (
+          <div className="product-fit-box">
+            <ul>
+              {issues.map((check) => (
+                <li key={check.code} className={check.result}>
+                  <span className="sr-only">
+                    {check.result === "failed"
                       ? "Не выполнено: "
                       : "Нужно уточнить: "}
-                </span>
-                {check.text}
-              </li>
+                  </span>
+                  {keepAmountsTogether(check.text)}
+                </li>
+              ))}
+            </ul>
+            {item.alternatives.map((text) => (
+              <p key={text}>{keepAmountsTogether(text)}</p>
             ))}
-          </ul>
-        </details>
-      )}
+            {target !== null && (
+              <button
+                className="button secondary"
+                onClick={() => onRecalculate(target)}
+              >
+                Рассчитать на {rub(target)}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      <ProductConditions item={item} product={product} />
+      <div className="product-action">
+        <p
+          className={
+            "application-eligibility " + (item.can_apply ? "available" : "")
+          }
+        >
+          <Icon name={item.can_apply ? "check" : "info"} size={16} />
+          <span>
+            {item.can_apply
+              ? "Можно начать анкету: итоговая сумма и решение определяются после рассмотрения."
+              : inactive
+                ? "Анкету можно начать только для действующей компании."
+                : "Для начала анкеты измените несовместимые параметры или уточните статус компании."}
+          </span>
+        </p>
+        {item.can_apply && (
+          <div className="application-start">
+            <button
+              className="button primary product-start"
+              onClick={start.onStart}
+              disabled={start.busy}
+              aria-describedby={"product-title-" + item.product_id}
+            >
+              {start.pending ? "Создаём черновик…" : "Начать анкету"}
+              <Icon />
+            </button>
+            {start.problem && (
+              <div className="notice error" role="alert">
+                <Icon name="info" />
+                <div>
+                  {start.problem.message}
+                  {start.problem.kind === "stale" && (
+                    <button
+                      className="button secondary"
+                      onClick={start.onRefresh}
+                    >
+                      <Icon name="refresh" size={17} />
+                      Пересчитать оценку
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </article>
   );
 }

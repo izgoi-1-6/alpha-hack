@@ -1,0 +1,412 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  AnswerValue,
+  Application,
+  applicationsApi,
+  ConsentDocument,
+  Dialog,
+  FieldDescriptor,
+} from "../../api";
+import { Icon } from "../../components";
+import { CancelAction } from "./CancelAction";
+import { CommandAttempts, CommandProblem, commandProblem } from "./commands";
+import {
+  answerPaths,
+  FieldDraft,
+  fromDraft,
+  hasAnswer,
+  sameAnswer,
+  toDraft,
+} from "./fields";
+import { formatTime, productName, STATUS } from "./format";
+import { ReviewStage } from "./ReviewStage";
+import { idOf, StageField } from "./StageFields";
+import { useCommand } from "./useCommand";
+import { DraftSummary, Stepper } from "./WizardChrome";
+
+const STAGE_INTRO: Record<number, string> = {
+  1: "Подтвердите сведения из демо-реестра и укажите, где и чем фактически занимается бизнес.",
+  2: "Цель, сумма и срок перенесены из подбора. Их можно изменить в пределах условий продукта.",
+  3: "Обороты подставлены из демо-источника. Если меняете значение, его проверит кредитный специалист.",
+  4: "Текущие платежи и налоговые обязательства. Кредитную историю запросим в демо-БКИ только после отправки.",
+  5: "Только синтетические данные: паспорт и реальные персональные данные не нужны.",
+  6: "Проверьте ответы и дайте согласия — без них заявку не отправить.",
+};
+const belongsTo = (path: string, name: string) =>
+  path === name || path.startsWith(name + ".");
+/** After a refused save, focus the first input it names (once the inputs are enabled again). */
+const focusFirst = (paths: string[]) =>
+  window.requestAnimationFrame(() => {
+    if (paths.length) document.getElementById(idOf(paths[0]))?.focus();
+  });
+
+/**
+ * The six saved stages of a DRAFT. The server's dialog decides the fields, completion and blockers; this component
+ * owns the local edits of the open stage. Every stage change saves those edits with the current version, so a reload
+ * resumes at the saved stage. A stale version reloads and keeps the unsaved edits on screen.
+ */
+export function Wizard({
+  application,
+  dialog,
+  consents,
+  attempts,
+  refresh,
+  announce,
+  onOpenList,
+  onOpenApplication,
+  onRecalculate,
+  onUnauthorized,
+}: {
+  application: Application;
+  dialog: Dialog;
+  consents: ConsentDocument[];
+  attempts: CommandAttempts;
+  /** Reloads the application; resolves to the fresh dialog while it is still a draft, otherwise null. */
+  refresh: (notice?: string) => Promise<Dialog | null>;
+  announce: (text: string) => void;
+  onOpenList: () => void;
+  onOpenApplication: (id: string) => void;
+  onRecalculate: (companyId: string) => void;
+  onUnauthorized: () => void;
+}) {
+  const [stage, setStage] = useState(dialog.current_stage);
+  const [edits, setEdits] = useState<Record<string, FieldDraft>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [visited, setVisited] = useState<number[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saveProblem, setSaveProblem] = useState<CommandProblem | null>(null);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const submission = useCommand(attempts, onUnauthorized);
+  const alive = submission.alive;
+  const heading = useRef<HTMLHeadingElement>(null);
+  const [focusRequest, setFocusRequest] = useState(0);
+  useEffect(() => {
+    if (focusRequest) heading.current?.focus();
+  }, [focusRequest]);
+
+  const current =
+    dialog.stages.find((entry) => entry.number === stage) ?? dialog.stages[0];
+  const total = dialog.steps_total;
+  const busy = saving || !!submission.busy;
+  const unsaved = Object.keys(edits).length > 0;
+  // Reloading or closing the tab with unsaved edits of the open stage asks first.
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
+  const draftOf = (field: FieldDescriptor) =>
+    field.name in edits
+      ? edits[field.name]
+      : toDraft(field, dialog.answers[field.name]);
+
+  function change(field: FieldDescriptor, draft: FieldDraft) {
+    setEdits((previous) => ({ ...previous, [field.name]: draft }));
+    setErrors((previous) =>
+      Object.fromEntries(
+        Object.entries(previous).filter(
+          ([path]) => !belongsTo(path, field.name),
+        ),
+      ),
+    );
+  }
+
+  /** Input errors always; the server's blockers for a saved value, or for any gap once the stage was left. */
+  function messagesFor(field: FieldDescriptor) {
+    const messages: Record<string, string> = {};
+    const showGaps =
+      hasAnswer(field, dialog.answers[field.name]) || visited.includes(stage);
+    if (!(field.name in edits) && showGaps)
+      for (const [path, message] of Object.entries(dialog.field_issues))
+        if (belongsTo(path, field.name)) messages[path] = message;
+    for (const [path, message] of Object.entries(errors))
+      if (belongsTo(path, field.name)) messages[path] = message;
+    return messages;
+  }
+
+  async function recover(error: unknown) {
+    const problem = commandProblem(error);
+    if (problem.kind === "session") return onUnauthorized();
+    if (problem.kind === "version" || problem.kind === "status") {
+      const fresh = await refresh(
+        "Анкета уже отправлена или отменена в другой вкладке: изменения не сохранены.",
+      );
+      if (!alive.current || !fresh) return;
+      setSaveProblem({
+        ...problem,
+        message:
+          "Заявка изменилась в другой вкладке или окне. Мы загрузили сохранённую версию и оставили ваши несохранённые изменения в форме — проверьте их и сохраните снова.",
+      });
+      return;
+    }
+    if (problem.kind === "fields") {
+      const paths = answerPaths(problem.fields);
+      setErrors((previous) => ({ ...previous, ...paths }));
+      focusFirst(Object.keys(paths));
+    }
+    setSaveProblem(
+      problem.kind === "network"
+        ? {
+            ...problem,
+            message:
+              "Нет связи с сервером. Ответы этого шага не сохранены — повторите попытку.",
+          }
+        : problem,
+    );
+  }
+
+  /** Saves the open stage's changed answers and the stage pointer; resolves to the fresh dialog. */
+  async function save(target: number): Promise<Dialog | null> {
+    const patch: Record<string, AnswerValue> = {};
+    const found: Record<string, string> = {};
+    for (const field of current.fields) {
+      if (!(field.name in edits)) continue;
+      const parsed = fromDraft(field, edits[field.name]);
+      Object.assign(found, parsed.errors);
+      if (
+        !Object.keys(parsed.errors).length &&
+        !sameAnswer(field, parsed.value, dialog.answers[field.name])
+      )
+        patch[field.name] = parsed.value;
+    }
+    if (Object.keys(found).length) {
+      setErrors((previous) => ({ ...previous, ...found }));
+      setSaveProblem({
+        kind: "fields",
+        message: "Проверьте отмеченные поля: шаг не сохранён.",
+        fields: found,
+      });
+      focusFirst(Object.keys(found));
+      return null;
+    }
+    setSaveProblem(null);
+    if (!Object.keys(patch).length && target === dialog.current_stage) {
+      setEdits({});
+      return dialog;
+    }
+    setSaving(true);
+    try {
+      await applicationsApi.saveAnswers(dialog.application_id, {
+        version: dialog.version,
+        current_stage: target,
+        answers: patch,
+      });
+    } catch (error) {
+      if (!alive.current) return null;
+      setSaving(false);
+      await recover(error);
+      return null;
+    }
+    const fresh = await refresh();
+    if (!alive.current) return null;
+    setSaving(false);
+    if (!fresh) return null;
+    setEdits({});
+    setErrors({});
+    setSavedAt(new Date());
+    return fresh;
+  }
+
+  async function go(target: number, highlight = false) {
+    if (busy || target === stage || target < 1 || target > total) return;
+    const leaving = stage;
+    const fresh = await save(target);
+    if (!fresh || !alive.current) return;
+    setVisited((previous) => [
+      ...new Set([...previous, leaving, ...(highlight ? [target] : [])]),
+    ]);
+    setStage(target);
+    setFocusRequest((n) => n + 1);
+    const title = fresh.stages.find((entry) => entry.number === target)?.title;
+    announce(`Сохранено. Шаг ${target} из ${total}: ${title}.`);
+  }
+
+  /** The back link keeps the open stage's edits: they are saved before the list opens. */
+  async function leave() {
+    if (busy) return;
+    if (unsaved && !(await save(stage))) return;
+    if (alive.current) onOpenList();
+  }
+
+  async function submit(documents: ConsentDocument[]) {
+    if (busy) return;
+    const fresh = await save(total);
+    if (!fresh || !alive.current) return;
+    const body = {
+      version: fresh.version,
+      consents: documents.map((doc) => ({
+        code: doc.code,
+        version: doc.version,
+        accepted: true as const,
+      })),
+    };
+    const result = await submission.run(
+      "submit",
+      `submit:${fresh.application_id}`,
+      body,
+      (key) => applicationsApi.submit(fresh.application_id, body, key),
+    );
+    if (!result) return;
+    if (result.ok) {
+      announce(
+        `Заявка отправлена. Статус: ${STATUS[result.value.application.status].label}.`,
+      );
+      await refresh();
+      return;
+    }
+    const { problem } = result;
+    if (problem.kind === "network")
+      submission.setProblem({
+        ...problem,
+        message:
+          "Нет связи с сервером. Заявка могла уже отправиться: нажмите «Отправить заявку» ещё раз — повтор не создаст вторую заявку.",
+      });
+    else if (problem.kind === "version" || problem.kind === "status")
+      await refresh("Заявка уже отправлена или отменена в другой вкладке.");
+    else if (problem.kind === "fields") await refresh();
+  }
+
+  const accuracy = dialog.stages[total - 1]?.fields[0];
+  const stageProblem = saveProblem ?? submission.problem;
+  return (
+    <div className="wizard">
+      <button
+        type="button"
+        className="back-button"
+        onClick={() => void leave()}
+        disabled={busy}
+      >
+        ← Мои заявки
+      </button>
+      <div className="page-heading wizard-header">
+        <div>
+          <div className="eyebrow accent">Анкета · черновик</div>
+          <h1>{productName(dialog)}</h1>
+          <p>
+            {dialog.company.name} · ИНН {dialog.company.inn}
+          </p>
+        </div>
+        <div className="wizard-header-side">
+          <span className={"status status-pill " + STATUS[dialog.status].tone}>
+            {STATUS[dialog.status].label}
+          </span>
+          <p className="save-state">
+            {savedAt
+              ? `Черновик сохранён в ${formatTime(savedAt)}`
+              : "Ответы сохраняются при переходе между шагами"}
+          </p>
+        </div>
+      </div>
+      {!dialog.allowed_actions.includes("submit") && (
+        <div className="notice caution">
+          <Icon name="info" />
+          <span>
+            {dialog.company.registry_status === "inactive"
+              ? "Компания не действует по данным демо-реестра: черновик можно просмотреть или отменить, но не отправить."
+              : "Отправка этой заявки сейчас недоступна."}
+          </span>
+        </div>
+      )}
+      <Stepper
+        stages={dialog.stages}
+        stage={stage}
+        busy={busy}
+        onGo={(number) => void go(number)}
+      />
+      <div className="wizard-layout">
+        <section className="card stage-card" aria-labelledby="stage-heading">
+          <div className="eyebrow">
+            Шаг {stage} из {total}
+          </div>
+          <h2 id="stage-heading" ref={heading} tabIndex={-1}>
+            {current.title}
+          </h2>
+          <p className="stage-intro">{STAGE_INTRO[stage]}</p>
+          {stage === total && accuracy ? (
+            <ReviewStage
+              dialog={dialog}
+              consents={consents}
+              accuracy={accuracy}
+              accuracyDraft={draftOf(accuracy)}
+              onAccuracy={(draft) => change(accuracy, draft)}
+              busy={busy}
+              submitting={submission.busy === "submit"}
+              problem={stageProblem}
+              onBack={() => void go(stage - 1)}
+              onJump={(number) => void go(number, true)}
+              onSubmit={(documents) => void submit(documents)}
+              onRecalculate={() => onRecalculate(dialog.company.id)}
+              onOpenApplication={onOpenApplication}
+            />
+          ) : (
+            <form
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                void go(stage + 1);
+              }}
+            >
+              <div className="stage-fields">
+                {current.fields.map((field) => (
+                  <StageField
+                    key={field.name}
+                    field={field}
+                    draft={draftOf(field)}
+                    messages={messagesFor(field)}
+                    disabled={busy}
+                    onChange={(draft) => change(field, draft)}
+                  />
+                ))}
+              </div>
+              {stageProblem && (
+                <div className="notice error" role="alert">
+                  <Icon name="info" />
+                  <span>{stageProblem.message}</span>
+                </div>
+              )}
+              <div className="stage-actions">
+                {stage > 1 && (
+                  <button
+                    type="button"
+                    className="button secondary"
+                    onClick={() => void go(stage - 1)}
+                    disabled={busy}
+                  >
+                    ← Назад
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="button primary"
+                  disabled={busy}
+                >
+                  {saving ? "Сохраняем…" : "Сохранить и продолжить"}
+                  <Icon />
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+        <DraftSummary
+          application={application}
+          dialog={dialog}
+          cancel={
+            dialog.allowed_actions.includes("cancel") && (
+              <CancelAction
+                application={{
+                  id: dialog.application_id,
+                  version: dialog.version,
+                }}
+                attempts={attempts}
+                reload={() => refresh()}
+                announce={announce}
+                onUnauthorized={onUnauthorized}
+              />
+            )
+          }
+        />
+      </div>
+    </div>
+  );
+}

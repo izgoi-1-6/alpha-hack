@@ -49,6 +49,12 @@ export function Icon({
       </>
     ),
     menu: <path d="M4 6h16M4 12h16M4 18h16" />,
+    file: (
+      <>
+        <path d="M7 3h7l5 5v13H7z" />
+        <path d="M14 3v5h5M10 13h6M10 17h6" />
+      </>
+    ),
     info: (
       <>
         <circle cx="12" cy="12" r="9" />
@@ -86,11 +92,11 @@ export function Brand() {
     </div>
   );
 }
-export function DemoBadge() {
+export function DemoBadge({ label = "Демо · имитация" }: { label?: string }) {
   return (
     <span className="demo-badge">
       <span />
-      Демо · имитация
+      {label}
     </span>
   );
 }

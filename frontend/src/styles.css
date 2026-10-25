@@ -1860,6 +1860,20 @@ dd {
   color: #35604c;
   background: #f1f7f3;
 }
+.application-start {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  margin-top: 14px;
+}
+.application-start .notice {
+  margin: 0;
+  font-size: 13px;
+}
+.application-start .notice .button {
+  margin-top: 10px;
+  font-size: 13px;
+}
 .product-alternatives {
   font-size: 12px;
   line-height: 1.75;

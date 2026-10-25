@@ -226,3 +226,236 @@ export const recommendationsApi = {
       { signal },
     ),
 };
+
+export type ApplicationStatus =
+  | "DRAFT"
+  | "CHECKING"
+  | "WAIT_EXTERNAL"
+  | "MANUAL_REVIEW"
+  | "NEED_INFO"
+  | "PREAPPROVED"
+  | "DOCS_UPLOADED"
+  | "DOCS_REWORK"
+  | "APPROVED"
+  | "REJECTED"
+  | "CANCELLED"
+  | "EXPIRED";
+export type ApplicationAction =
+  | "edit_answers"
+  | "submit"
+  | "retry_check"
+  | "cancel";
+/** A saved pledge answer: keys are merged on each save and may be null (cleared or not yet given). */
+export type Collateral = {
+  status?: "unknown" | "none" | "declared" | null;
+  type?: NonNullable<Need["collateral"]>["type"] | null;
+  declared_value_rub?: number | null;
+  description?: string | null;
+  owner_confirmed?: boolean | null;
+  encumbered?: boolean | null;
+};
+export type AnswerValue = string | number | boolean | Collateral | null;
+export type Answers = Record<string, AnswerValue>;
+export type ApplicationCompany = Pick<
+  Company,
+  "id" | "name" | "inn" | "entity_type" | "registry_status"
+>;
+/** The policy pinned at submission, or the live one for a draft (only `id` if it was withdrawn). */
+export type ApplicationProduct = { id: string } & Partial<{
+  name: string;
+  instrument_type: string;
+  amount_min_rub: number;
+  amount_max_rub: number;
+  term_min_months: number;
+  term_max_months: number;
+  annual_rate_bps: number;
+  rate_is_demo: boolean;
+  collateral_required: boolean;
+  collateral_ltv_bps: number | null;
+  required_documents: string[];
+}>;
+export type Evaluation = {
+  id: string;
+  rule: string;
+  outcome: ApplicationStatus;
+  score: number | null;
+  risk: "low" | "medium" | "high" | null;
+  scored_limit_rub: number | null;
+  reasons: string[];
+  created_at: string;
+};
+export type InfoRequest = {
+  id: string;
+  kind: "client_answers" | "trusted_source";
+  source: "registry" | "turnover" | "bki" | null;
+  requested_fields: string[];
+  question: string;
+  requested_by: "system" | "officer";
+  response: string | null;
+  responded_at: string | null;
+  resolved_at: string | null;
+  created_at: string;
+};
+export type Application = {
+  id: string;
+  company_id: string;
+  product_id: string;
+  recommendation_snapshot_id: string;
+  status: ApplicationStatus;
+  current_stage: number;
+  version: number;
+  answers: Answers;
+  submitted_at: string | null;
+  requested_amount_rub: number | null;
+  indicative_limit_rub: number | null;
+  scored_limit_rub: number | null;
+  preapproved_amount_rub: number | null;
+  final_amount_rub: number | null;
+  preapproved_at: string | null;
+  preapproval_expires_at: string | null;
+  catalog_version: string;
+  rules_version: string;
+  created_at: string;
+  updated_at: string;
+  company: ApplicationCompany;
+  product: ApplicationProduct;
+  latest_evaluation: Evaluation | null;
+  allowed_actions: ApplicationAction[];
+  missing_fields: string[];
+  open_info_request: InfoRequest | null;
+  document_summary: null;
+};
+export type FieldOption = { value: string; label: string };
+export type FieldDescriptor = {
+  name: string;
+  label: string;
+  type: "boolean" | "text" | "enum" | "integer" | "date" | "collateral";
+  required: boolean;
+  must_be_true?: boolean;
+  max_length?: number;
+  min?: number;
+  max?: number;
+  options?: FieldOption[];
+  statuses?: FieldOption[];
+  types?: FieldOption[];
+  description_max_length?: number;
+  source?: {
+    name: "turnover";
+    status: "available" | "missing" | "unavailable";
+    value: number | string | null;
+  };
+  origin?: "source" | "override" | "declared" | null;
+};
+export type DialogStage = {
+  number: number;
+  title: string;
+  fields: FieldDescriptor[];
+  complete: boolean;
+};
+export type Dialog = {
+  application_id: string;
+  status: ApplicationStatus;
+  version: number;
+  current_stage: number;
+  steps_total: number;
+  company: ApplicationCompany;
+  product: ApplicationProduct;
+  stages: DialogStage[];
+  answers: Answers;
+  missing_fields: string[];
+  field_issues: Record<string, string>;
+  allowed_actions: ApplicationAction[];
+};
+export type HistoryItem = {
+  id: string;
+  application_id: string;
+  from_status: ApplicationStatus | null;
+  to_status: ApplicationStatus;
+  actor_id: string | null;
+  reason_code: string;
+  reason_text: string;
+  application_version: number;
+  created_at: string;
+  notification: {
+    event_code: string;
+    channel: "demo_in_app";
+    message: string;
+    simulated: true;
+    created_at: string;
+  } | null;
+};
+export type SubmissionConsent = {
+  code: string;
+  version: string;
+  accepted: true;
+};
+type ApplicationBody = { application: Application };
+const applicationPath = (id: string) =>
+  "/applications/" + encodeURIComponent(id);
+export const applicationsApi = {
+  list: (signal?: AbortSignal) =>
+    request<{ items: Application[]; total: number }>("/applications", {
+      signal,
+    }),
+  get: (id: string, signal?: AbortSignal) =>
+    request<ApplicationBody>(applicationPath(id), { signal }),
+  dialog: (id: string, signal?: AbortSignal) =>
+    request<Dialog>(applicationPath(id) + "/dialog", { signal }),
+  history: (id: string, signal?: AbortSignal) =>
+    request<{ items: HistoryItem[]; total: number }>(
+      applicationPath(id) + "/history",
+      { signal },
+    ),
+  consents: (signal?: AbortSignal) =>
+    request<{ items: ConsentDocument[] }>(
+      "/consents/documents?stage=application",
+      { signal },
+    ),
+  create: (
+    body: {
+      company_id: string;
+      product_id: string;
+      recommendation_snapshot_id: string;
+    },
+    key: string,
+  ) =>
+    request<ApplicationBody>("/applications", {
+      method: "POST",
+      body,
+      idempotencyKey: key,
+    }),
+  saveAnswers: (
+    id: string,
+    body: { version: number; current_stage: number; answers: Answers },
+  ) =>
+    request<ApplicationBody>(applicationPath(id) + "/answers", {
+      method: "PATCH",
+      body,
+    }),
+  submit: (
+    id: string,
+    body: { version: number; consents: SubmissionConsent[] },
+    key: string,
+  ) =>
+    request<ApplicationBody>(applicationPath(id) + "/submit", {
+      method: "POST",
+      body,
+      idempotencyKey: key,
+    }),
+  retryCheck: (id: string, body: { version: number }, key: string) =>
+    request<ApplicationBody>(applicationPath(id) + "/retry-check", {
+      method: "POST",
+      body,
+      idempotencyKey: key,
+    }),
+  cancel: (
+    id: string,
+    body: { version: number; reason: string },
+    key: string,
+  ) =>
+    request<ApplicationBody>(applicationPath(id) + "/cancel", {
+      method: "POST",
+      body,
+      idempotencyKey: key,
+    }),
+};

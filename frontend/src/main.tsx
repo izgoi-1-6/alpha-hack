@@ -15,6 +15,9 @@ import { Auth } from "./features/identity/Auth";
 import { Onboarding } from "./features/companies/Onboarding";
 import { CompanyDetail } from "./features/companies/CompanyDetail";
 import { Recommendations } from "./features/recommendations/Recommendations";
+import { ApplicationPage } from "./features/applications/ApplicationPage";
+import { MyApplications } from "./features/applications/MyApplications";
+import { CommandAttempts } from "./features/applications/commands";
 import "./styles.css";
 function App() {
   const [user, setUser] = useState<User | null>(null),
@@ -36,9 +39,14 @@ function App() {
   const retryAttempts = useRef(
     new Map<string, { key: string; version: number }>(),
   );
+  // Application command keys, kept per session across navigation like the company retry above.
+  const commandAttempts = useRef<CommandAttempts>(new Map());
   const onboard = url.searchParams.get("view") === "onboard";
   const selectedId = url.searchParams.get("company");
   const recommending = url.searchParams.get("view") === "recommendations";
+  const applicationList = url.searchParams.get("view") === "applications";
+  const applicationId = url.searchParams.get("application");
+  const inApplications = applicationList || !!applicationId;
   const captureScope = () => ({ ...generation.current });
   const isCurrent = (scope: { session: number; view: number }) =>
     scope.session === generation.current.session &&
@@ -57,6 +65,7 @@ function App() {
     bootController.current = null;
     invalidateView();
     retryAttempts.current.clear();
+    commandAttempts.current.clear();
     setUser(nextUser);
     setCompanies([]);
     setFixtures([]);
@@ -81,11 +90,12 @@ function App() {
     setUrl(next);
     setMenu(false);
   }
-  function navigate(id?: string, view?: string) {
+  function navigate(id?: string, view?: string, application?: string) {
     const next = new URL(window.location.href);
     next.search = "";
     if (id) next.searchParams.set("company", id);
     if (view) next.searchParams.set("view", view);
+    if (application) next.searchParams.set("application", application);
     window.history.pushState({}, "", next);
     changeView(next);
   }
@@ -141,7 +151,9 @@ function App() {
         api.consents(controller.signal),
       ]);
       if (!active()) return;
-      const id = selectedId ?? (!onboard ? list.items[0]?.id : undefined);
+      const id =
+        selectedId ??
+        (!onboard && !inApplications ? list.items[0]?.id : undefined);
       const result = id ? await api.company(id, controller.signal) : null;
       if (!active()) return;
       setCompanies(list.items);
@@ -242,7 +254,7 @@ function App() {
         <div className="nav-label">Рабочее пространство</div>
         <nav>
           <button
-            className={!onboard ? "active" : ""}
+            className={!onboard && !inApplications ? "active" : ""}
             onClick={() => navigate()}
           >
             <Icon name="building" />
@@ -251,6 +263,15 @@ function App() {
               <span className="nav-count">{companies.length}</span>
             )}
           </button>
+          {user.role === "CLIENT" && (
+            <button
+              className={inApplications ? "active" : ""}
+              onClick={() => navigate(undefined, "applications")}
+            >
+              <Icon name="file" />
+              Мои заявки
+            </button>
+          )}
           {user.role === "CLIENT" && (
             <button
               className={onboard ? "active" : ""}
@@ -301,9 +322,11 @@ function App() {
             Бизнес <span>/</span>{" "}
             {onboard
               ? "Новая компания"
-              : user.role === "CLIENT"
-                ? "Мои компании"
-                : "Специалист"}
+              : user.role !== "CLIENT"
+                ? "Специалист"
+                : inApplications
+                  ? "Мои заявки"
+                  : "Мои компании"}
           </span>
           <div className="topbar-right">
             <DemoBadge />
@@ -356,6 +379,30 @@ function App() {
               error={loadError}
               onRetry={() => void loadWorkspace()}
             />
+          ) : applicationId ? (
+            <ApplicationPage
+              key={`${user.id}:${applicationId}`}
+              applicationId={applicationId}
+              userId={user.id}
+              attempts={commandAttempts.current}
+              onOpenList={() => navigate(undefined, "applications")}
+              onOpenApplication={(id) => navigate(undefined, undefined, id)}
+              onRecommend={(companyId) =>
+                navigate(companyId, "recommendations")
+              }
+              onUnauthorized={() => changeAccount(null)}
+            />
+          ) : applicationList ? (
+            <MyApplications
+              key={user.id}
+              onOpen={(id) => navigate(undefined, undefined, id)}
+              onRecommend={() =>
+                companies[0]
+                  ? navigate(companies[0].id, "recommendations")
+                  : navigate(undefined, "onboard")
+              }
+              onUnauthorized={() => changeAccount(null)}
+            />
           ) : onboard ? (
             <Onboarding
               fixtures={fixtures}
@@ -395,6 +442,11 @@ function App() {
                   key={`${user.id}:${data.company.id}:${data.precheck.id}`}
                   data={data}
                   onBack={() => navigate(data.company.id)}
+                  attempts={commandAttempts.current}
+                  onApplicationCreated={(id) =>
+                    navigate(undefined, undefined, id)
+                  }
+                  onUnauthorized={() => changeAccount(null)}
                 />
               ) : data ? (
                 <CompanyDetail

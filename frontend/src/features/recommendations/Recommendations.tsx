@@ -8,11 +8,10 @@ import {
   errorMessage,
 } from "../../api";
 import { DemoBadge, ErrorNotice, Icon } from "../../components";
+import { CommandAttempts } from "../applications/commands";
+import { useStartApplication } from "../applications/useStartApplication";
+import { ProductCard, money } from "./ProductCard";
 
-const money = (n: number | null) =>
-  n === null
-    ? "Нужно уточнить"
-    : new Intl.NumberFormat("ru-RU").format(n) + " ₽";
 const initial: Need = {
   purpose: "working_capital",
   funding_pattern: "one_time",
@@ -20,18 +19,19 @@ const initial: Need = {
   term_months: 12,
   collateral: { status: "unknown" },
 };
-const labels = {
-  fits: "Соответствует потребности",
-  needs_info: "Нужны сведения",
-  does_not_fit: "Не соответствует параметрам",
-};
 
 export function Recommendations({
   data,
   onBack,
+  attempts,
+  onApplicationCreated,
+  onUnauthorized,
 }: {
   data: CompanyResult;
   onBack: () => void;
+  attempts: CommandAttempts;
+  onApplicationCreated: (applicationId: string) => void;
+  onUnauthorized: () => void;
 }) {
   const [need, setNeed] = useState<Need>(initial);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -105,6 +105,13 @@ export function Recommendations({
     };
   }, [need, data.company.id, refresh]);
 
+  const start = useStartApplication({
+    companyId: data.company.id,
+    snapshotId: snapshot?.snapshot_id ?? null,
+    attempts,
+    onCreated: onApplicationCreated,
+    onUnauthorized,
+  });
   const guided = mode === "guided";
   const cards =
     snapshot && catalog
@@ -442,144 +449,26 @@ export function Recommendations({
             );
             if (!product) return null;
             return (
-              <article
-                className={"card product-card " + (guided ? item.status : "")}
+              <ProductCard
                 key={item.product_id}
-                data-product-id={item.product_id}
-                aria-labelledby={"product-title-" + item.product_id}
-              >
-                {guided && (
-                  <div className="product-top">
-                    <span
-                      className={
-                        "status " +
-                        (item.status === "fits"
-                          ? "success"
-                          : item.status === "needs_info"
-                            ? "warning"
-                            : "neutral")
-                      }
-                    >
-                      {labels[item.status]}
-                    </span>
-                    <span className="product-rank">
-                      <span aria-hidden="true">
-                        {String(item.rank).padStart(2, "0")}
-                      </span>
-                      <span className="sr-only">Место {item.rank}</span>
-                    </span>
-                  </div>
-                )}
-                <h3 id={"product-title-" + item.product_id}>{product.name}</h3>
-                <p className="product-subtitle">
-                  {product.collateral_required
-                    ? `С залогом · оценка до ${(product.collateral_ltv_bps ?? 0) / 100}% его заявленной стоимости`
-                    : "Без залога"}{" "}
-                  · {product.term_min_months}–{product.term_max_months} мес.
-                </p>
-                <div className="product-metrics">
-                  <div>
-                    <span>Личная предварительная оценка</span>
-                    <strong>{money(item.indicative_limit_rub)}</strong>
-                    <small>
-                      Максимум продукта {money(item.catalog_max_rub)}
-                    </small>
-                  </div>
-                  <div>
-                    <span>
-                      {product.instrument_type === "revolving_credit_line"
-                        ? "Проценты в месяц"
-                        : "Платёж в месяц"}
-                    </span>
-                    <strong>{money(item.estimated_payment_rub)}</strong>
-                    <small>
-                      Учебная ставка{" "}
-                      {(product.annual_rate_bps / 100).toLocaleString("ru-RU")}%
-                      годовых
-                    </small>
-                  </div>
-                </div>
-                <p className="payment-note">{item.payment_note}</p>
-                {guided && (
-                  <div className="fit-reasons">
-                    {item.reasons.map((reason) => (
-                      <p key={reason}>{reason}</p>
-                    ))}
-                  </div>
-                )}
-                <div
-                  className={
-                    "application-eligibility " +
-                    (item.can_apply ? "available" : "")
-                  }
-                >
-                  <Icon name={item.can_apply ? "check" : "info"} size={16} />
-                  <span>
-                    {item.can_apply
-                      ? "Можно начать анкету: итоговая сумма и решение определяются после рассмотрения."
-                      : "Для начала анкеты измените несовместимые параметры или уточните статус компании."}
-                  </span>
-                </div>
-                {guided && item.alternatives.length > 0 && (
-                  <div className="product-alternatives">
-                    {item.alternatives.map((text) => (
-                      <p key={text}>{text}</p>
-                    ))}
-                    {item.indicative_limit_rub !== null &&
-                      item.indicative_limit_rub >= product.amount_min_rub &&
-                      item.requested_amount_rub > item.indicative_limit_rub && (
-                        <button
-                          className="button secondary"
-                          onClick={() =>
-                            update({
-                              requested_amount_rub: item.indicative_limit_rub!,
-                            })
-                          }
-                        >
-                          Рассчитать на {money(item.indicative_limit_rub)}
-                        </button>
-                      )}
-                  </div>
-                )}
-                {guided && (
-                  <details className="criteria">
-                    <summary>
-                      Все критерии соответствия{" "}
-                      <span>
-                        {
-                          item.checks.filter((c) => c.result === "passed")
-                            .length
-                        }{" "}
-                        из {item.checks.length}
-                      </span>
-                    </summary>
-                    <ul>
-                      {item.checks.map((check) => (
-                        <li key={check.code}>
-                          <span
-                            className={"criterion-mark " + check.result}
-                            aria-hidden="true"
-                          >
-                            {check.result === "passed"
-                              ? "✓"
-                              : check.result === "failed"
-                                ? "×"
-                                : "?"}
-                          </span>
-                          <span className="sr-only">
-                            {check.result === "passed"
-                              ? "Выполнено: "
-                              : check.result === "failed"
-                                ? "Не выполнено: "
-                                : "Нужно уточнить: "}
-                          </span>
-                          {check.text}
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
-              </article>
+                item={item}
+                product={product}
+                guided={guided}
+                onRecalculate={(amount) =>
+                  update({ requested_amount_rub: amount })
+                }
+                start={{
+                  pending: start.pending === item.product_id,
+                  busy: start.pending !== null,
+                  problem:
+                    start.problem?.productId === item.product_id
+                      ? start.problem.problem
+                      : null,
+                  onStart: () => void start.start(item.product_id),
+                  // A fresh calculation saves a new snapshot under the current catalog and rules.
+                  onRefresh: () => update({}),
+                }}
+              />
             );
           })}
           {snapshot && (

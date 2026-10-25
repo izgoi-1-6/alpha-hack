@@ -4,6 +4,7 @@ precedes R6/R7, and trusted-source recovery records a rule such as R8 with outco
 approval terms judged by the accepted document evidence."""
 from ..applications import scoring
 from ..applications.models import Application, Evaluation
+from ..applications.products import collateral_required, required_documents
 from ..documents.models import Document
 from ..documents.service import current_documents
 from ..models import Company
@@ -59,18 +60,19 @@ def final_terms(application: Application, documents: list[Document], evaluation:
                 'blocked_by': {'code': code, 'message': message}}
 
     current = current_documents(documents)
-    if any(kind not in current or current[kind].status != 'ACCEPTED' for kind in product['required_documents']):
+    if any(kind not in current or current[kind].status != 'ACCEPTED' for kind in required_documents(product)):
         return blocked('DOCUMENTS_NOT_ACCEPTED', 'Окончательное одобрение возможно, когда приняты все обязательные документы.')
     revenue = ((evaluation.input_snapshot.get('finance') or {}).get('monthly_revenue_rub') or {}).get('value') if evaluation else None
     limit = None if evaluation is None else scoring.turnover_limit(product, evaluation.risk, revenue)
-    if limit is not None and product['collateral_required']:
+    if limit is not None and collateral_required(product):
         limit = min(limit, scoring.collateral_cap(product, current['COLLATERAL_VALUATION'].verified_value_rub))
     if limit is None:
         return blocked('LIMIT_NOT_COMPUTABLE', 'Лимит по проверенным данным не рассчитывается: возможен только отказ с причиной.')
     low, high = product['amount_min_rub'], min(application.preapproved_amount_rub, limit)
     if high < low:
-        source = 'по проверенной стоимости залога' if product['collateral_required'] else 'по проверенным данным'
-        return blocked('COLLATERAL_INSUFFICIENT' if product['collateral_required'] else 'LIMIT_BELOW_MINIMUM',
+        secured = collateral_required(product)
+        source = 'по проверенной стоимости залога' if secured else 'по проверенным данным'
+        return blocked('COLLATERAL_INSUFFICIENT' if secured else 'LIMIT_BELOW_MINIMUM',
                        f'Лимит {source} — {rub(limit)}, ниже минимальной суммы продукта {rub(low)}: окончательное '
                        'одобрение невозможно, возможен только отказ с причиной.', limit)
     return {'amount_min_rub': low, 'amount_max_rub': high, 'verified_limit_rub': limit, 'blocked_by': None}

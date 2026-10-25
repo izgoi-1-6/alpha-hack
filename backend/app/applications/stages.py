@@ -5,6 +5,7 @@ Answers are a flat object keyed by the spec's field names; only `collateral` is 
 InfoRequest.requested_fields and error `fields` are those names (`collateral.<key>` for collateral details).
 """
 from ..recommendations.service import rub
+from .products import collateral_required
 
 PURPOSES = {'working_capital': 'Пополнение оборотных средств', 'business_development': 'Развитие бизнеса',
             'investment': 'Инвестиции', 'refinancing': 'Рефинансирование'}
@@ -85,7 +86,8 @@ def source_finance(precheck) -> dict:
 
 
 def prefill(need: dict, precheck) -> dict:
-    """Initial draft answers: stage 2 from the saved need, stage 3 finances from the persisted source; the rest empty."""
+    """Initial draft answers: stage 2's amount from the saved need (the need is the amount alone, so purpose, term and
+    collateral start empty), stage 3 finances from the persisted source; the rest empty."""
     answers = dict.fromkeys(ANSWER_FIELDS)
     answers.update({name: need.get(name) for name in NEED_FIELDS})
     answers.update(source_finance(precheck))
@@ -144,7 +146,7 @@ def missing(answers: dict, product: dict) -> dict:
         for field in fields:
             name, value = field['name'], answers.get(field['name'])
             if name == 'collateral':
-                if product['collateral_required']:
+                if collateral_required(product):
                     gaps.update(collateral_gaps(value))
             elif field.get('must_be_true'):
                 if value is not True:
@@ -164,8 +166,9 @@ def corrections(answers: dict, product: dict, entity_type: str) -> dict:
         issues['purpose'] = 'Цель не поддерживается выбранным продуктом.'
     if amount is not None and not product['amount_min_rub'] <= amount <= product['amount_max_rub']:
         issues['requested_amount_rub'] = f"Сумма продукта: от {rub(product['amount_min_rub'])} до {rub(product['amount_max_rub'])}."
-    if term is not None and not product['term_min_months'] <= term <= product['term_max_months']:
-        issues['term_months'] = f"Срок продукта: {product['term_min_months']}–{product['term_max_months']} мес."
+    low, high = product['term_min_months'], product['term_max_months']
+    if term is not None and low is not None and not low <= term <= high:  # a product without a term takes any term
+        issues['term_months'] = f"Срок продукта: {low}–{high} мес."
     return issues
 
 
@@ -186,7 +189,7 @@ def describe(field: dict, product: dict, evidence: dict) -> dict:
     elif name == 'term_months':
         described.update(min=product['term_min_months'], max=product['term_max_months'])
     elif name == 'collateral':
-        described['required'] = product['collateral_required']
+        described['required'] = collateral_required(product)
     if name in evidence:
         entry = evidence[name]
         described['source'] = {'name': 'turnover', 'status': entry['source_status'], 'value': entry['source']}

@@ -51,7 +51,8 @@ def company_result(db: Session, company: Company) -> dict:
     return {'company':public_row(company),'precheck':public_row(latest_precheck(db,company.id))}
 
 def append_precheck(db: Session, company: Company, source: dict, now: datetime) -> Precheck:
-    registry={k:source.get(k) for k in ('name','registered_at','registry_status','okved','region','legal_address')}
+    # Registry facts: eligibility reads the SME-register flag; tax regime and employee count are registry-owned too.
+    registry={k:source.get(k) for k in ('name','registered_at','registry_status','okved','region','legal_address','msp_registry','tax_regime','employees')}
     turnover={k:source.get(k) for k in ('monthly_revenue_rub','previous_monthly_revenue_rub','financial_period_end')}
     row=Precheck(company_id=company.id,company_version=company.version,registry_source_status=source['registry_source_status'],turnover_source_status=source['turnover_source_status'],registry_payload=registry,turnover_payload=turnover,monthly_revenue_rub=source.get('monthly_revenue_rub'),previous_monthly_revenue_rub=source.get('previous_monthly_revenue_rub'),financial_period_end=date.fromisoformat(source['financial_period_end']) if source.get('financial_period_end') else None,source_version=FIXTURES['fixture_version'],checked_at=now,synthetic=True)
     db.add(row)
@@ -60,7 +61,7 @@ def append_precheck(db: Session, company: Company, source: dict, now: datetime) 
 
 def create_company(db: Session, owner_id: str, source: dict, now: datetime, *, seeded: bool=False) -> Company:
     # Data whitelist contains BKI oracle values; only the explicit registry/turnover subset is persisted here.
-    company=Company(owner_user_id=owner_id,inn=source['inn'],entity_type='LLC' if len(source['inn'])==10 else 'IP',name=source.get('name'),registered_at=date.fromisoformat(source['registered_at']) if source.get('registered_at') else None,registry_status=source['registry_status'],okved=source.get('okved'),region=source.get('region'),legal_address=source.get('legal_address'),fixture_id=source['fixture_id'],business_reference_date=date.fromisoformat(FIXTURES['business_reference_date']) if seeded else now.date(),version=1,created_at=now,updated_at=now)
+    company=Company(owner_user_id=owner_id,inn=source['inn'],entity_type='LLC' if len(source['inn'])==10 else 'IP',name=source.get('name'),registered_at=date.fromisoformat(source['registered_at']) if source.get('registered_at') else None,registry_status=source['registry_status'],okved=source.get('okved'),region=source.get('region'),msp_registry=source.get('msp_registry'),legal_address=source.get('legal_address'),fixture_id=source['fixture_id'],business_reference_date=date.fromisoformat(FIXTURES['business_reference_date']) if seeded else now.date(),version=1,created_at=now,updated_at=now)
     if seeded: company.id=source['id']
     db.add(company)
     db.flush()
@@ -107,11 +108,14 @@ def recover_precheck(db: Session, company: Company, now: datetime) -> Precheck:
     if recovery.get('retry_registry_source_status'):
         source['registry_source_status']=recovery['retry_registry_source_status']
         source['registry_status']=recovery['retry_registry_status']
+        if 'retry_msp_registry' in recovery:
+            source['msp_registry']=recovery['retry_msp_registry']
     if recovery.get('monthly_revenue_rub') is not None:
         source['monthly_revenue_rub']=recovery['monthly_revenue_rub']
         source['previous_monthly_revenue_rub']=recovery.get('previous_monthly_revenue_rub')
         source['turnover_source_status']='available'
     company.registry_status=source['registry_status']
+    company.msp_registry=source.get('msp_registry')
     company.version+=1
     company.updated_at=now
     return append_precheck(db,company,source,now)

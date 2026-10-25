@@ -111,8 +111,14 @@ def test_valid_inn_entity_and_source_minimization(client, inn, entity):
     data=r.json()
     assert data['company']['entity_type'] == entity
     assert data['precheck']['synthetic'] is True
-    assert data['precheck']['source_version'] == 'demo-fixtures-v1'
+    assert data['precheck']['source_version'] == 'demo-fixtures-v2'
     assert 'credit_history' not in str(data) and 'bki' not in str(data).lower()
+    # The registry facts: the SME-register flag on the company row, tax regime and staff in the registry payload.
+    assert data['company']['msp_registry'] is True and data['company']['region'] in ('Москва', 'Санкт-Петербург')
+    assert {key: data['precheck']['registry_payload'][key] for key in ('msp_registry', 'tax_regime', 'employees')} == \
+           ({'msp_registry': True, 'tax_regime': 'OSN', 'employees': 24} if entity == 'LLC' else
+            {'msp_registry': True, 'tax_regime': 'USN', 'employees': 6})
+    assert 'director_name' not in data['precheck']['registry_payload']
     assert data['company']['created_at'].endswith('Z')
     assert add(client,inn).status_code == 409
 
@@ -178,7 +184,7 @@ def test_demo_seed_is_idempotent_and_roles_server_owned(client):
         seed_demo(db, demo_mode=True)
         db.commit()
         assert db.scalar(select(func.count()).select_from(User)) == 3
-        assert db.scalar(select(func.count()).select_from(Company)) == 9
+        assert db.scalar(select(func.count()).select_from(Company)) == 10
         with pytest.raises(RuntimeError):
             seed_demo(db, demo_mode=False)
     r=client.post('/api/v1/auth/login', json={'email':'officer@demo.local','password':PASSWORD})

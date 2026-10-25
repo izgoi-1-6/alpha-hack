@@ -105,7 +105,7 @@ test("A06 medium review: claim → information request → the client answers on
 
   const officer = await officerPage(browser);
   const row = officer.locator(`tr[data-application-id="${id}"]`);
-  await expect(row).toContainText("ИП «Демо Средний риск»");
+  await expect(row).toContainText("ИП «Средний риск»");
   await expect(row).toContainText("На рассмотрении");
   await expect(row.locator(".queue-assignee")).toHaveText("Не назначена");
   await expect(row).toContainText("Средний · 65");
@@ -115,7 +115,7 @@ test("A06 medium review: claim → information request → the client answers on
   await officer.screenshot({ path: `${artifacts}/task-5b-queue-row.png` });
   await row.getByRole("link").click();
   await expect(
-    officer.getByRole("heading", { level: 1, name: "ИП «Демо Средний риск»" }),
+    officer.getByRole("heading", { level: 1, name: "ИП «Средний риск»" }),
   ).toBeVisible();
   expect(new URL(officer.url()).searchParams.get("application")).toBe(id);
 
@@ -362,7 +362,7 @@ test("filters survive a reload; a non-computable limit is refused with the serve
 
   await row.getByRole("link").click();
   await expect(
-    officer.getByRole("heading", { level: 1, name: "ИП «Демо Неполные обороты»" }),
+    officer.getByRole("heading", { level: 1, name: "ИП «Неполные обороты»" }),
   ).toBeVisible();
   await expect(officer.getByRole("region", { name: "Скоринг и факторы" })).toContainText(
     "Балл не рассчитан",

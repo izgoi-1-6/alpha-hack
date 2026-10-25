@@ -88,6 +88,19 @@ export async function fillCompanyStage(page: Page) {
     .fill("Оптовая торговля (демо)");
 }
 
+/** Stage 2 starts with only the amount chosen on the product screen: the client picks the purpose and the term. */
+export async function fillParametersStage(
+  page: Page,
+  purpose = "Пополнение оборотных средств",
+  term = "12",
+) {
+  await page
+    .getByRole("group", { name: "Цель финансирования" })
+    .getByLabel(purpose)
+    .check();
+  await page.getByLabel("Срок, мес.").fill(term);
+}
+
 export async function fillFinanceStage(page: Page) {
   await page
     .getByRole("group", { name: "Налоговый режим" })
@@ -134,6 +147,9 @@ export async function acceptAndSubmit(page: Page) {
 
 export type Profile = {
   amount?: string;
+  /** Stage-2 purpose label and term; default «Пополнение оборотных средств», 12 months. */
+  purpose?: string;
+  term?: string;
   revenue?: [string, string];
   debt: string;
   /** Declares the pledge on stage 2 (the secured product needs one). */
@@ -157,6 +173,7 @@ export async function submitApplication(
   await fillCompanyStage(page);
   await saveAndContinue(page);
   await expectStage(page, 2, "Параметры");
+  await fillParametersStage(page, profile.purpose, profile.term);
   if (profile.amount) await page.getByLabel("Сумма, ₽").fill(profile.amount);
   if (profile.pledge) {
     const pledge = page.getByRole("group", { name: "Залог", exact: true });

@@ -44,6 +44,8 @@ class Company(Base):
     registry_status: Mapped[str] = mapped_column(String(10))
     okved: Mapped[str | None] = mapped_column(String(30))
     region: Mapped[str | None] = mapped_column(String(200))
+    # Inclusion in the SME (МСП) register from the registry source; null while the registry is unconfirmed.
+    msp_registry: Mapped[bool | None] = mapped_column(Boolean)
     legal_address: Mapped[str | None] = mapped_column(String(500))
     fixture_id: Mapped[str | None] = mapped_column(String(80))
     business_reference_date: Mapped[date | None] = mapped_column(Date)

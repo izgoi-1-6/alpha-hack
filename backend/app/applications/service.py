@@ -49,9 +49,9 @@ def create_application(db: Session, company: Company, user_id: str, data: Create
     if snapshot is None:
         raise ApiError(404, 'RECOMMENDATION_NOT_FOUND', 'Сохранённая оценка не найдена')
     item = next((entry for entry in snapshot.result if entry['product_id'] == data.product_id), None)
-    if item is None:  # research archive and unknown ids never appear in a snapshot
-        raise ApiError(422, 'PRODUCT_NOT_SUPPORTED', 'Заявку можно оформить только на демо-продукт из сохранённой оценки.',
-                       fields={'product_id': 'Выберите один из трёх демо-продуктов оценки'})
+    if item is None:  # overlays and unknown ids never appear in a snapshot
+        raise ApiError(422, 'PRODUCT_NOT_SUPPORTED', 'Заявку можно оформить только на продукт из сохранённой оценки.',
+                       fields={'product_id': 'Выберите продукт из сохранённой оценки'})
     product = current_product(data.product_id)
     if product is None or not is_current(snapshot.catalog_version, snapshot.rules_version):
         raise stale()

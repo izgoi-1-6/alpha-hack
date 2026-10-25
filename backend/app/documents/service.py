@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ..errors import ApiError
 from ..applications.lifecycle import ApplicationChange
 from ..applications.models import Application
-from ..applications.products import application_product
+from ..applications.products import application_product, required_documents
 from ..applications.service import require_version
 from .models import CURRENT_STATUSES, Document
 from .schemas import UploadDigest
@@ -27,7 +27,7 @@ LABELS = {'BANK_STATEMENT': 'Банковская выписка', 'FINANCIAL_RE
 
 def required_types(application: Application) -> list[str]:
     product = application_product(application)
-    return list(product['required_documents']) if product else []
+    return required_documents(product) if product else []
 
 
 def documents_of(db: Session, application_id: str) -> list[Document]:

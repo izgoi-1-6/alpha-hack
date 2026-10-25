@@ -296,7 +296,7 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
   await expect(handoff).toContainText("Деньги не перечисляются");
   await expect(handoff).toContainText("договор не подписывается");
   await expect(handoff).toContainText("2 000 000 ₽");
-  await expect(handoff).toContainText("ООО «Демо Сильный бизнес»");
+  await expect(handoff).toContainText("ООО «Сильный бизнес»");
   await page.screenshot({ path: `${artifacts}/task-6b-handoff.png`, fullPage: true });
   await page.getByRole("button", { name: "Вернуться к заявке" }).click();
   await expect(
@@ -312,7 +312,7 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
   await registerClient(page, "docs-other");
   await page.goto(`/demo/alfa-business/${id}`);
   await expect(page.getByRole("heading", { level: 1, name: "Страница недоступна" })).toBeVisible();
-  await expect(page.locator("main")).not.toContainText("Демо Сильный бизнес");
+  await expect(page.locator("main")).not.toContainText("Сильный бизнес");
   await page.goto(`/?application=${id}`);
   await expect(page.getByRole("heading", { level: 1, name: "Заявка не найдена" })).toBeVisible();
   expect((await page.request.get(`/api/v1/applications/${id}/documents`)).status()).toBe(404);

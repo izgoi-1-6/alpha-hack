@@ -15,6 +15,7 @@ import application_oracle as oracle
 from application_helpers import (CONSENTS, FIXED_DATE, FIXED_NOW, LINE, SECURED, TERM, bki_calls, clock, complete,
                                  declared_collateral, draft, history, onboard, patch_answers, read, retry, rows,
                                  set_company, set_turnover, submit, submitted)
+from app.recommendations.catalog import CONFIG
 from recommendation_oracle import FIXTURES, PRODUCTS
 from test_identity_company import ORIGIN, client
 
@@ -46,9 +47,9 @@ def finance_fields(client, application):
 
 def test_oracle_constants_match_the_policy_file():
     for product in PRODUCTS.values():
-        assert (product['low_risk_revenue_multiple'], product['medium_risk_revenue_multiple'], product['medium_risk_cap_rub']) == \
+        assert (product['low_multiple'], product['medium_multiple'], product['medium_cap_rub']) == \
                (oracle.LOW_MULTIPLE, oracle.MEDIUM_MULTIPLE, oracle.MEDIUM_CAP_RUB)
-    assert PRODUCTS[SECURED]['collateral_ltv_bps'] == 7000 and oracle.LTV == oracle.Fraction(7, 10)
+    assert PRODUCTS[SECURED]['ltv'] == oracle.LTV == oracle.Fraction(7, 10)
 
 
 NO_CONSENT = {
@@ -91,13 +92,16 @@ def test_raw_missing_turnover_submission_lists_the_missing_answers_without_bki(c
     assert bki_calls == [] and read(client, application)['status'] == 'DRAFT' and granted(client, application) == []
 
 
+# The catalog's bounds (test_products_config.GOLDEN): unsecured 300k–30m over 12–60 months, the revolving line without a
+# term, secured 500k–150m over 12–120 months. The questionnaire caps an amount at 150m and a term at 120 months, so the
+# secured maxima are reached as inclusive bounds below and their overflow is refused by input validation before R1.
 CORRECTIONS = [
-    (TERM, {'term_months': 5}, 'term_months'), (TERM, {'term_months': 37}, 'term_months'),
-    (TERM, {'requested_amount_rub': 299_999}, 'requested_amount_rub'), (TERM, {'requested_amount_rub': 3_000_001}, 'requested_amount_rub'),
+    (TERM, {'term_months': 11}, 'term_months'), (TERM, {'term_months': 61}, 'term_months'),
+    (TERM, {'requested_amount_rub': 299_999}, 'requested_amount_rub'), (TERM, {'requested_amount_rub': 30_000_001}, 'requested_amount_rub'),
     (TERM, {'purpose': 'investment'}, 'purpose'),
-    (LINE, {'term_months': 19}, 'term_months'), (LINE, {'purpose': 'refinancing'}, 'purpose'),
-    (SECURED, {'requested_amount_rub': 499_999}, 'requested_amount_rub'), (SECURED, {'requested_amount_rub': 6_000_001}, 'requested_amount_rub'),
-    (SECURED, {'term_months': 11}, 'term_months'), (SECURED, {'term_months': 61}, 'term_months'),
+    (LINE, {'purpose': 'refinancing'}, 'purpose'),
+    (SECURED, {'requested_amount_rub': 499_999}, 'requested_amount_rub'), (SECURED, {'purpose': 'investment'}, 'purpose'),
+    (SECURED, {'term_months': 11}, 'term_months'),
 ]
 
 
@@ -112,9 +116,10 @@ def test_unsupported_parameters_need_correction_before_any_check(client, bki_cal
 
 
 @pytest.mark.parametrize('product,changes', [
-    (TERM, {'term_months': 6}), (TERM, {'term_months': 36}), (TERM, {'requested_amount_rub': 300_000}),
-    (TERM, {'requested_amount_rub': 3_000_000}), (LINE, {'term_months': 18}), (SECURED, {'term_months': 12}),
-    (SECURED, {'term_months': 60}), (SECURED, {'requested_amount_rub': 500_000}), (SECURED, {'requested_amount_rub': 6_000_000}),
+    (TERM, {'term_months': 12}), (TERM, {'term_months': 60}), (TERM, {'requested_amount_rub': 300_000}),
+    (TERM, {'requested_amount_rub': 30_000_000}), (LINE, {'term_months': 1}), (LINE, {'term_months': 120}),
+    (SECURED, {'term_months': 12}), (SECURED, {'term_months': 120}), (SECURED, {'requested_amount_rub': 500_000}),
+    (SECURED, {'requested_amount_rub': 150_000_000}),
 ])
 def test_inclusive_product_bounds_reach_the_check(client, bki_calls, product, changes):
     application = submitted(client, 'strong', product=product, answers=changes)
@@ -134,7 +139,9 @@ def test_secured_submission_needs_a_declared_collateral(client, bki_calls, colla
     assert paths <= set(response.json()['error']['fields']) and bki_calls == []
 
 
-SPEC_LIMITS = {'strong': 2_400_000, 'medium': 600_000, 'high_risk': None, 'secured_investment': 4_500_000}  # acceptance table
+# The acceptance table, plus the gov-program fixture: low risk, min(30m border-program maximum, 3 × 12m) = 30m.
+SPEC_LIMITS = {'strong': 2_400_000, 'medium': 600_000, 'high_risk': None, 'secured_investment': 4_500_000,
+               'gov_manufacturer': 30_000_000}
 
 
 @pytest.mark.parametrize('fixture_id', list(SPEC_LIMITS))
@@ -498,7 +505,7 @@ def test_an_internal_check_reports_a_client_answer_gap_as_a_client_answers_reque
         row = db.get(Application, application['id'])
         change = ApplicationChange(db, row, actor_id=None, now=FIXED_NOW)
         change.move('CHECKING', reason_code='SUBMITTED', reason_text='Проверка без шлюза анкеты')
-        checks.run_check(db, change, db.get(Company, row.company_id), PRODUCTS[TERM])
+        checks.run_check(db, change, db.get(Company, row.company_id), CONFIG.product(TERM))
     result = read(client, application)
     assert (result['status'], result['latest_evaluation']['rule']) == ('NEED_INFO', 'R3')
     request = result['open_info_request']

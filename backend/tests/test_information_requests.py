@@ -284,13 +284,13 @@ def internal_gap(client, application: dict) -> dict:
     from app.applications.lifecycle import ApplicationChange
     from app.applications.models import Application
     from app.models import Company
-    from recommendation_oracle import PRODUCTS
+    from app.recommendations.catalog import CONFIG
     with client.app.state.test_factory.begin() as db:
         row = db.get(Application, application['id'])
         row.submitted_at = FIXED_NOW
         change = ApplicationChange(db, row, actor_id=None, now=FIXED_NOW)
         change.move('CHECKING', reason_code='SUBMITTED', reason_text='Проверка без шлюза анкеты')
-        checks.run_check(db, change, db.get(Company, row.company_id), PRODUCTS[TERM])
+        checks.run_check(db, change, db.get(Company, row.company_id), CONFIG.product(TERM))
     return read(client, application)
 
 

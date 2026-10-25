@@ -6,6 +6,7 @@ Expected values come from the spec, the acceptance document and the frozen fixtu
 Scoring outcomes are covered in test_applications_scoring.py.
 """
 from datetime import datetime, timezone
+import json
 import os
 import threading
 from uuid import uuid4
@@ -20,7 +21,7 @@ from application_helpers import (ANSWER_FIELDS, CONSENTS, LINE, SECURED, STAGE_F
                                  retry, rows, snapshot_for, submit, submitted)
 from recommendation_oracle import FIXTURES, PRODUCTS
 from test_identity_company import ORIGIN, PASSWORD, add, client, register
-from test_recommendations import INFORMATIONAL
+import catalog_oracle
 
 pytestmark = pytest.mark.usefixtures('clock')
 MISSING_IN_NEW_DRAFT = ['company_confirmed', 'actual_address', 'actual_activity', 'tax_regime', 'employees',
@@ -43,17 +44,19 @@ def seed_and_login_officer(client):
 
 def test_draft_is_created_from_an_owned_snapshot_with_server_prefill(client, bki_calls):
     company = onboard(client, 'strong')
-    snapshot = snapshot_for(client, company, **need_of('strong'))
+    snapshot = snapshot_for(client, company, 2_000_000)
     response = create(client, company, TERM, snapshot)
     assert response.status_code == 201, response.text
     application = response.json()['application']
     assert (application['status'], application['version'], application['current_stage']) == ('DRAFT', 1, 1)
     assert (application['company_id'], application['product_id'], application['recommendation_snapshot_id']) == (company, TERM, snapshot)
-    assert (application['catalog_version'], application['rules_version']) == ('demo-2026-10-24-v1', 'demo-rules-v1')
+    catalog = client.get('/api/v1/catalog').json()
+    assert (application['catalog_version'], application['rules_version']) == (catalog['catalog_version'], catalog['rules_version'])
     answers = application['answers']
     assert set(answers) == ANSWER_FIELDS
-    need = FIXTURES['strong']['need']
-    assert {key: answers[key] for key in need} == need  # stage 2 comes from the saved need
+    # Stage 2 starts from the saved need, which is the amount alone: purpose, term and collateral are the client's.
+    assert answers['requested_amount_rub'] == 2_000_000
+    assert all(answers[key] is None for key in ('purpose', 'funding_pattern', 'term_months', 'collateral'))
     # Stage 3 comes from the persisted turnover source; the debt payment is a client declaration, never prefilled.
     assert (answers['monthly_revenue_rub'], answers['previous_monthly_revenue_rub'], answers['financial_period_end']) == (800_000, 680_000, '2026-09-30')
     assert answers['monthly_debt_payment_rub'] is None and answers['tax_debt_rub'] is None
@@ -62,11 +65,13 @@ def test_draft_is_created_from_an_owned_snapshot_with_server_prefill(client, bki
     for key in ('scored_limit_rub', 'preapproved_amount_rub', 'final_amount_rub', 'submitted_at', 'preapproved_at', 'preapproval_expires_at'):
         assert application[key] is None, key
     assert application['allowed_actions'] == ['edit_answers', 'submit', 'cancel']
-    assert application['missing_fields'] == MISSING_IN_NEW_DRAFT
+    assert application['missing_fields'] == MISSING_IN_NEW_DRAFT[:3] + ['purpose', 'term_months'] + MISSING_IN_NEW_DRAFT[3:]
     assert application['latest_evaluation'] is None and application['open_info_request'] is None
     assert application['document_summary'] is None
     product = application['product']
-    assert product['id'] == TERM and product['amount_max_rub'] == 3_000_000 and product['term_max_months'] == 36  # demo policy, not the archive
+    assert (product['id'], product['amount_min_rub'], product['amount_max_rub'], product['term_min_months'], product['term_max_months']) == \
+           (TERM, 300_000, 30_000_000, 12, 60)  # the catalog's terms
+    assert (product['collateral_mode'], product['required_documents']) == ('none', ['BANK_STATEMENT', 'FINANCIAL_REPORT'])
     assert application['company']['id'] == company and application['company']['inn'] == FIXTURES['strong']['inn']
     assert application['created_at'].endswith('Z')
     # Staff-only fields stay out of the customer view.
@@ -78,10 +83,10 @@ def test_draft_is_created_from_an_owned_snapshot_with_server_prefill(client, bki
     assert items[0]['notification']['channel'] == 'demo_in_app' and items[0]['notification']['message']
 
 
-@pytest.mark.parametrize('product_id', sorted(INFORMATIONAL) + ['unknown_product'])
-def test_informational_and_unknown_products_cannot_create_applications(client, product_id):
+@pytest.mark.parametrize('product_id', catalog_oracle.OVERLAY_IDS + ['unknown_product'])
+def test_overlays_and_unknown_products_cannot_create_applications(client, product_id):
     company = onboard(client, 'strong')
-    snapshot = snapshot_for(client, company, **need_of('strong'))
+    snapshot = snapshot_for(client, company)
     response = create(client, company, product_id, snapshot)
     assert response.status_code == 422 and response.json()['error']['code'] == 'PRODUCT_NOT_SUPPORTED'
     assert client.get('/api/v1/applications').json() == {'items': [], 'total': 0}
@@ -90,8 +95,8 @@ def test_informational_and_unknown_products_cannot_create_applications(client, p
 def test_creation_requires_an_owned_company_and_its_own_snapshot(client):
     company = onboard(client, 'strong')
     other_company = add(client, FIXTURES['medium']['inn']).json()['company']['id']
-    snapshot = snapshot_for(client, company, **need_of('strong'))
-    foreign_snapshot = snapshot_for(client, other_company, **need_of('medium'))
+    snapshot = snapshot_for(client, company)
+    foreign_snapshot = snapshot_for(client, other_company)
     for snapshot_id in (foreign_snapshot, str(uuid4())):  # another owned company's snapshot, an absent one
         response = create(client, company, TERM, snapshot_id)
         assert response.status_code == 404 and response.json()['error']['code'] == 'RECOMMENDATION_NOT_FOUND'
@@ -112,7 +117,7 @@ def test_creation_requires_an_owned_company_and_its_own_snapshot(client):
 
 def test_creation_is_idempotent_per_key_and_body(client):
     company = onboard(client, 'strong')
-    snapshot = snapshot_for(client, company, **need_of('strong'))
+    snapshot = snapshot_for(client, company)
     first = create(client, company, TERM, snapshot, key='create-once')
     again = create(client, company, TERM, snapshot, key='create-once')
     assert first.status_code == again.status_code == 201 and again.json() == first.json()
@@ -124,13 +129,32 @@ def test_creation_is_idempotent_per_key_and_body(client):
     assert client.get('/api/v1/applications').json()['total'] == 2
 
 
-@pytest.mark.parametrize('key', ['catalog_version', 'rules_version'])
-def test_a_policy_change_makes_the_snapshot_and_the_draft_stale(client, bki_calls, monkeypatch, key):
-    from app.recommendations.catalog import CATALOG
+def edited_config(tmp_path, which: str):
+    """The shipped configuration with one file edited and its version left as it is: only the content hash changes."""
+    from app.products_config import load_config
+    catalog = json.loads(catalog_oracle.CATALOG_PATH.read_text(encoding='utf-8'))
+    policy = json.loads(catalog_oracle.POLICY_PATH.read_text(encoding='utf-8'))
+    if which == 'catalog':
+        catalog['items'][0]['display']['features'][0] += '.'
+    else:
+        policy['products']['psk_borderline']['priority'] += 1
+    paths = tmp_path / 'catalog.json', tmp_path / 'policy.json'
+    for path, data in zip(paths, (catalog, policy)):
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+    return load_config(*paths)
+
+
+@pytest.mark.parametrize('which', ['catalog', 'policy'])
+def test_an_edited_catalog_or_policy_makes_the_snapshot_and_the_draft_stale(client, bki_calls, monkeypatch, tmp_path, which):
+    from app.recommendations import catalog
     company = onboard(client, 'strong')
-    snapshot = snapshot_for(client, company, **need_of('strong'))
+    snapshot = snapshot_for(client, company)
     application = complete(client, draft(client, 'strong', company=company))
-    monkeypatch.setitem(CATALOG, key, 'demo-next-test')
+    edited = edited_config(tmp_path, which)
+    versions = (catalog.CONFIG.catalog_version, catalog.CONFIG.rules_version), (edited.catalog_version, edited.rules_version)
+    assert [version.split('+')[0] for version in versions[0]] == [version.split('+')[0] for version in versions[1]]
+    assert versions[0] != versions[1]  # no version bump, yet a new content hash
+    monkeypatch.setattr(catalog, 'CONFIG', edited)
     response = create(client, company, TERM, snapshot)
     assert response.status_code == 409 and response.json()['error']['code'] == 'RECOMMENDATION_STALE'
     response = submit(client, application)
@@ -153,8 +177,8 @@ def test_dialog_declares_the_six_saved_stages(client):
     assert dialog['answers'] == application['answers'] and dialog['missing_fields'] == MISSING_IN_NEW_DRAFT
     assert all(field['label'] and field['type'] and isinstance(field['required'], bool) for stage in stages for field in stage['fields'])
     parameters = {field['name']: field for field in stages[1]['fields']}
-    assert (parameters['requested_amount_rub']['min'], parameters['requested_amount_rub']['max']) == (300_000, 3_000_000)
-    assert (parameters['term_months']['min'], parameters['term_months']['max']) == (6, 36)
+    assert (parameters['requested_amount_rub']['min'], parameters['requested_amount_rub']['max']) == (300_000, 30_000_000)
+    assert (parameters['term_months']['min'], parameters['term_months']['max']) == (12, 60)
     assert [option['value'] for option in parameters['purpose']['options']] == PRODUCTS[TERM]['purposes']
     assert parameters['collateral']['required'] is False and parameters['funding_pattern']['required'] is False
     finance = {field['name']: field for field in stages[2]['fields']}
@@ -182,10 +206,10 @@ def test_answers_are_saved_revised_and_survive_reload(client):
                              actual_activity='Оптовая торговля')
     assert response.status_code == 200, response.text
     saved = response.json()['application']
-    assert saved['version'] == 2 and saved['current_stage'] == 2 and saved['status'] == 'DRAFT'
+    assert saved['version'] == application['version'] + 1 and saved['current_stage'] == 2 and saved['status'] == 'DRAFT'
     assert saved['answers']['actual_address'] == 'Демо-адрес, офис 2' and saved['answers']['company_confirmed'] is True
     revised = patch_answers(client, saved, stage=2, requested_amount_rub=1_500_000, term_months=24).json()['application']
-    assert revised['version'] == 3 and revised['requested_amount_rub'] == 1_500_000
+    assert revised['version'] == saved['version'] + 1 and revised['requested_amount_rub'] == 1_500_000
     assert revised['answers']['term_months'] == 24 and revised['answers']['actual_activity'] == 'Оптовая торговля'
     cleared = patch_answers(client, revised, stage=3, actual_activity=None).json()['application']
     assert cleared['answers']['actual_activity'] is None and 'actual_activity' in cleared['missing_fields']
@@ -276,7 +300,7 @@ def test_owner_can_cancel_a_draft_and_cancellation_is_terminal(client, bki_calls
     response = cancel(client, application, reason='  Потребность отпала  ', key='cancel-1')
     assert response.status_code == 200, response.text
     cancelled = response.json()['application']
-    assert cancelled['status'] == 'CANCELLED' and cancelled['version'] == 2 and cancelled['allowed_actions'] == []
+    assert cancelled['status'] == 'CANCELLED' and cancelled['version'] == application['version'] + 1 and cancelled['allowed_actions'] == []
     assert cancel(client, application, reason='  Потребность отпала  ', key='cancel-1').json() == response.json()
     again = cancel(client, cancelled, key='cancel-2')
     assert again.status_code == 409 and again.json()['error']['code'] == 'INVALID_STATUS'
@@ -284,7 +308,8 @@ def test_owner_can_cancel_a_draft_and_cancellation_is_terminal(client, bki_calls
     items = history(client, application)
     assert [(item['from_status'], item['to_status']) for item in items] == [(None, 'DRAFT'), ('DRAFT', 'CANCELLED')]
     me = client.get('/api/v1/auth/me').json()['user']['id']
-    assert items[1]['actor_role'] == 'client' and items[1]['reason_text'] == 'Потребность отпала' and items[1]['application_version'] == 2
+    assert items[1]['actor_role'] == 'client' and items[1]['reason_text'] == 'Потребность отпала'
+    assert items[1]['application_version'] == cancelled['version']
     assert [row.actor_id for row in rows(client, 'StatusHistory', application_id=application['id'], to_status='CANCELLED')] == [me]
     assert bki_calls == []
 

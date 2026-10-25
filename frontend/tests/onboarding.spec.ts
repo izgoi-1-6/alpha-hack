@@ -16,9 +16,9 @@ test("seeded demo login, source details, retry and persistent refresh", async ({
   await page.getByRole("button", { name: "Демо-клиент", exact: true }).click();
   await page
     .getByLabel("Ваша компания", { exact: true })
-    .selectOption({ label: "ООО «Демо Сильный бизнес» · 9900000017" });
+    .selectOption({ label: "ООО «Сильный бизнес» · 9900000017" });
   await expect(
-    page.getByRole("heading", { name: "ООО «Демо Сильный бизнес»" }),
+    page.getByRole("heading", { name: "ООО «Сильный бизнес»" }),
   ).toBeVisible();
   await expect(page.getByText("800 000 ₽", { exact: true })).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -32,11 +32,11 @@ test("seeded demo login, source details, retry and persistent refresh", async ({
   expect(await page.evaluate(() => localStorage.length)).toBe(0);
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "ООО «Демо Сильный бизнес»" }),
+    page.getByRole("heading", { name: "ООО «Сильный бизнес»" }),
   ).toBeVisible();
   await page
     .getByLabel("Ваша компания", { exact: true })
-    .selectOption({ label: "ООО «Демо Неактивный бизнес» · 9900000049" });
+    .selectOption({ label: "ООО «Неактивный бизнес» · 9900000049" });
   await expect(
     page.getByText("Компания доступна только для просмотра"),
   ).toBeVisible();
@@ -150,7 +150,7 @@ for (const outcome of ["success", "unauthorized"] as const) {
       .getByLabel("Ваша компания", { exact: true })
       .selectOption(companyA);
     await expect(
-      page.getByRole("heading", { name: "ООО «Демо Сильный бизнес»" }),
+      page.getByRole("heading", { name: "ООО «Сильный бизнес»" }),
     ).toBeVisible();
     let releaseA!: () => void;
     let startedA!: () => void;
@@ -182,9 +182,9 @@ for (const outcome of ["success", "unauthorized"] as const) {
     await pendingA;
     await page
       .getByLabel("Ваша компания", { exact: true })
-      .selectOption({ label: "ООО «Демо Неактивный бизнес» · 9900000049" });
+      .selectOption({ label: "ООО «Неактивный бизнес» · 9900000049" });
     await expect(
-      page.getByRole("heading", { name: "ООО «Демо Неактивный бизнес»" }),
+      page.getByRole("heading", { name: "ООО «Неактивный бизнес»" }),
     ).toBeVisible();
     const selectedUrl = page.url();
     const companyB = await page
@@ -213,7 +213,7 @@ for (const outcome of ["success", "unauthorized"] as const) {
       await completedA;
       await settle(page);
       await expect(
-        page.getByRole("heading", { name: "ООО «Демо Неактивный бизнес»" }),
+        page.getByRole("heading", { name: "ООО «Неактивный бизнес»" }),
       ).toBeVisible();
       expect(page.url()).toBe(selectedUrl);
       await expect(
@@ -294,7 +294,7 @@ for (const outcome of ["success", "unauthorized"] as const) {
       page.getByText("other@demo.local", { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "ООО «Демо Сильный бизнес»" }),
+      page.getByRole("heading", { name: "ООО «Сильный бизнес»" }),
     ).toHaveCount(0);
   });
 }
@@ -309,7 +309,7 @@ test("company retry retains its replay body and key after navigation and a lost 
     .getByLabel("Ваша компания", { exact: true })
     .selectOption(companyA);
   await expect(
-    page.getByRole("heading", { name: "ООО «Демо Сильный бизнес»" }),
+    page.getByRole("heading", { name: "ООО «Сильный бизнес»" }),
   ).toBeVisible();
   let release!: () => void;
   let started!: () => void;
@@ -341,9 +341,9 @@ test("company retry retains its replay body and key after navigation and a lost 
   await pending;
   await page
     .getByLabel("Ваша компания", { exact: true })
-    .selectOption({ label: "ООО «Демо Неактивный бизнес» · 9900000049" });
+    .selectOption({ label: "ООО «Неактивный бизнес» · 9900000049" });
   await expect(
-    page.getByRole("heading", { name: "ООО «Демо Неактивный бизнес»" }),
+    page.getByRole("heading", { name: "ООО «Неактивный бизнес»" }),
   ).toBeVisible();
   release();
   await completed;
@@ -352,7 +352,7 @@ test("company retry retains its replay body and key after navigation and a lost 
     .getByLabel("Ваша компания", { exact: true })
     .selectOption(companyA);
   await expect(
-    page.getByRole("heading", { name: "ООО «Демо Сильный бизнес»" }),
+    page.getByRole("heading", { name: "ООО «Сильный бизнес»" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Повторить проверку" }).click();
   await expect(
@@ -372,13 +372,13 @@ test("history navigation during delayed auth restoration finishes boot on the cu
     .getByLabel("Ваша компания", { exact: true })
     .selectOption(companyA);
   await expect(
-    page.getByRole("heading", { name: "ООО «Демо Сильный бизнес»" }),
+    page.getByRole("heading", { name: "ООО «Сильный бизнес»" }),
   ).toBeVisible();
   await page
     .getByLabel("Ваша компания", { exact: true })
-    .selectOption({ label: "ООО «Демо Неактивный бизнес» · 9900000049" });
+    .selectOption({ label: "ООО «Неактивный бизнес» · 9900000049" });
   await expect(
-    page.getByRole("heading", { name: "ООО «Демо Неактивный бизнес»" }),
+    page.getByRole("heading", { name: "ООО «Неактивный бизнес»" }),
   ).toBeVisible();
   let release!: () => void;
   let started!: () => void;
@@ -400,7 +400,7 @@ test("history navigation during delayed auth restoration finishes boot on the cu
   release();
   await completed;
   await expect(
-    page.getByRole("heading", { name: "ООО «Демо Сильный бизнес»" }),
+    page.getByRole("heading", { name: "ООО «Сильный бизнес»" }),
   ).toBeVisible();
   await expect(page.getByLabel("Ваша компания", { exact: true })).toHaveValue(
     companyA,

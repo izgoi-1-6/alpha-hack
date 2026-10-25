@@ -14,7 +14,7 @@ from ..documents import service as documents
 from ..documents.models import Document
 from ..documents.views import REVIEW_NOTICE, ordered, public_document
 from ..applications.models import TERMINAL_STATUSES, Application, Evaluation, InfoRequest, OfficerDecision
-from ..applications.products import application_product
+from ..applications.products import application_product, collateral_required
 from ..applications.views import (APPLICATION_FIELDS, company_summary, current_request, history_item, history_rows,
                                   latest_evaluation, missing_fields, plain, product_summary, public_evaluation,
                                   public_info_request)
@@ -94,7 +94,7 @@ def staff_document(db: Session, document: Document) -> dict:
 def requestable_fields(product: dict | None) -> list[str]:
     """The answer paths an officer may request for this application: info_requests.OFFICER_PATHS, with the pledge
     paths only for a product that takes collateral."""
-    secured = bool(product and product['collateral_required'])
+    secured = bool(product and collateral_required(product))
     return [path for path in OFFICER_PATHS if secured or path.split('.')[0] != 'collateral']
 
 

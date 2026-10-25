@@ -12,6 +12,7 @@ import calendar
 from dataclasses import dataclass
 from datetime import date
 from ..recommendations.service import rub
+from .products import collateral_required
 
 HISTORY_POINTS = {'clean': 25, 'minor_closed': 10, 'serious': 0}
 LOW_RISK_MIN_SCORE, MEDIUM_RISK_MIN_SCORE = 75, 50
@@ -117,7 +118,7 @@ def scored_limit(product: dict, risk: str, revenue: int | None, collateral: dict
     """The turnover limit; a secured product is further capped by the collateral cap of the declared value, and
     without a declared value there is no limit. (Final approval caps by the verified value instead: officer.policy.)"""
     limit = turnover_limit(product, risk, revenue)
-    if limit is None or not product['collateral_required']:
+    if limit is None or not collateral_required(product):
         return limit
     collateral = collateral or {}
     value = collateral.get('declared_value_rub') if collateral.get('status') == 'declared' else None
@@ -196,7 +197,7 @@ def review_flags(check: CheckInput, report: dict | None) -> tuple[str, ...]:
         flags.append('declared_finance')
     if 'override' in origins:
         flags.append('finance_override')
-    if check.product['collateral_required']:
+    if collateral_required(check.product):
         collateral = check.answers.get('collateral') or {}
         if collateral.get('owner_confirmed') is not True or collateral.get('encumbered') is not False:
             flags.append('collateral_unconfirmed')

@@ -1,24 +1,17 @@
-from typing import Literal
-from pydantic import Field, StrictBool, model_validator
+from pydantic import Field, field_validator
 from ..schemas import StrictModel
+from . import catalog
 
-class CollateralInput(StrictModel):
-    status: Literal['unknown', 'none', 'declared']
-    type: Literal['real_estate', 'vehicle', 'equipment', 'inventory', 'deposit'] | None = None
-    declared_value_rub: int | None = Field(default=None, strict=True, gt=0, le=9_000_000_000_000_000)
-    description: str | None = Field(default=None, min_length=1, max_length=500)
-    owner_confirmed: StrictBool | None = None
-    encumbered: StrictBool | None = None
-
-    @model_validator(mode='after')
-    def declaration(self):
-        if self.status == 'declared' and (not self.type or not self.declared_value_rub or not self.description or not self.description.strip()):
-            raise ValueError('Для заявленного залога укажите тип, стоимость и описание')
-        return self
 
 class NeedInput(StrictModel):
-    purpose: Literal['working_capital', 'business_development', 'investment', 'refinancing']
-    funding_pattern: Literal['one_time', 'repeated']
-    requested_amount_rub: int = Field(strict=True, gt=0, le=150_000_000)
-    term_months: int = Field(strict=True, ge=1, le=120)
-    collateral: CollateralInput | None = None
+    """The need is the amount alone: purpose, term and collateral are chosen in the questionnaire within the chosen
+    product's bounds. Any whole amount from 1 RUB up to the slider maximum is compared (a product may not take it)."""
+    requested_amount_rub: int = Field(strict=True, gt=0)
+
+    @field_validator('requested_amount_rub')
+    @classmethod
+    def within_slider(cls, value: int) -> int:
+        maximum = catalog.config().amount_slider['max_rub']
+        if value > maximum:
+            raise ValueError(f'Сумма не больше {maximum:,} ₽'.replace(',', ' '))
+        return value

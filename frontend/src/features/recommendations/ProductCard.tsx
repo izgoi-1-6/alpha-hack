@@ -11,6 +11,20 @@ const labels = {
   needs_info: "Нужны сведения",
   does_not_fit: "Не соответствует параметрам",
 };
+const collateralText = (product: Product) =>
+  product.collateral_mode === "required"
+    ? `С залогом · оценка до ${product.collateral_ltv_bps / 100}% его заявленной стоимости`
+    : product.collateral_mode === "optional"
+      ? "Залог по желанию"
+      : "Без залога";
+const termText = (product: Product) =>
+  product.term_min_months !== null && product.term_max_months !== null
+    ? `${product.term_min_months}–${product.term_max_months} мес.`
+    : "бессрочно";
+const rateText = (product: Product) =>
+  product.annual_rate_bps === null
+    ? "Ставка уточняется"
+    : `Ставка ${(product.annual_rate_bps / 100).toLocaleString("ru-RU")}% годовых`;
 
 /** Starting a questionnaire from this card: only offered where the server says `can_apply`. */
 export type CardStart = {
@@ -62,10 +76,7 @@ export function ProductCard({
       )}
       <h3 id={"product-title-" + item.product_id}>{product.name}</h3>
       <p className="product-subtitle">
-        {product.collateral_required
-          ? `С залогом · оценка до ${(product.collateral_ltv_bps ?? 0) / 100}% его заявленной стоимости`
-          : "Без залога"}{" "}
-        · {product.term_min_months}–{product.term_max_months} мес.
+        {collateralText(product)} · {termText(product)}
       </p>
       <div className="product-metrics">
         <div>
@@ -75,14 +86,14 @@ export function ProductCard({
         </div>
         <div>
           <span>
-            {product.instrument_type === "revolving_credit_line"
+            {product.payment_model === "interest_full_utilization"
               ? "Проценты в месяц"
               : "Платёж в месяц"}
           </span>
           <strong>{money(item.estimated_payment_rub)}</strong>
           <small>
-            Учебная ставка{" "}
-            {(product.annual_rate_bps / 100).toLocaleString("ru-RU")}% годовых
+            {rateText(product)}
+            {item.payment_label && ` · ${item.payment_label}`}
           </small>
         </div>
       </div>

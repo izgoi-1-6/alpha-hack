@@ -11,7 +11,7 @@ from sqlalchemy import select, update
 from app.clock import get_clock, utc_now
 from app.models import Company, Precheck
 from application_oracle import BY_INN
-from recommendation_oracle import FIXTURES
+from recommendation_oracle import FIXTURES, PRODUCTS
 from test_identity_company import PASSWORD, add, register
 
 FIXED_NOW = datetime(2026, 10, 24, 12, 0, tzinfo=timezone.utc)  # the fixture business date, at noon UTC
@@ -69,10 +69,11 @@ def default_product(fixture_id: str) -> str:
 
 
 def need_of(fixture_id: str, product: str | None = None, **changes) -> dict:
-    """The fixture's need; a secured product gets the fixture's declared collateral."""
+    """The fixture's stage-2 parameters (purpose, amount, term); a product that requires collateral gets the fixture's
+    declared collateral."""
     fixture = FIXTURES[fixture_id]
     need = dict(fixture['need'])
-    if (product or default_product(fixture_id)) == SECURED and fixture['collateral_status'] == 'declared':
+    if PRODUCTS[product or default_product(fixture_id)]['collateral_mode'] == 'required' and fixture['collateral_status'] == 'declared':
         need['collateral'] = declared_collateral(fixture['collateral_value_rub'], type=fixture['collateral_type'],
                                                  encumbered=fixture['collateral_encumbered'])
     need.update(changes)
@@ -87,8 +88,9 @@ def onboard(client, fixture_id: str, *, new_user: bool = True) -> str:
     return response.json()['company']['id']
 
 
-def snapshot_for(client, company_id: str, **need) -> str:
-    response = client.post(f'/api/v1/companies/{company_id}/recommendations', json=need)
+def snapshot_for(client, company_id: str, requested_amount_rub: int = 2_000_000) -> str:
+    """A saved recommendation snapshot: the need is the amount alone."""
+    response = client.post(f'/api/v1/companies/{company_id}/recommendations', json={'requested_amount_rub': requested_amount_rub})
     assert response.status_code == 201, response.text
     return response.json()['snapshot_id']
 
@@ -99,12 +101,19 @@ def create(client, company_id: str, product_id: str, snapshot_id: str, *, key: s
 
 
 def draft(client, fixture_id: str, *, product: str | None = None, company: str | None = None, **need_changes) -> dict:
-    """A new DRAFT for the fixture's need (or a changed one), created from a fresh saved snapshot."""
+    """A new DRAFT for the fixture's need (or a changed one): created from a fresh amount-only snapshot, which prefills
+    only the amount, then stage 2 (purpose, term, collateral) answered as the client would."""
     company = company or onboard(client, fixture_id)
     product = product or default_product(fixture_id)
-    snapshot = snapshot_for(client, company, **need_of(fixture_id, product, **need_changes))
-    response = create(client, company, product, snapshot)
+    need = need_of(fixture_id, product, **need_changes)
+    response = create(client, company, product, snapshot_for(client, company, need['requested_amount_rub']))
     assert response.status_code == 201, response.text
+    application = response.json()['application']
+    stage_two = {name: value for name, value in need.items() if name != 'requested_amount_rub' and value is not None}
+    if not stage_two:
+        return application
+    response = patch_answers(client, application, **stage_two)
+    assert response.status_code == 200, response.text
     return response.json()['application']
 
 

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "fixture_version": "demo-fixtures-v1",
+  "fixture_version": "demo-fixtures-v2",
   "is_synthetic": true,
   "business_reference_date": "2026-10-24",
   "financial_period_end": "2026-09-30",
@@ -10,25 +10,25 @@
       "id": "f7ea2cb0-ba6f-58e0-8ff0-eeb309794eff",
       "role": "CLIENT",
       "email": "client@demo.local",
-      "display_name": "Демо Клиент"
+      "display_name": "Клиент"
     },
     {
       "id": "d04fb4fa-3237-5cc8-9c0f-b542422dbfb7",
       "role": "CLIENT",
       "email": "other@demo.local",
-      "display_name": "Другой Демо Клиент"
+      "display_name": "Другой клиент"
     },
     {
       "id": "2b17be2e-db32-531f-9acc-873fd3f46fda",
       "role": "CREDIT_OFFICER",
       "email": "officer@demo.local",
-      "display_name": "Демо Кредитный специалист"
+      "display_name": "Кредитный специалист"
     }
   ],
   "companies": [
     {
       "entity_type": "LLC",
-      "name": "ООО «Демо Сильный бизнес»",
+      "name": "ООО «Сильный бизнес»",
       "registered_at": "2022-10-24",
       "registry_status": "active",
       "registry_source_status": "available",
@@ -40,8 +40,12 @@
       "credit_history": "clean",
       "current_overdue_days": 0,
       "okved": "46.90",
-      "region": "Демо-регион",
-      "legal_address": "Демонстрационный адрес, дом 1",
+      "region": "Москва",
+      "legal_address": "г. Москва, ул. Складская, д. 1",
+      "msp_registry": true,
+      "tax_regime": "OSN",
+      "employees": 24,
+      "director_name": "Соколов Андрей Викторович",
       "collateral_status": "declared",
       "collateral_value_rub": 4000000,
       "collateral_type": "equipment",
@@ -53,7 +57,6 @@
       "inn": "9900000017",
       "need": {
         "purpose": "working_capital",
-        "funding_pattern": "one_time",
         "requested_amount_rub": 2000000,
         "term_months": 12
       },
@@ -68,7 +71,7 @@
     },
     {
       "entity_type": "IP",
-      "name": "ИП «Демо Средний риск»",
+      "name": "ИП «Средний риск»",
       "registered_at": "2025-04-24",
       "registry_status": "active",
       "registry_source_status": "available",
@@ -80,8 +83,12 @@
       "credit_history": "clean",
       "current_overdue_days": 0,
       "okved": "46.90",
-      "region": "Демо-регион",
-      "legal_address": "Демонстрационный адрес, дом 1",
+      "region": "Санкт-Петербург",
+      "legal_address": "г. Санкт-Петербург, ул. Торговая, д. 2",
+      "msp_registry": true,
+      "tax_regime": "USN",
+      "employees": 6,
+      "director_name": "Петрова Мария Сергеевна",
       "collateral_status": "unknown",
       "collateral_value_rub": null,
       "collateral_type": null,
@@ -93,7 +100,6 @@
       "inn": "990000000299",
       "need": {
         "purpose": "working_capital",
-        "funding_pattern": "repeated",
         "requested_amount_rub": 500000,
         "term_months": 12
       },
@@ -108,7 +114,7 @@
     },
     {
       "entity_type": "IP",
-      "name": "ИП «Демо Высокий риск»",
+      "name": "ИП «Высокий риск»",
       "registered_at": "2026-06-24",
       "registry_status": "active",
       "registry_source_status": "available",
@@ -119,9 +125,13 @@
       "monthly_debt_payment_rub": 180000,
       "credit_history": "minor_closed",
       "current_overdue_days": 0,
-      "okved": "46.90",
-      "region": "Демо-регион",
-      "legal_address": "Демонстрационный адрес, дом 1",
+      "okved": "47.11",
+      "region": "Новосибирская область",
+      "legal_address": "г. Новосибирск, ул. Рыночная, д. 3",
+      "msp_registry": true,
+      "tax_regime": "PSN",
+      "employees": 3,
+      "director_name": "Кузнецов Илья Петрович",
       "collateral_status": "declared",
       "collateral_value_rub": 4000000,
       "collateral_type": "equipment",
@@ -133,7 +143,6 @@
       "inn": "990000000362",
       "need": {
         "purpose": "working_capital",
-        "funding_pattern": "one_time",
         "requested_amount_rub": 300000,
         "term_months": 12
       },
@@ -148,7 +157,7 @@
     },
     {
       "entity_type": "LLC",
-      "name": "ООО «Демо Неактивный бизнес»",
+      "name": "ООО «Неактивный бизнес»",
       "registered_at": "2022-10-24",
       "registry_status": "inactive",
       "registry_source_status": "available",
@@ -160,8 +169,12 @@
       "credit_history": "clean",
       "current_overdue_days": 0,
       "okved": "46.90",
-      "region": "Демо-регион",
-      "legal_address": "Демонстрационный адрес, дом 1",
+      "region": "Москва",
+      "legal_address": "г. Москва, ул. Промышленная, д. 4",
+      "msp_registry": false,
+      "tax_regime": "OSN",
+      "employees": 0,
+      "director_name": "Морозов Олег Николаевич",
       "collateral_status": "declared",
       "collateral_value_rub": 4000000,
       "collateral_type": "equipment",
@@ -173,7 +186,6 @@
       "inn": "9900000049",
       "need": {
         "purpose": "working_capital",
-        "funding_pattern": "one_time",
         "requested_amount_rub": 1000000,
         "term_months": 12
       },
@@ -188,7 +200,7 @@
     },
     {
       "entity_type": "IP",
-      "name": "ИП «Демо Неполные обороты»",
+      "name": "ИП «Неполные обороты»",
       "registered_at": "2022-10-24",
       "registry_status": "active",
       "registry_source_status": "available",
@@ -200,8 +212,12 @@
       "credit_history": "clean",
       "current_overdue_days": 0,
       "okved": "46.90",
-      "region": "Демо-регион",
-      "legal_address": "Демонстрационный адрес, дом 1",
+      "region": "Свердловская область",
+      "legal_address": "г. Екатеринбург, ул. Заводская, д. 5",
+      "msp_registry": true,
+      "tax_regime": "USN",
+      "employees": 5,
+      "director_name": "Васильева Елена Игоревна",
       "collateral_status": "declared",
       "collateral_value_rub": 4000000,
       "collateral_type": "equipment",
@@ -213,7 +229,6 @@
       "inn": "990000000500",
       "need": {
         "purpose": "working_capital",
-        "funding_pattern": "one_time",
         "requested_amount_rub": 1000000,
         "term_months": 12
       },
@@ -232,7 +247,7 @@
     },
     {
       "entity_type": "LLC",
-      "name": "ООО «Демо Реестр недоступен»",
+      "name": "ООО «Реестр недоступен»",
       "registered_at": "2022-10-24",
       "registry_status": "unknown",
       "registry_source_status": "unavailable",
@@ -244,8 +259,12 @@
       "credit_history": "clean",
       "current_overdue_days": 0,
       "okved": "46.90",
-      "region": "Демо-регион",
-      "legal_address": "Демонстрационный адрес, дом 1",
+      "region": "Республика Татарстан",
+      "legal_address": "г. Казань, ул. Луговая, д. 6",
+      "msp_registry": null,
+      "tax_regime": "USN",
+      "employees": 12,
+      "director_name": "Фёдоров Денис Алексеевич",
       "collateral_status": "declared",
       "collateral_value_rub": 4000000,
       "collateral_type": "equipment",
@@ -257,13 +276,13 @@
       "inn": "9900000063",
       "need": {
         "purpose": "working_capital",
-        "funding_pattern": "one_time",
         "requested_amount_rub": 1000000,
         "term_months": 12
       },
       "recovery": {
         "retry_registry_source_status": "available",
-        "retry_registry_status": "active"
+        "retry_registry_status": "active",
+        "retry_msp_registry": true
       },
       "expected_check_outcome": {
         "product_id": "alfa_term_loan_unsecured",
@@ -276,7 +295,7 @@
     },
     {
       "entity_type": "LLC",
-      "name": "ООО «Демо Оборудование»",
+      "name": "ООО «Оборудование»",
       "registered_at": "2022-10-24",
       "registry_status": "active",
       "registry_source_status": "available",
@@ -288,8 +307,12 @@
       "credit_history": "clean",
       "current_overdue_days": 0,
       "okved": "46.90",
-      "region": "Демо-регион",
-      "legal_address": "Демонстрационный адрес, дом 1",
+      "region": "Нижегородская область",
+      "legal_address": "г. Нижний Новгород, ул. Станкостроительная, д. 7",
+      "msp_registry": true,
+      "tax_regime": "OSN",
+      "employees": 38,
+      "director_name": "Никитин Сергей Олегович",
       "collateral_status": "declared",
       "collateral_value_rub": 8000000,
       "collateral_type": "equipment",
@@ -300,8 +323,7 @@
       "owner_user_id": "f7ea2cb0-ba6f-58e0-8ff0-eeb309794eff",
       "inn": "9900000070",
       "need": {
-        "purpose": "investment",
-        "funding_pattern": "one_time",
+        "purpose": "business_development",
         "requested_amount_rub": 4000000,
         "term_months": 36
       },
@@ -316,7 +338,7 @@
     },
     {
       "entity_type": "IP",
-      "name": "ИП «Демо БКИ недоступно»",
+      "name": "ИП «БКИ недоступно»",
       "registered_at": "2022-10-24",
       "registry_status": "active",
       "registry_source_status": "available",
@@ -328,8 +350,12 @@
       "credit_history": "clean",
       "current_overdue_days": 0,
       "okved": "46.90",
-      "region": "Демо-регион",
-      "legal_address": "Демонстрационный адрес, дом 1",
+      "region": "Краснодарский край",
+      "legal_address": "г. Краснодар, ул. Южная, д. 8",
+      "msp_registry": true,
+      "tax_regime": "USN",
+      "employees": 4,
+      "director_name": "Смирнова Ольга Андреевна",
       "collateral_status": "declared",
       "collateral_value_rub": 4000000,
       "collateral_type": "equipment",
@@ -341,7 +367,6 @@
       "inn": "990000000820",
       "need": {
         "purpose": "working_capital",
-        "funding_pattern": "one_time",
         "requested_amount_rub": 1000000,
         "term_months": 12
       },
@@ -359,7 +384,7 @@
     },
     {
       "entity_type": "IP",
-      "name": "ИП «Демо БКИ без категории»",
+      "name": "ИП «БКИ без категории»",
       "registered_at": "2022-10-24",
       "registry_status": "active",
       "registry_source_status": "available",
@@ -371,8 +396,12 @@
       "credit_history": null,
       "current_overdue_days": 0,
       "okved": "46.90",
-      "region": "Демо-регион",
-      "legal_address": "Демонстрационный адрес, дом 1",
+      "region": "Ростовская область",
+      "legal_address": "г. Ростов-на-Дону, ул. Донская, д. 9",
+      "msp_registry": true,
+      "tax_regime": "USN",
+      "employees": 7,
+      "director_name": "Павлов Артём Дмитриевич",
       "collateral_status": "declared",
       "collateral_value_rub": 4000000,
       "collateral_type": "equipment",
@@ -384,7 +413,6 @@
       "inn": "990000000901",
       "need": {
         "purpose": "working_capital",
-        "funding_pattern": "one_time",
         "requested_amount_rub": 1000000,
         "term_months": 12
       },
@@ -404,38 +432,49 @@
         "preapproved_amount_rub": null
       },
       "expected_ui_action": "start_application"
-    }
-  ],
-  "held_out_tasks": [
-    {
-      "id": "comparison-working-capital",
-      "fixture_id": "medium",
-      "purpose": "working_capital",
-      "funding_pattern": "repeated",
-      "requested_amount_rub": 500000,
-      "term_months": 12,
-      "expected_product_id": "alfa_revolving_line_unsecured",
-      "criteria": "Повторяющиеся закупки оборотных средств; сумма укладывается в персональную оценку."
     },
     {
-      "id": "comparison-single",
-      "fixture_id": "strong",
-      "purpose": "business_development",
-      "funding_pattern": "one_time",
-      "requested_amount_rub": 2000000,
-      "term_months": 12,
-      "expected_product_id": "alfa_term_loan_unsecured",
-      "criteria": "Разовая потребность; достаточный лимит без обеспечения."
-    },
-    {
-      "id": "comparison-investment",
-      "fixture_id": "secured_investment",
-      "purpose": "investment",
-      "funding_pattern": "one_time",
-      "requested_amount_rub": 4000000,
-      "term_months": 36,
-      "expected_product_id": "alfa_term_loan_secured",
-      "criteria": "Инвестиционная цель, сумма выше необеспеченного потолка, залог объявлен."
+      "entity_type": "LLC",
+      "name": "ООО «Курский производитель»",
+      "registered_at": "2021-03-15",
+      "registry_status": "active",
+      "registry_source_status": "available",
+      "turnover_source_status": "available",
+      "bki_source_status": "available",
+      "monthly_revenue_rub": 12000000,
+      "previous_monthly_revenue_rub": 10500000,
+      "monthly_debt_payment_rub": 2000000,
+      "credit_history": "clean",
+      "current_overdue_days": 0,
+      "okved": "25.62",
+      "region": "Курская область",
+      "legal_address": "г. Курск, ул. Литейная, д. 10",
+      "msp_registry": true,
+      "tax_regime": "OSN",
+      "employees": 85,
+      "director_name": "Белов Виктор Иванович",
+      "collateral_status": "none",
+      "collateral_value_rub": null,
+      "collateral_type": null,
+      "collateral_encumbered": null,
+      "financial_period_end": "2026-09-30",
+      "fixture_id": "gov_manufacturer",
+      "id": "5475d920-4f02-51cb-b591-0ae5f216d4fa",
+      "owner_user_id": "f7ea2cb0-ba6f-58e0-8ff0-eeb309794eff",
+      "inn": "9900000095",
+      "need": {
+        "purpose": "investment",
+        "requested_amount_rub": 20000000,
+        "term_months": 36
+      },
+      "expected_check_outcome": {
+        "product_id": "psk_borderline",
+        "score": 100,
+        "risk": "low",
+        "status": "PREAPPROVED",
+        "preapproved_amount_rub": 20000000
+      },
+      "expected_ui_action": "start_application"
     }
   ]
 }

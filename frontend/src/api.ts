@@ -13,6 +13,8 @@ export type Company = {
   registered_at: string | null;
   okved: string | null;
   region: string | null;
+  /** Inclusion in the SME (МСП) register; null while the registry is unconfirmed. */
+  msp_registry: boolean | null;
   legal_address: string | null;
   fixture_id: string | null;
   version: number;
@@ -157,44 +159,74 @@ export const errorMessage = (error: unknown) =>
     ? error.message
     : "Не удалось выполнить действие. Повторите попытку.";
 
-export type Need = {
-  purpose:
-    | "working_capital"
-    | "business_development"
-    | "investment"
-    | "refinancing";
-  funding_pattern: "one_time" | "repeated";
-  requested_amount_rub: number;
-  term_months: number;
-  collateral: {
-    status: "unknown" | "none" | "declared";
-    type?: "real_estate" | "vehicle" | "equipment" | "inventory" | "deposit";
-    declared_value_rub?: number;
-    description?: string;
-    owner_confirmed?: boolean;
-    encumbered?: boolean;
-  } | null;
+/** The need is the amount alone; purpose, term and collateral are chosen in the questionnaire. */
+export type Need = { requested_amount_rub: number };
+export type CollateralMode = "none" | "optional" | "required";
+export type ConditionToConfirm = {
+  kind: "requirement" | "category" | "okved";
+  text: string;
 };
+/** A catalog card product with its effective terms (catalog values, policy fallbacks for gaps). */
 export type Product = {
   id: string;
   name: string;
+  kind: "product" | "gov_program";
   instrument_type: string;
+  applyable: boolean;
+  display: {
+    headline: string | null;
+    summary: string;
+    features: string[];
+    best_for: string;
+  };
   purposes: string[];
+  entity_types: ("IP" | "LLC")[];
   amount_min_rub: number;
   amount_max_rub: number;
-  term_min_months: number;
-  term_max_months: number;
-  annual_rate_bps: number;
-  collateral_required: boolean;
-  collateral_ltv_bps: number | null;
-  can_apply: boolean;
+  amount_max_unsecured_rub: number | null;
+  unsecured_cap_rub: number;
+  /** Null for a product without a term (see term_note). */
+  term_min_months: number | null;
+  term_max_months: number | null;
+  term_max_months_by_purpose: Record<string, number>;
+  term_note: string | null;
+  /** Null when the bank does not publish the rate. */
+  annual_rate_bps: number | null;
+  rate_certainty: "full" | "preferential" | "undisclosed";
+  rate_preferential_months: number | null;
+  payment_model: "annuity" | "interest_full_utilization" | "none";
+  collateral_mode: CollateralMode;
+  collateral_ltv_bps: number;
+  eligibility: {
+    msp_registry_required: boolean;
+    regions_allow: string[];
+    okved_denied_classes: string[];
+  };
+  conditions_to_confirm: ConditionToConfirm[];
+  overlay_ids: string[];
+};
+export type Overlay = {
+  id: string;
+  name: string;
+  applies_to: string[];
+  badge_text: string;
+  badge_text_collateral_required: string;
+};
+export type AmountSlider = {
+  scale: "log";
+  min_rub: number;
+  max_rub: number;
+  default_rub: number;
+  snap: { up_to_rub: number; step_rub: number }[];
+  presets_rub: number[];
 };
 export type Catalog = {
   catalog_version: string;
   rules_version: string;
-  notice: string;
+  key_rate: { value_bps: number; effective_from: string | null };
+  amount_slider: AmountSlider;
   products: Product[];
-  research_items: { id: string; name: string; can_apply: false }[];
+  overlays: Overlay[];
 };
 export type Recommendation = {
   product_id: string;
@@ -213,6 +245,10 @@ export type Recommendation = {
   alternatives: string[];
   estimated_payment_rub: number | null;
   payment_note: string;
+  /** «в льготный период N мес.» when the payment uses a preferential rate. */
+  payment_label: string | null;
+  badges: { overlay_id: string; name: string; text: string }[];
+  conditions_to_confirm: ConditionToConfirm[];
 };
 export type RecommendationSnapshot = {
   snapshot_id: string;
@@ -308,7 +344,7 @@ export type DocumentChecklist = {
 /** A saved pledge answer: keys are merged on each save and may be null (cleared or not yet given). */
 export type Collateral = {
   status?: "unknown" | "none" | "declared" | null;
-  type?: NonNullable<Need["collateral"]>["type"] | null;
+  type?: "real_estate" | "vehicle" | "equipment" | "inventory" | "deposit" | null;
   declared_value_rub?: number | null;
   description?: string | null;
   owner_confirmed?: boolean | null;
@@ -326,11 +362,13 @@ export type ApplicationProduct = { id: string } & Partial<{
   instrument_type: string;
   amount_min_rub: number;
   amount_max_rub: number;
-  term_min_months: number;
-  term_max_months: number;
-  annual_rate_bps: number;
-  rate_is_demo: boolean;
-  collateral_required: boolean;
+  term_min_months: number | null;
+  term_max_months: number | null;
+  term_max_months_by_purpose: Record<string, number>;
+  annual_rate_bps: number | null;
+  rate_certainty: "full" | "preferential" | "undisclosed";
+  rate_preferential_months: number | null;
+  collateral_mode: CollateralMode;
   collateral_ltv_bps: number | null;
   required_documents: string[];
 }>;

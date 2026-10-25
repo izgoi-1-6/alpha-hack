@@ -2,7 +2,7 @@
 
 Nothing here imports application code. The factor points, risk bands, scored-limit formulas and R6-R11 order are
 transcribed from the spec ("Scoring and state machine", "Product policy and recommendations"); product bounds come
-from the policy JSON via recommendation_oracle (a reader, not a calculator). The arithmetic deliberately differs from
+from catalog_oracle's own reading of the catalog and policy files (a reader, not a calculator). The arithmetic deliberately differs from
 the implementation: exact fractions instead of integer cross-multiplication, and calendar stepping instead of a month
 formula, so a shared mistake cannot make both agree.
 """
@@ -65,7 +65,7 @@ def scored_limit(product_id: str, band: str, revenue: int, declared_value: int |
         limit = min(product['amount_max_rub'], LOW_MULTIPLE * revenue)
     else:
         limit = min(product['amount_max_rub'], MEDIUM_CAP_RUB, MEDIUM_MULTIPLE * revenue)
-    if product['collateral_required']:
+    if product['collateral_mode'] == 'required':
         limit = min(limit, int(declared_value * LTV))  # positive values: int() truncation is the floor
     return limit
 

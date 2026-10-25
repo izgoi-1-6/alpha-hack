@@ -17,14 +17,15 @@ from . import stages
 from .info_requests import open_info_request
 from .lifecycle import CANCELLABLE
 from .models import TERMINAL_STATUSES, Application, Evaluation, InfoRequest, Notification, StatusHistory
-from .products import application_product
+from .products import application_product, required_documents
 
 APPLICATION_FIELDS = ('id', 'company_id', 'product_id', 'recommendation_snapshot_id', 'status', 'current_stage', 'version',
                       'answers', 'submitted_at', 'requested_amount_rub', 'indicative_limit_rub', 'scored_limit_rub',
                       'preapproved_amount_rub', 'final_amount_rub', 'preapproved_at', 'preapproval_expires_at',
                       'catalog_version', 'rules_version', 'created_at', 'updated_at')
 PRODUCT_FIELDS = ('id', 'name', 'instrument_type', 'amount_min_rub', 'amount_max_rub', 'term_min_months', 'term_max_months',
-                  'annual_rate_bps', 'rate_is_demo', 'collateral_required', 'collateral_ltv_bps', 'required_documents')
+                  'term_max_months_by_purpose', 'annual_rate_bps', 'rate_certainty', 'rate_preferential_months',
+                  'collateral_mode', 'collateral_ltv_bps')
 
 
 def plain(value):
@@ -41,7 +42,9 @@ def company_summary(company: Company) -> dict:
 
 
 def product_summary(application: Application, product: dict | None) -> dict:
-    return {key: product[key] for key in PRODUCT_FIELDS} if product else {'id': application.product_id}
+    if product is None:
+        return {'id': application.product_id}
+    return {**{key: product[key] for key in PRODUCT_FIELDS}, 'required_documents': required_documents(product)}
 
 
 def allowed_actions(application: Application, company: Company, request: InfoRequest | None,

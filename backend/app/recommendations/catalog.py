@@ -1,13 +1,16 @@
-import json
-from pathlib import Path
-from ..products_config import configured_paths, load_config
+"""The product configuration the app serves, loaded once at start-up from the configured catalog and policy files.
 
-DATA = Path(__file__).resolve().parents[3] / 'data'
-CATALOG = json.loads((DATA / 'demo-products.json').read_text())
-RESEARCH = json.loads((DATA / 'catalog.research.json').read_text())
-# Validated at start-up: a broken catalog or policy stops the app with every problem and its path.
+A broken catalog or policy stops the app with every problem and its path. Consumers call `config()` at use time (never
+bind CONFIG at import), so a test can swap the module attribute for an edited configuration.
+"""
+from ..products_config import ProductConfig, configured_paths, load_config
+
 CONFIG = load_config(*configured_paths())
 
+
+def config() -> ProductConfig:
+    return CONFIG
+
+
 def public_catalog() -> dict:
-    return {'catalog_version': CATALOG['catalog_version'], 'rules_version': CATALOG['rules_version'],
-            'notice': CATALOG['notice'], 'products': CATALOG['products'], 'research_items': RESEARCH['items']}
+    return config().public()

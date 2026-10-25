@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from itertools import product as grid
 import pytest
 from app.applications import scoring
+from app.recommendations.catalog import CONFIG
 import application_oracle as oracle
 from recommendation_oracle import PRODUCTS
 
@@ -29,8 +30,8 @@ def check(product=TERM, *, revenue=800_000, previous=680_000, origin='source', a
           registry='active', registry_source='available', turnover_source='available', missing=(), **answers):
     finance = {'monthly_revenue_rub': evidence(revenue, origin), 'previous_monthly_revenue_rub': evidence(previous, origin),
                'financial_period_end': evidence('2026-09-30', 'source')}
-    collateral = COLLATERAL if PRODUCTS[product]['collateral_required'] else None
-    return scoring.CheckInput(product=PRODUCTS[product], registry_status=registry, registry_source_status=registry_source,
+    collateral = COLLATERAL if PRODUCTS[product]['collateral_mode'] == 'required' else None
+    return scoring.CheckInput(product=CONFIG.product(product), registry_status=registry, registry_source_status=registry_source,
                               turnover_source_status=turnover_source, age_months=age, finance=finance,
                               answers={'monthly_debt_payment_rub': debt, 'tax_debt_rub': 0, 'legal_proceedings': False,
                                        'requested_amount_rub': requested, 'collateral': collateral, **answers},
@@ -74,8 +75,8 @@ def test_scored_limits_follow_the_spec_formulas(product):
     for band, revenue, declared in grid(('low', 'medium', 'high'), (1, 99_999, 100_000, 333_334, 600_001, 2_000_000, 50_000_000),
                                         (714_285, 714_286, 1_000_000, 8_000_000)):
         collateral = {**COLLATERAL, 'declared_value_rub': declared}
-        expected = oracle.scored_limit(product, band, revenue, declared if PRODUCTS[product]['collateral_required'] else None)
-        assert scoring.scored_limit(PRODUCTS[product], band, revenue, collateral) == expected, (band, revenue, declared)
+        expected = oracle.scored_limit(product, band, revenue, declared if PRODUCTS[product]['collateral_mode'] == 'required' else None)
+        assert scoring.scored_limit(CONFIG.product(product), band, revenue, collateral) == expected, (band, revenue, declared)
 
 
 def test_rule_order_without_review_flags_matches_the_oracle():

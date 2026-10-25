@@ -4,7 +4,7 @@ from ..clock import iso_utc
 from ..companies import get_owned_company, latest_precheck, public_row
 from ..errors import ApiError
 from ..identity import ClientUser, Db, Now
-from .catalog import CATALOG, public_catalog
+from . import catalog
 from .models import RecommendationSnapshot
 from .schemas import NeedInput
 from .service import recommend
@@ -16,8 +16,8 @@ def public_snapshot(row: RecommendationSnapshot) -> dict:
             'items':row.result,'created_at':iso_utc(row.created_at)}
 
 @router.get('/catalog')
-def catalog():
-    return public_catalog()
+def read_catalog():
+    return catalog.public_catalog()
 
 @router.post('/companies/{company_id}/recommendations',status_code=201)
 def create_recommendation(company_id: str, data: NeedInput, user: ClientUser, db: Db, now: Now):
@@ -26,9 +26,10 @@ def create_recommendation(company_id: str, data: NeedInput, user: ClientUser, db
     precheck=latest_precheck(db,company_id)
     need=data.model_dump()
     source={'company':public_row(company),'precheck':public_row(precheck)}
-    result=recommend(source['company'],source['precheck'],need,CATALOG['products'])
+    config=catalog.config()
+    result=recommend(source['company'],source['precheck'],need,config)
     row=RecommendationSnapshot(company_id=company_id,precheck_id=precheck.id,need=need,input_snapshot=source,
-                               result=result,catalog_version=CATALOG['catalog_version'],rules_version=CATALOG['rules_version'],created_at=now)
+                               result=result,catalog_version=config.catalog_version,rules_version=config.rules_version,created_at=now)
     db.add(row)
     db.flush()
     return public_snapshot(row)

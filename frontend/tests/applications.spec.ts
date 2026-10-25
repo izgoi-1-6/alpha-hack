@@ -9,6 +9,7 @@ import {
   fillCompanyStage,
   fillFinanceStage,
   fillObligationsStage,
+  fillParametersStage,
   fillRepresentativeStage,
   history,
   lineCard,
@@ -38,6 +39,7 @@ async function completeQuestionnaire(page: Page, check?: () => Promise<void>) {
   await saveAndContinue(page);
   await expectStage(page, 2, "Параметры");
   await check?.();
+  await fillParametersStage(page);
   await saveAndContinue(page);
   await expectStage(page, 3, "Бизнес и финансы");
   await fillFinanceStage(page);
@@ -59,11 +61,10 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
   await registerClient(page, "app");
   await onboard(page, "Сильный бизнес");
   await openRecommendations(page);
-  // Informational research items never get an application action.
-  await page.getByText("Исследовательский каталог", { exact: false }).click();
-  await expect(
-    page.locator(".research-catalog").getByRole("button"),
-  ).toHaveCount(0);
+  // Every catalog card product is listed; there is no separate research archive.
+  const catalog = await (await page.request.get("/api/v1/catalog")).json();
+  await expect(page.locator("article")).toHaveCount(catalog.products.length);
+  await expect(page.locator(".research-catalog")).toHaveCount(0);
   await expect(
     page.locator(termCard).getByRole("button", { name: "Начать анкету" }),
   ).toBeVisible();
@@ -72,7 +73,7 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
     "Кредит одной суммой без залога",
   );
   await expect(page.locator(".wizard-header")).toContainText(
-    "ООО «Демо Сильный бизнес»",
+    "ООО «Сильный бизнес»",
   );
 
   await fillCompanyStage(page);
@@ -83,14 +84,15 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
     page.getByRole("heading", { level: 2, name: "Параметры" }),
   ).toBeFocused();
   await expect(page.locator(".application-live")).toContainText("Сохранено");
-  // Stage 2 is prefilled from the recommendation need.
+  // Stage 2 starts with the amount from the product screen; the purpose and the term are the client's choice.
   await expect(
     page
       .getByRole("group", { name: "Цель финансирования" })
       .getByLabel("Пополнение оборотных средств"),
-  ).toBeChecked();
+  ).not.toBeChecked();
   await expect(page.getByLabel("Сумма, ₽")).toHaveValue("1500000");
-  await expect(page.getByLabel("Срок, мес.")).toHaveValue("12");
+  await expect(page.getByLabel("Срок, мес.")).toHaveValue("");
+  await fillParametersStage(page);
   await page.getByLabel("Сумма, ₽").fill("2000000");
   await saveAndContinue(page);
 
@@ -238,7 +240,7 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
   await expect(
     page.getByRole("heading", { level: 1, name: "Заявка не найдена" }),
   ).toBeVisible();
-  await expect(page.getByText("Демо Сильный бизнес")).toHaveCount(0);
+  await expect(page.getByText("Сильный бизнес")).toHaveCount(0);
   expect((await page.request.get(`/api/v1/applications/${id}`)).status()).toBe(
     404,
   );
@@ -372,7 +374,7 @@ test("My Applications lists every application with status and next step; cancel 
   );
   await expect(rows.nth(1)).toContainText("Кредит одной суммой без залога");
   for (const row of await rows.all()) {
-    await expect(row).toContainText("ООО «Демо Сильный бизнес»");
+    await expect(row).toContainText("ООО «Сильный бизнес»");
     await expect(row.locator(".status-pill")).toHaveText("Черновик");
     await expect(row).toContainText("Продолжите анкету: шаг 1 из 6");
   }
@@ -442,7 +444,7 @@ test("open-stage edits are saved when leaving through the sidebar or the browser
     .getByRole("button", { name: "Мои компании" })
     .click();
   await expect(
-    page.getByRole("heading", { name: "ООО «Демо Сильный бизнес»" }),
+    page.getByRole("heading", { name: "ООО «Сильный бизнес»" }),
   ).toBeVisible();
   await reopen();
   await expect(page.getByLabel("Фактический адрес")).toHaveValue(

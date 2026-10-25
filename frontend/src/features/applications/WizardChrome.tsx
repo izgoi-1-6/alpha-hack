@@ -105,10 +105,16 @@ export function DraftSummary({
                     {rub(product.amount_min_rub)} –{" "}
                     {rub(product.amount_max_rub)}
                   </span>{" "}
-                  ·{" "}
-                  <span className="nowrap">
-                    {product.term_min_months}–{product.term_max_months} мес.
-                  </span>
+                  {product.term_min_months != null &&
+                    product.term_max_months != null && (
+                      <>
+                        ·{" "}
+                        <span className="nowrap">
+                          {product.term_min_months}–{product.term_max_months}{" "}
+                          мес.
+                        </span>
+                      </>
+                    )}
                 </small>
               )}
           </dd>

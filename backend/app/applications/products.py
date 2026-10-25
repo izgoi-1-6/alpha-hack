@@ -1,18 +1,19 @@
-"""Product policies for applications, resolved only from the demo catalog's `products`.
+"""Product terms for applications, resolved from the runtime product configuration (app.recommendations.catalog).
 
-Never from the research archive: three archive entries reuse supported product ids with different, unverified
-numbers and `can_apply=false`. Lookups read CATALOG at call time, so a catalog/rules version change is seen at once.
+Lookups read the configuration at call time, so an edited catalog or policy (a new stamped version) is seen at once.
+A submitted application reads the runtime product pinned in its submission snapshot instead.
 """
-from ..recommendations.catalog import CATALOG
+from ..recommendations import catalog
 from .models import Application
 
 
 def current_product(product_id: str) -> dict | None:
-    return next((product for product in CATALOG['products'] if product['id'] == product_id), None)
+    return catalog.config().product(product_id)
 
 
 def current_versions() -> tuple[str, str]:
-    return CATALOG['catalog_version'], CATALOG['rules_version']
+    config = catalog.config()
+    return config.catalog_version, config.rules_version
 
 
 def is_current(catalog_version: str, rules_version: str) -> bool:
@@ -20,7 +21,19 @@ def is_current(catalog_version: str, rules_version: str) -> bool:
 
 
 def application_product(application: Application) -> dict | None:
-    """The policy pinned at submission; for a draft, the live policy of its product (None if withdrawn)."""
+    """The product pinned at submission; for a draft, the live product (None if it left the catalog)."""
     if application.submitted_input_snapshot:
         return application.submitted_input_snapshot['product']
     return current_product(application.product_id)
+
+
+def collateral_required(product: dict) -> bool:
+    """Whether the questionnaire, scoring, documents and the officer treat the application as secured. Until the
+    application pins its own `secured` flag (required, or optional with declared collateral), only a product whose
+    collateral mode is 'required' is secured; an optional pledge is not counted yet."""
+    return product['collateral_mode'] == 'required'
+
+
+def required_documents(product: dict) -> list[str]:
+    """The policy's base documents, plus the collateral documents for a secured product."""
+    return [*product['base_documents'], *(product['collateral_documents'] if collateral_required(product) else [])]

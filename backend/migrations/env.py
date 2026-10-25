@@ -5,6 +5,7 @@ from app.db import Base
 from app import models  # Register model metadata for migrations.
 from app.recommendations import models as recommendation_models
 from app.applications import models as application_models
+from app.documents import models as document_models
 
 config=context.config
 target_metadata=Base.metadata

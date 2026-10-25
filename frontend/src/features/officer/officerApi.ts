@@ -1,5 +1,6 @@
 import {
   Application,
+  ApplicationDocument,
   ApplicationStatus,
   Company,
   Evaluation,
@@ -11,7 +12,13 @@ import {
 
 /** Officer routes under /officer/applications (CREDIT_OFFICER only; the server refuses a client with 403). */
 
-export type StaffAction = "claim" | "request_info" | "preapprove" | "reject";
+export type StaffAction =
+  | "claim"
+  | "request_info"
+  | "preapprove"
+  | "review_document"
+  | "approve"
+  | "reject";
 export type UserRef = { id: string; display_name: string };
 export type SourceStatus = "available" | "missing" | "unavailable";
 export type CreditHistory = "clean" | "minor_closed" | "serious";
@@ -60,6 +67,21 @@ export type Preapproval = {
     message: string;
   } | null;
 };
+/** DOCS_UPLOADED only: the inclusive final amount bounds from the accepted evidence, or why approval is refused. */
+export type FinalApproval = {
+  amount_min_rub: number | null;
+  amount_max_rub: number | null;
+  verified_limit_rub: number | null;
+  blocked_by: {
+    code:
+      | "DOCUMENTS_NOT_ACCEPTED"
+      | "LIMIT_NOT_COMPUTABLE"
+      | "COLLATERAL_INSUFFICIENT"
+      | "LIMIT_BELOW_MINIMUM";
+    message: string;
+  } | null;
+};
+export type StaffDocument = ApplicationDocument & { reviewer: UserRef | null };
 export type StaffApplication = Omit<
   Application,
   "allowed_actions" | "latest_evaluation" | "open_info_request"
@@ -71,6 +93,7 @@ export type StaffApplication = Omit<
   open_info_request: StaffInfoRequest | null;
   /** MANUAL_REVIEW only: the inclusive amount bounds, or why preliminary approval is refused. */
   preapproval: Preapproval | null;
+  final_approval: FinalApproval | null;
 };
 export type BkiReport = {
   evaluation_id: string;
@@ -106,7 +129,10 @@ export type StaffDetail = {
   decisions: OfficerDecision[];
   info_requests: StaffInfoRequest[];
   history: StaffHistoryItem[];
-  documents: [];
+  /** Every revision, in checklist order, then revision. */
+  documents: StaffDocument[];
+  /** Answer paths an officer may request for this product (pledge paths only for the secured product). */
+  requestable_fields: string[];
 };
 
 export type AssigneeFilter = "me" | "unassigned";

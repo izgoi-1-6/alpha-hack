@@ -1,5 +1,6 @@
 """Officer commands on an application the router has locked (company row, then application row, lazy expiry) after
-the idempotency replay check; any ApiError rolls the whole command back, so nothing is half-recorded.
+the idempotency replay check; any ApiError rolls the whole command back, so nothing is half-recorded. Document review
+and final approval (Task 6) follow the same order and record on the document row or as an OfficerDecision.
 
 Claim checks state, then another assignee, then the version (a racing claim that lost sees ALREADY_ASSIGNED). Every
 decision checks the assignment, then the version, then the state, then its own guards, and records an
@@ -18,11 +19,15 @@ from ..applications.models import Application, OfficerDecision
 from ..applications.products import application_product
 from ..applications.service import require_version
 from ..applications.views import latest_evaluation
-from .policy import CLAIMABLE, REJECT_PHASE, amount_error_message, preapproval_terms
-from .schemas import PreapproveInput, RejectInput, RequestInfoInput
+from ..documents import service as documents
+from ..documents.models import Document
+from ..recommendations.service import rub
+from .policy import CLAIMABLE, REJECT_PHASE, amount_error_message, final_terms, preapproval_terms
+from .schemas import ApproveInput, PreapproveInput, RejectInput, RequestInfoInput, ReviewInput
 
 INFO_REQUEST_NOTICE = 'Кредитный специалист запросил дополнительные сведения. Откройте заявку и ответьте на вопрос.'
 REJECTION_NOTICE = 'По заявке принят отказ кредитного специалиста. Причина указана в истории заявки.'
+VALUATION = 'COLLATERAL_VALUATION'
 
 
 def review_queue(db: Session, officer_id: str, now: datetime, *, status: str | None = None, assignee: str | None = None,
@@ -143,3 +148,59 @@ def reject(db: Session, application: Application, officer: User, data: RejectInp
     ApplicationChange(db, application, actor_id=officer.id, now=now).move(
         'REJECTED', reason_code='R12' if phase == 'preliminary' else 'FINAL_REJECTED', reason_text=data.reason,
         notification=REJECTION_NOTICE)
+
+
+def review_document(db: Session, application: Application, officer: User, document: Document, data: ReviewInput,
+                    now: datetime) -> None:
+    """DOCS_UPLOADED only: accept or reject the current, not yet reviewed revision with a reason, recorded on the row
+    (reviewer, time, reason; for an accepted valuation the positive verified value, atomically). Accepting is a
+    same-state edit; the first rejection moves the packet to DOCS_REWORK, and the other documents wait for the next
+    submission."""
+    require_assignee(application, officer)
+    require_version(application, data.version)
+    if application.status != 'DOCS_UPLOADED':
+        raise invalid_status('Документы проверяют, когда клиент передал комплект.')
+    if document.status != 'UPLOADED':
+        raise ApiError(409, 'DOCUMENT_NOT_REVIEWABLE', 'Проверить можно только текущий файл, ещё не получивший решения.')
+    accepted = data.decision == 'accept'
+    if data.verified_value_rub is not None and not (accepted and document.document_type == VALUATION):
+        message = 'Проверенная стоимость указывается только при принятии отчёта об оценке залога.'
+        raise ApiError(422, 'VERIFIED_VALUE_NOT_ALLOWED', message, fields={'verified_value_rub': message})
+    if accepted and document.document_type == VALUATION and data.verified_value_rub is None:
+        message = 'Укажите проверенную стоимость залога в рублях.'
+        raise ApiError(422, 'VERIFIED_VALUE_REQUIRED', message, fields={'verified_value_rub': message})
+    documents.record_review(document, accepted=accepted, reason=data.reason, reviewer_id=officer.id, now=now,
+                            verified_value_rub=data.verified_value_rub)
+    change = ApplicationChange(db, application, actor_id=officer.id, now=now)
+    if accepted:
+        change.touch()
+        return
+    label = documents.LABELS[document.document_type]
+    change.move('DOCS_REWORK', reason_code='DOCUMENT_REJECTED', reason_text=data.reason,
+                notification=f'Документ «{label}» нужно заменить: причина указана в заявке. Срок предварительного '
+                             'одобрения не продлевается.')
+
+
+def approve(db: Session, application: Application, officer: User, data: ApproveInput, now: datetime) -> None:
+    """DOCS_UPLOADED → APPROVED (final, a demo decision: no money moves) at an amount within the final terms, which
+    read only persisted evidence (policy.final_terms)."""
+    require_assignee(application, officer)
+    require_version(application, data.version)
+    if application.status != 'DOCS_UPLOADED':
+        raise invalid_status('Окончательно одобрить можно заявку с переданным и проверенным комплектом документов.')
+    terms = final_terms(application, documents.documents_of(db, application.id), latest_evaluation(db, application.id),
+                        application_product(application))
+    if terms['blocked_by']:
+        raise ApiError(409, terms['blocked_by']['code'], terms['blocked_by']['message'])
+    low, high = terms['amount_min_rub'], terms['amount_max_rub']
+    if not low <= data.amount_rub <= high:
+        message = amount_error_message(low, high, final=True)
+        raise ApiError(422, 'AMOUNT_OUT_OF_BOUNDS', message, fields={'amount_rub': message},
+                       details={'amount_min_rub': low, 'amount_max_rub': high})
+    application.final_amount_rub = data.amount_rub
+    record_decision(db, application, officer, phase='final', action='approve', reason=data.reason, now=now,
+                    amount_rub=data.amount_rub)
+    ApplicationChange(db, application, actor_id=officer.id, now=now).move(
+        'APPROVED', reason_code='FINAL_APPROVED', reason_text=data.reason,
+        notification=f'Заявка одобрена на {rub(data.amount_rub)} (демонстрационное решение). Деньги не перечисляются, '
+                     'договор не подписывается.')

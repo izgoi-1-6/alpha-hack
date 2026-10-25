@@ -245,7 +245,57 @@ export type ApplicationAction =
   | "submit"
   | "retry_check"
   | "respond_info"
+  | "upload_document"
+  | "delete_document"
+  | "complete_documents"
   | "cancel";
+export type DocumentType =
+  | "BANK_STATEMENT"
+  | "FINANCIAL_REPORT"
+  | "COLLATERAL_OWNERSHIP"
+  | "COLLATERAL_VALUATION";
+export type DocumentStatus =
+  | "UPLOADED"
+  | "ACCEPTED"
+  | "REJECTED"
+  | "SUPERSEDED"
+  | "DELETED";
+/** One stored revision (never the storage key or the reviewer's identity). `download_url` is null once deleted. */
+export type ApplicationDocument = {
+  id: string;
+  application_id: string;
+  document_type: DocumentType;
+  revision: number;
+  original_name: string;
+  media_type: "application/pdf" | "image/jpeg" | "image/png";
+  size_bytes: number;
+  sha256: string;
+  status: DocumentStatus;
+  review_reason: string | null;
+  verified_value_rub: number | null;
+  created_at: string;
+  reviewed_at: string | null;
+  download_url: string | null;
+};
+/** `current_uploaded` counts requirements with a current document whatever its review. Null before preapproval. */
+export type DocumentSummary = {
+  required_total: number;
+  current_uploaded: number;
+  accepted: number;
+  rejected: number;
+  missing: DocumentType[];
+  can_complete: boolean;
+};
+export type DocumentChecklist = {
+  /** «Демонстрационная проверка документов…»: the review label the UI shows (no antivirus or authenticity claim). */
+  notice: string;
+  requirements: {
+    document_type: DocumentType;
+    required: boolean;
+    current_document: ApplicationDocument | null;
+  }[];
+  items: ApplicationDocument[];
+};
 /** A saved pledge answer: keys are merged on each save and may be null (cleared or not yet given). */
 export type Collateral = {
   status?: "unknown" | "none" | "declared" | null;
@@ -324,7 +374,7 @@ export type Application = {
   allowed_actions: ApplicationAction[];
   missing_fields: string[];
   open_info_request: InfoRequest | null;
-  document_summary: null;
+  document_summary: DocumentSummary | null;
 };
 export type FieldOption = { value: string; label: string };
 export type FieldDescriptor = {

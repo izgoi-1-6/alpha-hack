@@ -23,6 +23,17 @@ class PreapproveInput(ReasonedInput):
     amount_rub: int = Field(strict=True, gt=0, le=MAX_RUB)
 
 
+class ApproveInput(PreapproveInput):
+    """The final amount; its bounds are checked against the persisted, accepted document evidence."""
+
+
+class ReviewInput(ReasonedInput):
+    """A document review. `verified_value_rub` belongs only to accepting a COLLATERAL_VALUATION document (checked
+    against the persisted document type)."""
+    decision: Literal['accept', 'reject']
+    verified_value_rub: int | None = Field(default=None, strict=True, gt=0, le=MAX_RUB)
+
+
 class RequestInfoInput(ReasonedInput):
     """The reason is the question shown to the customer; the fields are distinct questionnaire answer paths."""
     requested_fields: list[StrictStr] = Field(min_length=1, max_length=len(ANSWER_PATHS))

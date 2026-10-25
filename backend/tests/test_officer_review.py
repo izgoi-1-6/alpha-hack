@@ -287,7 +287,7 @@ def test_medium_risk_manual_preapproval_records_the_officer_decision(client, off
     assert 'UTC' not in note.message and 'не окончательное' in note.message
     customer = read(client, application)
     assert customer['status'] == 'PREAPPROVED' and customer['preapproved_amount_rub'] == MEDIUM_LIMIT
-    assert customer['allowed_actions'] == ['cancel'] and officer.user['id'] not in json.dumps(customer)
+    assert customer['allowed_actions'] == ['upload_document', 'cancel'] and officer.user['id'] not in json.dumps(customer)
     assert len(bki_calls) == 1
     body = detail(officer, application)
     assert [(item['action'], item['phase'], item['amount_rub']) for item in body['decisions']] == [('preapprove', 'preliminary', MEDIUM_LIMIT)]

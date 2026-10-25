@@ -11,6 +11,8 @@ from ..clock import iso_utc
 from ..companies import latest_precheck
 from ..errors import ApiError
 from ..models import Company, User
+from ..documents import service as documents
+from ..documents.models import Document
 from . import stages
 from .info_requests import open_info_request
 from .lifecycle import CANCELLABLE
@@ -42,9 +44,10 @@ def product_summary(application: Application, product: dict | None) -> dict:
     return {key: product[key] for key in PRODUCT_FIELDS} if product else {'id': application.product_id}
 
 
-def allowed_actions(application: Application, company: Company, request: InfoRequest | None) -> list[str]:
+def allowed_actions(application: Application, company: Company, request: InfoRequest | None,
+                    application_documents: list[Document]) -> list[str]:
     """Commands the client can run now. A known-inactive draft omits submit: the UI must not offer it, although a
-    direct submit still meets the defensive R2 check."""
+    direct submit still meets the defensive R2 check. Document commands appear only where they can succeed."""
     status, actions = application.status, []
     if status == 'DRAFT':
         actions.append('edit_answers')
@@ -54,6 +57,7 @@ def allowed_actions(application: Application, company: Company, request: InfoReq
         actions.append('retry_check')
     if status == 'NEED_INFO' and request is not None and request.kind == 'client_answers':
         actions.append('respond_info')
+    actions.extend(documents.customer_actions(application, application_documents))
     if status in CANCELLABLE:
         actions.append('cancel')
     return actions
@@ -104,12 +108,14 @@ def public_application(db: Session, application: Application, company: Company |
     company = company or db.get(Company, application.company_id)
     product = application_product(application)
     request = current_request(db, application)
+    application_documents = documents.documents_of(db, application.id)
     body = {name: plain(getattr(application, name)) for name in APPLICATION_FIELDS}
     body.update(company=company_summary(company), product=product_summary(application, product),
                 latest_evaluation=public_evaluation(latest_evaluation(db, application.id)),
-                allowed_actions=allowed_actions(application, company, request),
+                allowed_actions=allowed_actions(application, company, request, application_documents),
                 missing_fields=missing_fields(application, company, product, request),
-                open_info_request=public_info_request(request), document_summary=None)
+                open_info_request=public_info_request(request),
+                document_summary=documents.summary(application, application_documents))
     return body
 
 
@@ -128,7 +134,7 @@ def dialog(db: Session, application: Application) -> dict:
             'stages': stages.stage_contract(application.answers, product, latest_precheck(db, company.id), blocking),
             'answers': application.answers, 'missing_fields': missing_fields(application, company, product, request),
             'field_issues': blocking if application.status == 'DRAFT' else {},
-            'allowed_actions': allowed_actions(application, company, request)}
+            'allowed_actions': allowed_actions(application, company, request, documents.documents_of(db, application.id))}
 
 
 def history_rows(db: Session, application: Application) -> list[tuple[StatusHistory, Notification | None, User | None]]:

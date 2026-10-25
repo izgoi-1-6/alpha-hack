@@ -1,18 +1,24 @@
 """Staff serialization: the customer's public fields plus the claim owner, score factors, review flags, source
-evidence, decisions, all information requests and a history that names users. Officer-only reads (role-gated by the
-router). Unresolved requests on a terminal application are shown as audit rows (`open: false`), never as actionable.
+evidence, decisions, all information requests, every document revision with its reviewer, the final approval terms,
+the answer paths an officer may request for this product, and a history that names users. Officer-only reads
+(role-gated by the router). Unresolved requests on a terminal application are shown as audit rows (`open: false`),
+never as actionable.
 """
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from ..companies import latest_precheck, public_row
 from ..models import Company, User
 from ..applications import stages
+from ..applications.info_requests import OFFICER_PATHS
+from ..documents import service as documents
+from ..documents.models import Document
+from ..documents.views import ordered, public_document
 from ..applications.models import TERMINAL_STATUSES, Application, Evaluation, InfoRequest, OfficerDecision
 from ..applications.products import application_product
 from ..applications.views import (APPLICATION_FIELDS, company_summary, current_request, history_item, history_rows,
                                   latest_evaluation, missing_fields, plain, product_summary, public_evaluation,
                                   public_info_request)
-from .policy import preapproval_terms, staff_actions
+from .policy import final_terms, preapproval_terms, staff_actions
 
 SUBMITTED_EVIDENCE = ('submitted_at', 'company', 'precheck', 'answers')
 
@@ -50,22 +56,46 @@ def preapproval_view(application: Application, company: Company, evaluation: Eva
             'blocked_by': None if refusal is None else {'code': refusal[0], 'message': refusal[1]}}
 
 
+def final_approval_view(application: Application, application_documents: list[Document], evaluation: Evaluation | None,
+                        product: dict | None) -> dict | None:
+    """The officer's final amount bounds while the packet is in review, or why final approval is refused."""
+    if application.status != 'DOCS_UPLOADED' or product is None:
+        return None
+    return final_terms(application, application_documents, evaluation, product)
+
+
 def staff_application(db: Session, application: Application, officer_id: str, company: Company | None = None) -> dict:
     company = company or db.get(Company, application.company_id)
     product = application_product(application)
     request = current_request(db, application)
     evaluation = latest_evaluation(db, application.id)
+    application_documents = documents.documents_of(db, application.id)
     preapproval = preapproval_view(application, company, evaluation, product)
+    final_approval = final_approval_view(application, application_documents, evaluation, product)
+    reviewable = any(row.status == 'UPLOADED' for row in documents.current_documents(application_documents).values())
     body = {name: plain(getattr(application, name)) for name in APPLICATION_FIELDS}
     body.update(company=company_summary(company), product=product_summary(application, product),
                 latest_evaluation=evaluation_summary(evaluation),
                 assignee=user_ref(application.assignee_id and db.get(User, application.assignee_id)),
                 allowed_actions=staff_actions(application, officer_id,
-                                              preapprovable=preapproval is not None and preapproval['blocked_by'] is None),
+                                              preapprovable=preapproval is not None and preapproval['blocked_by'] is None,
+                                              reviewable=reviewable,
+                                              approvable=final_approval is not None and final_approval['blocked_by'] is None),
                 missing_fields=missing_fields(application, company, product, request),
                 open_info_request=staff_info_request(db, request, application), preapproval=preapproval,
-                document_summary=None)
+                final_approval=final_approval, document_summary=documents.summary(application, application_documents))
     return body
+
+
+def staff_document(db: Session, document: Document) -> dict:
+    return {**public_document(document), 'reviewer': user_ref(document.reviewer_id and db.get(User, document.reviewer_id))}
+
+
+def requestable_fields(product: dict | None) -> list[str]:
+    """The answer paths an officer may request for this application: info_requests.OFFICER_PATHS, with the pledge
+    paths only for a product that takes collateral."""
+    secured = bool(product and product['collateral_required'])
+    return [path for path in OFFICER_PATHS if secured or path.split('.')[0] != 'collateral']
 
 
 def source_evidence(db: Session, application: Application, company: Company, evaluations: list[Evaluation]) -> dict:
@@ -102,4 +132,5 @@ def staff_detail(db: Session, application: Application, officer_id: str) -> dict
                            'created_at': plain(row.created_at)} for row, user in decisions],
             'info_requests': [staff_info_request(db, row, application) for row in requests],
             'history': staff_history(db, application),
-            'documents': []}
+            'documents': [staff_document(db, row) for row in ordered(application, documents.documents_of(db, application.id))],
+            'requestable_fields': requestable_fields(application_product(application))}

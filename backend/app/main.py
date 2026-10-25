@@ -9,6 +9,8 @@ from .companies import router as companies_router
 from .recommendations.router import router as recommendations_router
 from .applications.router import router as applications_router
 from .officer.router import router as officer_router
+from .documents.router import router as documents_router
+from .integrations import router as integrations_router
 
 app=FastAPI(title='Кредитный маршрут · демо',version='0.1.0',dependencies=[Depends(check_origin)])
 app.state.engine=engine
@@ -19,11 +21,13 @@ app.include_router(companies_router,prefix='/api/v1')
 app.include_router(recommendations_router,prefix='/api/v1')
 app.include_router(applications_router,prefix='/api/v1')
 app.include_router(officer_router,prefix='/api/v1')
+app.include_router(documents_router,prefix='/api/v1')
+app.include_router(integrations_router,prefix='/api/v1')
 
 @app.middleware('http')
 async def private_headers(request, call_next):
     response=await call_next(request)
-    response.headers['Cache-Control']='no-store'
+    response.headers.setdefault('Cache-Control','no-store')  # downloads send 'private, no-store'
     response.headers['X-Content-Type-Options']='nosniff'
     return response
 

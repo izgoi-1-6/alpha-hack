@@ -122,8 +122,8 @@ def submit_application(db: Session, application: Application, company: Company, 
     revenue = stages.finance_evidence(answers, precheck)['monthly_revenue_rub']['value']
     application.submitted_at = now
     application.requested_amount_rub = answers.get('requested_amount_rub')
-    # Fresh upper estimate on current sources (the low-risk formula), replacing the snapshot's older figure.
-    application.indicative_limit_rub = scoring.scored_limit(product, 'low', revenue, answers.get('collateral'))
+    # A fresh upper estimate replaces the snapshot's older figure (source revenue, else the declared answer).
+    application.indicative_limit_rub = scoring.indicative_limit(product, revenue, answers.get('collateral'))
     application.submitted_input_snapshot = {
         'submitted_at': iso_utc(now), 'recommendation_snapshot_id': application.recommendation_snapshot_id,
         'catalog_version': application.catalog_version, 'rules_version': application.rules_version, 'product': product,

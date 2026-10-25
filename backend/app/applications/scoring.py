@@ -109,6 +109,14 @@ def scored_limit(product: dict, risk: str, revenue: int | None, collateral: dict
     return min(limit, value * product['collateral_ltv_bps'] // 10000)
 
 
+def indicative_limit(product: dict, revenue: int | None, collateral: dict | None) -> int | None:
+    """The post-submission upper estimate: the pre-submission indicative formula (min(ceiling, low multiple x R), the
+    secured LTV cap) on the stage-3 scored revenue — the turnover source value when the source knows it, otherwise the
+    client's declared answer, which keeps its 'declared' tag in the evaluation evidence. It is not a scored limit and
+    promises no capacity; the formula coincides with the low-risk scored limit."""
+    return scored_limit(product, 'low', revenue, collateral)
+
+
 @dataclass(frozen=True)
 class CheckInput:
     """What one check reads: the pinned product policy, persisted company/source state and the frozen answers.
@@ -204,6 +212,19 @@ def capacity_note(requested: int, limit: int | None) -> tuple[str, ...]:
     return (f'Запрошенная сумма выше рассчитанного лимита. Возможная сумма — до {rub(limit)}; исходная сумма заявки сохранена.',)
 
 
+def measure(check: CheckInput, report: dict) -> dict:
+    """The R5 review flags, then score, risk, factors and scored limit whenever they can be computed (no zero or
+    malformed value): the measured part of a Decision."""
+    flags = review_flags(check, report)
+    revenue, previous = (check.finance[name]['value'] for name in REVENUE_FIELDS)
+    score = risk = factors = limit = None
+    if 'zero_revenue' not in flags and 'invalid_source' not in flags:
+        score, factors = score_of(check.age_months, revenue, previous, check.answers['monthly_debt_payment_rub'], report['credit_history'])
+        risk = risk_of(score)
+        limit = scored_limit(check.product, risk, revenue, check.answers.get('collateral'))
+    return {'score': score, 'risk': risk, 'factors': factors, 'scored_limit_rub': limit, 'flags': flags}
+
+
 def after_bki(check: CheckInput, report: dict, *, trusted_source_review: bool) -> Decision:
     """The outcome once a BKI report exists (exactly one request per check)."""
     if report['status'] == 'unavailable':
@@ -214,14 +235,8 @@ def after_bki(check: CheckInput, report: dict, *, trusted_source_review: bool) -
     if any(report.get(category) is None for category in BKI_CATEGORIES):
         return Decision('R3', 'NEED_INFO', (REASONS['bki_missing'],), info_request={
             'kind': 'trusted_source', 'source': 'bki', 'requested_fields': [], 'question': QUESTIONS['bki']})
-    flags = review_flags(check, report)
-    revenue, previous = (check.finance[name]['value'] for name in REVENUE_FIELDS)
-    score = risk = factors = limit = None
-    if 'zero_revenue' not in flags and 'invalid_source' not in flags:
-        score, factors = score_of(check.age_months, revenue, previous, check.answers['monthly_debt_payment_rub'], report['credit_history'])
-        risk = risk_of(score)
-        limit = scored_limit(check.product, risk, revenue, check.answers.get('collateral'))
-    measured = {'score': score, 'risk': risk, 'factors': factors, 'scored_limit_rub': limit, 'flags': flags}
+    measured = measure(check, report)
+    flags, score, risk, limit = (measured[key] for key in ('flags', 'score', 'risk', 'scored_limit_rub'))
     requested = check.answers['requested_amount_rub']
     minimum = check.product['amount_min_rub']
     reviews = tuple(FLAG_REASONS[flag] for flag in flags)

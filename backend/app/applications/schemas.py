@@ -2,8 +2,8 @@
 injection). Answers validate type and range on every partial save; completeness and product fit are checked at submit.
 Submission consents are only shape-checked here, so a missing or unchecked consent is the domain error NEED_INFO."""
 from datetime import date
-from typing import Literal
-from pydantic import Field, StrictBool, StrictStr, field_validator
+from typing import Annotated, Literal
+from pydantic import AfterValidator, Field, StrictBool, StrictStr, field_validator
 from ..schemas import StrictModel
 
 MAX_RUB = 9_000_000_000_000_000
@@ -81,14 +81,17 @@ class SubmitInput(StrictModel):
     consents: list[SubmissionConsent] = Field(default_factory=list, max_length=10)
 
 
+def reason_text(value: str) -> str:
+    value = value.strip()
+    if not 1 <= len(value) <= 2000:
+        raise ValueError('Нужен текст от 1 до 2000 символов')
+    return value
+
+
+# A reason or answer: 1-2000 characters after trimming (cancellation, officer decisions, information responses).
+ReasonText = Annotated[StrictStr, AfterValidator(reason_text)]
+
+
 class CancelInput(StrictModel):
     version: int = Field(ge=1, strict=True)
-    reason: StrictStr
-
-    @field_validator('reason')
-    @classmethod
-    def trimmed_reason(cls, value: str) -> str:
-        value = value.strip()
-        if not 1 <= len(value) <= 2000:
-            raise ValueError('Укажите причину: от 1 до 2000 символов')
-        return value
+    reason: ReasonText

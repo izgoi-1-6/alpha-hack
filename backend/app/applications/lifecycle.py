@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from ..clock import as_utc
-from ..companies import get_owned_company
 from ..errors import ApiError
 from ..models import Company
 from .models import Application, Notification, StatusHistory
@@ -108,31 +107,52 @@ def expire_if_due(db: Session, application: Application, now: datetime) -> bool:
     return True
 
 
+def scoped(query, owner_id: str | None):
+    """Owner routes pass the session client's id (another client's application is then absent); staff routes, which
+    are role-gated, pass None."""
+    query = query.join(Company, Company.id == Application.company_id)
+    return query if owner_id is None else query.where(Company.owner_user_id == owner_id)
+
+
 def owned_query(user_id: str):
-    return select(Application).join(Company, Company.id == Application.company_id).where(Company.owner_user_id == user_id)
+    return scoped(select(Application), user_id)
 
 
-def get_owned_application(db: Session, application_id: str, user_id: str, now: datetime) -> Application:
-    """Owner read: 404 for an absent or another client's application; lazy expiry applied."""
-    application = db.scalar(owned_query(user_id).where(Application.id == application_id))
+def not_found() -> ApiError:
+    return ApiError(404, 'APPLICATION_NOT_FOUND', 'Заявка не найдена')
+
+
+def get_application(db: Session, application_id: str, now: datetime, *, owner_id: str | None = None) -> Application:
+    """A read: 404 for an absent application (or another client's, when owner-scoped); lazy expiry applied."""
+    application = db.scalar(scoped(select(Application), owner_id).where(Application.id == application_id))
     if application is None:
-        raise ApiError(404, 'APPLICATION_NOT_FOUND', 'Заявка не найдена')
+        raise not_found()
     expire_if_due(db, application, now)
     return application
 
 
-def lock_owned_application(db: Session, application_id: str, user_id: str, now: datetime) -> tuple[Application, Company, bool]:
-    """Owner command: locks the company row, then the application row (always in that order, so commands for one
-    company serialize: duplicate-active checks, source recovery), then applies lazy expiry. Returns whether this call
-    recorded an expiry, so the command can refuse while the expiry still commits."""
-    company_id = db.scalar(select(Application.company_id).join(Company, Company.id == Application.company_id)
-                           .where(Application.id == application_id, Company.owner_user_id == user_id))
+def lock_application(db: Session, application_id: str, now: datetime, *, owner_id: str | None = None) -> tuple[Application, Company, bool]:
+    """A command: locks the company row, then the application row (always in that order, for customer and officer
+    commands alike, so commands for one company serialize: duplicate-active checks, source recovery, assignment and
+    decisions), then applies lazy expiry. Returns whether this call recorded an expiry, so the command can refuse
+    while the expiry still commits."""
+    company_id = db.scalar(scoped(select(Application.company_id), owner_id).where(Application.id == application_id))
     if company_id is None:
-        raise ApiError(404, 'APPLICATION_NOT_FOUND', 'Заявка не найдена')
-    company = get_owned_company(db, company_id, user_id, for_update=True)
+        raise not_found()
+    company = db.scalar(select(Company).where(Company.id == company_id).with_for_update())
     application = db.scalar(select(Application).where(Application.id == application_id).with_for_update()
                             .execution_options(populate_existing=True))
     return application, company, expire_if_due(db, application, now)
+
+
+def get_owned_application(db: Session, application_id: str, user_id: str, now: datetime) -> Application:
+    """Owner read: 404 for an absent or another client's application; lazy expiry applied."""
+    return get_application(db, application_id, now, owner_id=user_id)
+
+
+def lock_owned_application(db: Session, application_id: str, user_id: str, now: datetime) -> tuple[Application, Company, bool]:
+    """Owner command loader (see lock_application)."""
+    return lock_application(db, application_id, now, owner_id=user_id)
 
 
 def owned_applications(db: Session, user_id: str, now: datetime, *, status: str | None = None, company_id: str | None = None) -> list[Application]:

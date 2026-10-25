@@ -38,9 +38,11 @@ def check_input(application: Application, company: Company, precheck: Precheck, 
 
 
 def bki_attempts(db: Session, application_id: str) -> int:
-    """BKI requests already made for the application, counted from persisted evaluations (survives restarts)."""
-    return sum(1 for sources in db.scalars(select(Evaluation.sources).where(Evaluation.application_id == application_id))
-               if sources.get('bki'))
+    """BKI requests already made for the application: the highest attempt recorded in its persisted evaluations
+    (survives restarts; an evaluation that reuses an earlier report repeats that report's attempt)."""
+    return max((sources['bki']['attempt'] for sources in
+                db.scalars(select(Evaluation.sources).where(Evaluation.application_id == application_id))
+                if sources.get('bki')), default=0)
 
 
 def complete_report(report: dict | None) -> bool:
@@ -59,17 +61,11 @@ def outcome_notification(decision: scoring.Decision, application: Application) -
     return None
 
 
-def run_check(db: Session, change: ApplicationChange, company: Company, product: dict) -> Evaluation:
-    application, now = change.application, change.now
-    precheck = latest_precheck(db, company.id)
-    check = check_input(application, company, precheck, product)
-    request = open_info_request(db, application.id)
-    trusted_review = request is not None and request.kind == 'trusted_source'
-    decision = scoring.before_bki(check)
-    report = None
-    if decision is None:
-        report = bki.request_report(company.inn, bki_attempts(db, application.id) + 1)
-        decision = scoring.after_bki(check, report, trusted_source_review=trusted_review)
+def record_evaluation(db: Session, application: Application, company: Company, precheck: Precheck, product: dict,
+                      check: scoring.CheckInput, decision: scoring.Decision, bki_payload: dict | None, *, now,
+                      trusted_review: bool) -> Evaluation:
+    """Stores one immutable Evaluation: what was scored (input snapshot with finance evidence, scored answers, age,
+    review flags) and the source evidence it used (precheck registry/turnover, the BKI payload)."""
     sequence = (db.scalar(select(func.max(Evaluation.sequence)).where(Evaluation.application_id == application.id)) or 0) + 1
     evaluation = Evaluation(
         application_id=application.id, sequence=sequence, score=decision.score, risk=decision.risk, factors=decision.factors,
@@ -88,9 +84,26 @@ def run_check(db: Session, change: ApplicationChange, company: Company, product:
             'registry': {'precheck_id': precheck.id, 'source_status': precheck.registry_source_status,
                          'registry_status': company.registry_status, 'checked_at': iso_utc(precheck.checked_at)},
             'turnover': {'precheck_id': precheck.id, 'source_status': precheck.turnover_source_status, **stages.source_finance(precheck)},
-            'bki': None if report is None else {**report, 'requested_at': iso_utc(now)}})
+            'bki': bki_payload})
     db.add(evaluation)
     db.flush()
+    return evaluation
+
+
+def run_check(db: Session, change: ApplicationChange, company: Company, product: dict) -> Evaluation:
+    application, now = change.application, change.now
+    precheck = latest_precheck(db, company.id)
+    check = check_input(application, company, precheck, product)
+    request = open_info_request(db, application.id)
+    trusted_review = request is not None and request.kind == 'trusted_source'
+    decision = scoring.before_bki(check)
+    report = None
+    if decision is None:
+        report = bki.request_report(company.inn, bki_attempts(db, application.id) + 1)
+        decision = scoring.after_bki(check, report, trusted_source_review=trusted_review)
+    evaluation = record_evaluation(db, application, company, precheck, product, check, decision,
+                                   None if report is None else {**report, 'requested_at': iso_utc(now)},
+                                   now=now, trusted_review=trusted_review)
     if decision.info_request:
         wanted = decision.info_request
         if request is None or (request.kind, request.source) != (wanted['kind'], wanted['source']):

@@ -1,21 +1,19 @@
 """Customer application routes under /api/v1/applications (CLIENT only; officers get 403, other clients 404).
 
-Stateful POST commands: authentication and ownership, company then application row locks, lazy expiry, idempotency
-replay, then the command's own version/state validation; only a successful result is stored for replay.
+Stateful POST commands follow commands.run_command: ownership, company then application row locks, lazy expiry,
+idempotency replay, then the command's own version/state validation; only a successful result is stored for replay.
 """
 from collections.abc import Callable
 from datetime import datetime
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from .. import idempotency
 from ..companies import get_owned_company
-from ..errors import error_response
 from ..idempotency import IdempotencyKey
 from ..identity import ClientUser, Db, Now
 from ..models import Company, User
 from ..schemas import StrictModel, VersionInput
-from . import service, views
+from . import commands, service, views
 from .lifecycle import get_owned_application, lock_owned_application, owned_applications
 from .models import Application
 from .schemas import AnswersPatch, CancelInput, CreateInput, StatusFilter, SubmitInput
@@ -23,23 +21,11 @@ from .schemas import AnswersPatch, CancelInput, CreateInput, StatusFilter, Submi
 router = APIRouter(prefix='/applications', tags=['applications'])
 
 
-def expired_response() -> JSONResponse:
-    """A committed refusal: the expiry this request recorded stays persisted."""
-    return error_response(409, 'APPLICATION_EXPIRED', 'Срок предварительного одобрения истёк. Для продолжения создайте новую заявку.')
-
-
 def run_command(application_id: str, data: StrictModel, request: Request, user: User, db: Session, now: datetime, key: str,
                 apply: Callable[[Application, Company], None]):
-    application, company, expired = lock_owned_application(db, application_id, user.id, now)
-    scope = idempotency.scope_of(request, user.id, key, data)
-    replayed = idempotency.replay(db, scope)
-    if replayed is not None:
-        return replayed
-    if expired:
-        return expired_response()
-    apply(application, company)
-    return idempotency.remember(db, scope, {'application': views.public_application(db, application, company)},
-                                now=now, resource_id=application.id)
+    return commands.run_command(
+        db, request, user.id, key, data, now, lock=lambda: lock_owned_application(db, application_id, user.id, now),
+        apply=apply, render=lambda application, company: {'application': views.public_application(db, application, company)})
 
 
 @router.post('', status_code=201)
@@ -80,7 +66,7 @@ def read_history(application_id: str, user: ClientUser, db: Db, now: Now):
 def save_answers(application_id: str, data: AnswersPatch, user: ClientUser, db: Db, now: Now):
     application, company, expired = lock_owned_application(db, application_id, user.id, now)
     if expired:
-        return expired_response()
+        return commands.expired_response()
     service.save_answers(db, application, user.id, data, now)
     return {'application': views.public_application(db, application, company)}
 

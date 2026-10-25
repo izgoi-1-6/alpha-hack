@@ -14,13 +14,13 @@ from ..documents import service as documents
 from ..documents.models import Document
 from ..documents.views import REVIEW_NOTICE, ordered, public_document
 from ..applications.models import TERMINAL_STATUSES, Application, Evaluation, InfoRequest, OfficerDecision
-from ..applications.products import application_product, collateral_required
+from ..applications.products import Terms, application_terms
 from ..applications.views import (APPLICATION_FIELDS, company_summary, current_request, history_item, history_rows,
                                   latest_evaluation, missing_fields, plain, product_summary, public_evaluation,
                                   public_info_request)
 from .policy import final_terms, preapproval_terms, staff_actions
 
-SUBMITTED_EVIDENCE = ('submitted_at', 'company', 'precheck', 'answers')
+SUBMITTED_EVIDENCE = ('submitted_at', 'company', 'precheck', 'answers', 'secured', 'required_documents')
 
 
 def user_ref(user: User | None) -> dict | None:
@@ -46,42 +46,42 @@ def staff_info_request(db: Session, row: InfoRequest | None, application: Applic
             'open': row.resolved_at is None and application.status not in TERMINAL_STATUSES}
 
 
-def preapproval_view(application: Application, company: Company, evaluation: Evaluation | None, product: dict | None) -> dict | None:
+def preapproval_view(application: Application, company: Company, evaluation: Evaluation | None, terms: Terms | None) -> dict | None:
     """The officer's amount bounds while the application is in review, or why preapproval is refused."""
-    if application.status != 'MANUAL_REVIEW' or product is None:
+    if application.status != 'MANUAL_REVIEW' or terms is None:
         return None
-    bounds, refusal = preapproval_terms(application, company, evaluation, product)
+    bounds, refusal = preapproval_terms(application, company, evaluation, terms.product)
     low, high = bounds or (None, None)
     return {'amount_min_rub': low, 'amount_max_rub': high,
             'blocked_by': None if refusal is None else {'code': refusal[0], 'message': refusal[1]}}
 
 
 def final_approval_view(application: Application, application_documents: list[Document], evaluation: Evaluation | None,
-                        product: dict | None) -> dict | None:
+                        terms: Terms | None) -> dict | None:
     """The officer's final amount bounds while the packet is in review, or why final approval is refused."""
-    if application.status != 'DOCS_UPLOADED' or product is None:
+    if application.status != 'DOCS_UPLOADED' or terms is None:
         return None
-    return final_terms(application, application_documents, evaluation, product)
+    return final_terms(application, application_documents, evaluation, terms)
 
 
 def staff_application(db: Session, application: Application, officer_id: str, company: Company | None = None) -> dict:
     company = company or db.get(Company, application.company_id)
-    product = application_product(application)
+    terms = application_terms(application)
     request = current_request(db, application)
     evaluation = latest_evaluation(db, application.id)
     application_documents = documents.documents_of(db, application.id)
-    preapproval = preapproval_view(application, company, evaluation, product)
-    final_approval = final_approval_view(application, application_documents, evaluation, product)
+    preapproval = preapproval_view(application, company, evaluation, terms)
+    final_approval = final_approval_view(application, application_documents, evaluation, terms)
     reviewable = any(row.status == 'UPLOADED' for row in documents.current_documents(application_documents).values())
     body = {name: plain(getattr(application, name)) for name in APPLICATION_FIELDS}
-    body.update(company=company_summary(company), product=product_summary(application, product),
+    body.update(company=company_summary(company), product=product_summary(application, terms),
                 latest_evaluation=evaluation_summary(evaluation),
                 assignee=user_ref(application.assignee_id and db.get(User, application.assignee_id)),
                 allowed_actions=staff_actions(application, officer_id,
                                               preapprovable=preapproval is not None and preapproval['blocked_by'] is None,
                                               reviewable=reviewable,
                                               approvable=final_approval is not None and final_approval['blocked_by'] is None),
-                missing_fields=missing_fields(application, company, product, request),
+                missing_fields=missing_fields(application, company, terms, request),
                 open_info_request=staff_info_request(db, request, application), preapproval=preapproval,
                 final_approval=final_approval, document_summary=documents.summary(application, application_documents))
     return body
@@ -91,10 +91,10 @@ def staff_document(db: Session, document: Document) -> dict:
     return {**public_document(document), 'reviewer': user_ref(document.reviewer_id and db.get(User, document.reviewer_id))}
 
 
-def requestable_fields(product: dict | None) -> list[str]:
+def requestable_fields(terms: Terms | None) -> list[str]:
     """The answer paths an officer may request for this application: info_requests.OFFICER_PATHS, with the pledge
-    paths only for a product that takes collateral."""
-    secured = bool(product and collateral_required(product))
+    paths only for an application that is secured (pinned at submission)."""
+    secured = bool(terms and terms.secured)
     return [path for path in OFFICER_PATHS if secured or path.split('.')[0] != 'collateral']
 
 
@@ -134,4 +134,4 @@ def staff_detail(db: Session, application: Application, officer_id: str) -> dict
             'history': staff_history(db, application),
             'documents': [staff_document(db, row) for row in ordered(application, documents.documents_of(db, application.id))],
             'document_notice': REVIEW_NOTICE,
-            'requestable_fields': requestable_fields(application_product(application))}
+            'requestable_fields': requestable_fields(application_terms(application))}

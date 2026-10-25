@@ -3,9 +3,13 @@ answer/source evidence and the submit-time requirements (R1 corrections, R3 gaps
 
 Answers are a flat object keyed by the spec's field names; only `collateral` is nested. Paths in `missing_fields`,
 InfoRequest.requested_fields and error `fields` are those names (`collateral.<key>` for collateral details).
+
+Stage 2 follows the chosen runtime product: its purposes (a single one preselected), its amount bounds, its term range
+limited per purpose (no term field for a product without a term) and its collateral mode (the pledge is required,
+optional or not asked). R3 asks for the pledge details whenever the application is secured.
 """
-from ..recommendations.service import rub
-from .products import collateral_required
+from ..recommendations import catalog
+from ..recommendations.service import eligibility_checks, rub
 
 PURPOSES = {'working_capital': 'Пополнение оборотных средств', 'business_development': 'Развитие бизнеса',
             'investment': 'Инвестиции', 'refinancing': 'Рефинансирование'}
@@ -41,8 +45,6 @@ STAGES = (
     )),
     (2, 'Параметры', (
         {'name': 'purpose', 'label': 'Цель финансирования', 'type': 'enum', 'required': True},
-        {'name': 'funding_pattern', 'label': 'Как используются деньги', 'type': 'enum', 'required': False,
-         'options': options({'one_time': 'Разовая потребность', 'repeated': 'Повторяющиеся расходы'})},
         {'name': 'requested_amount_rub', 'label': 'Сумма, ₽', 'type': 'integer', 'required': True},
         {'name': 'term_months', 'label': 'Срок, мес.', 'type': 'integer', 'required': True},
         {'name': 'collateral', 'label': 'Залог', 'type': 'collateral', 'statuses': options(COLLATERAL_STATUSES),
@@ -75,7 +77,6 @@ STAGES = (
 ANSWER_FIELDS = tuple(field['name'] for _, _, fields in STAGES for field in fields)
 STAGE_OF = {field['name']: number for number, _, fields in STAGES for field in fields}
 FINANCE_FIELDS = ('monthly_revenue_rub', 'previous_monthly_revenue_rub', 'financial_period_end')
-NEED_FIELDS = ('purpose', 'funding_pattern', 'requested_amount_rub', 'term_months', 'collateral')
 
 
 def source_finance(precheck) -> dict:
@@ -85,11 +86,22 @@ def source_finance(precheck) -> dict:
             'financial_period_end': period.isoformat() if period else None}
 
 
-def prefill(need: dict, precheck) -> dict:
-    """Initial draft answers: stage 2's amount from the saved need (the need is the amount alone, so purpose, term and
-    collateral start empty), stage 3 finances from the persisted source; the rest empty."""
+def has_term(product: dict) -> bool:
+    return product['term_min_months'] is not None
+
+
+def term_bounds(product: dict, purpose) -> tuple[int, int]:
+    """The product's term range, its maximum lowered by a per-purpose maximum for the chosen purpose."""
+    return product['term_min_months'], product['term_max_months_by_purpose'].get(purpose, product['term_max_months'])
+
+
+def prefill(need: dict, precheck, product: dict) -> dict:
+    """Initial draft answers: stage 2's amount from the saved need (the need is the amount alone), the product's purpose
+    when it has only one (term and collateral start empty), stage 3 finances from the persisted source; the rest empty."""
     answers = dict.fromkeys(ANSWER_FIELDS)
-    answers.update({name: need.get(name) for name in NEED_FIELDS})
+    answers['requested_amount_rub'] = need['requested_amount_rub']
+    if len(product['purposes']) == 1:
+        answers['purpose'] = product['purposes'][0]
     answers.update(source_finance(precheck))
     return answers
 
@@ -139,15 +151,19 @@ def collateral_gaps(collateral) -> dict:
     return gaps
 
 
-def missing(answers: dict, product: dict) -> dict:
-    """R3: answers required at submit that are absent, or confirmations not given, in stage order."""
+def missing(answers: dict, product: dict, secured: bool) -> dict:
+    """R3: answers required at submit that are absent, or confirmations not given, in stage order. A product without a
+    term asks none; the pledge and its details are asked when the application is secured (`secured`: derived from the
+    answers before submission, pinned after it)."""
     gaps = {}
     for _, _, fields in STAGES:
         for field in fields:
             name, value = field['name'], answers.get(field['name'])
             if name == 'collateral':
-                if collateral_required(product):
+                if secured:
                     gaps.update(collateral_gaps(value))
+            elif name == 'term_months' and not has_term(product):
+                continue
             elif field.get('must_be_true'):
                 if value is not True:
                     gaps[name] = 'Требуется подтверждение'
@@ -156,30 +172,42 @@ def missing(answers: dict, product: dict) -> dict:
     return gaps
 
 
-def corrections(answers: dict, product: dict, entity_type: str) -> dict:
-    """R1: present values the selected product cannot accept."""
+def corrections(answers: dict, product: dict, company: dict) -> dict:
+    """R1: what the selected product cannot accept. The company's current data must pass the product's machine-checked
+    eligibility (an unknown fact blocks like a failed one, as for `can_apply`); present answers must fit the purposes,
+    the amount bounds and the term range (its per-purpose maximum included); a product without a term takes no term and
+    one without collateral no declared pledge."""
     issues = {}
-    if entity_type not in product['entity_types']:
-        issues['product_id'] = 'Продукт недоступен для этой формы бизнеса.'
+    blocked = [entry['text'] for entry in eligibility_checks(company, product, catalog.config()) if entry['result'] != 'passed']
+    if blocked:
+        issues['product_id'] = ' '.join(blocked)
     purpose, amount, term = (answers.get(name) for name in ('purpose', 'requested_amount_rub', 'term_months'))
     if purpose is not None and purpose not in product['purposes']:
         issues['purpose'] = 'Цель не поддерживается выбранным продуктом.'
     if amount is not None and not product['amount_min_rub'] <= amount <= product['amount_max_rub']:
         issues['requested_amount_rub'] = f"Сумма продукта: от {rub(product['amount_min_rub'])} до {rub(product['amount_max_rub'])}."
-    low, high = product['term_min_months'], product['term_max_months']
-    if term is not None and low is not None and not low <= term <= high:  # a product without a term takes any term
-        issues['term_months'] = f"Срок продукта: {low}–{high} мес."
+    if term is not None and not has_term(product):
+        issues['term_months'] = 'Срок для этого продукта не указывается: он действует без фиксированного срока.'
+    elif term is not None:
+        low, high = term_bounds(product, purpose)
+        if not low <= term <= high:
+            scope = f"для цели «{PURPOSES[purpose]}»" if high != product['term_max_months'] else 'продукта'
+            issues['term_months'] = f'Срок {scope}: {low}–{high} мес.'
+    collateral = answers.get('collateral')
+    if product['collateral_mode'] == 'none' and isinstance(collateral, dict) and collateral.get('status') == 'declared':
+        issues['collateral'] = 'Продукт выдаётся без залога: уберите заявленный залог.'
     return issues
 
 
-def issues(answers: dict, product: dict, entity_type: str) -> dict:
+def issues(answers: dict, product: dict, company: dict, secured: bool) -> dict:
     """Everything blocking submission (R1 and R3), ordered by stage and field."""
-    found = {**corrections(answers, product, entity_type), **missing(answers, product)}
+    found = {**corrections(answers, product, company), **missing(answers, product, secured)}
     order = {name: index for index, name in enumerate(ANSWER_FIELDS)}
     return dict(sorted(found.items(), key=lambda item: order.get(item[0].split('.')[0], -1)))
 
 
-def describe(field: dict, product: dict, evidence: dict) -> dict:
+def describe(field: dict, product: dict, evidence: dict, answers: dict) -> dict | None:
+    """A field descriptor for the dialog, or None for a stage-2 field the product does not ask."""
     described = dict(field)
     name = field['name']
     if name == 'purpose':
@@ -187,9 +215,14 @@ def describe(field: dict, product: dict, evidence: dict) -> dict:
     elif name == 'requested_amount_rub':
         described.update(min=product['amount_min_rub'], max=product['amount_max_rub'])
     elif name == 'term_months':
-        described.update(min=product['term_min_months'], max=product['term_max_months'])
+        if not has_term(product):
+            return None
+        low, high = term_bounds(product, answers.get('purpose'))
+        described.update(min=low, max=high, max_by_purpose=dict(product['term_max_months_by_purpose']))
     elif name == 'collateral':
-        described['required'] = collateral_required(product)
+        if product['collateral_mode'] == 'none':
+            return None
+        described['required'] = product['collateral_mode'] == 'required'
     if name in evidence:
         entry = evidence[name]
         described['source'] = {'name': 'turnover', 'status': entry['source_status'], 'value': entry['source']}
@@ -201,5 +234,6 @@ def stage_contract(answers: dict, product: dict, precheck, blocking: dict) -> li
     """Stage descriptors for the dialog; a stage is complete when none of its fields blocks submission."""
     evidence = finance_evidence(answers, precheck)
     blocked = {STAGE_OF.get(path.split('.')[0]) for path in blocking}
-    return [{'number': number, 'title': title, 'fields': [describe(field, product, evidence) for field in fields],
+    return [{'number': number, 'title': title,
+             'fields': [entry for entry in (describe(field, product, evidence, answers) for field in fields) if entry is not None],
              'complete': number not in blocked} for number, title, fields in STAGES]

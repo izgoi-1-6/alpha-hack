@@ -27,12 +27,14 @@ def evidence(value, origin):
 
 
 def check(product=TERM, *, revenue=800_000, previous=680_000, origin='source', age=48, debt=160_000, requested=1_000_000,
-          registry='active', registry_source='available', turnover_source='available', missing=(), **answers):
+          registry='active', registry_source='available', turnover_source='available', missing=(), secured=None, **answers):
     finance = {'monthly_revenue_rub': evidence(revenue, origin), 'previous_monthly_revenue_rub': evidence(previous, origin),
                'financial_period_end': evidence('2026-09-30', 'source')}
-    collateral = COLLATERAL if PRODUCTS[product]['collateral_mode'] == 'required' else None
-    return scoring.CheckInput(product=CONFIG.product(product), registry_status=registry, registry_source_status=registry_source,
-                              turnover_source_status=turnover_source, age_months=age, finance=finance,
+    secured = PRODUCTS[product]['collateral_mode'] == 'required' if secured is None else secured
+    collateral = COLLATERAL if secured else None
+    return scoring.CheckInput(product=CONFIG.product(product), secured=secured, registry_status=registry,
+                              registry_source_status=registry_source, turnover_source_status=turnover_source, age_months=age,
+                              finance=finance,
                               answers={'monthly_debt_payment_rub': debt, 'tax_debt_rub': 0, 'legal_proceedings': False,
                                        'requested_amount_rub': requested, 'collateral': collateral, **answers},
                               missing_answers=tuple(missing))
@@ -70,13 +72,58 @@ def test_factor_points_match_exact_fractions_around_every_boundary():
                     assert total == sum(value for key, value in factors.items() if key.endswith('_points'))
 
 
-@pytest.mark.parametrize('product', [TERM, LINE, SECURED])
-def test_scored_limits_follow_the_spec_formulas(product):
-    for band, revenue, declared in grid(('low', 'medium', 'high'), (1, 99_999, 100_000, 333_334, 600_001, 2_000_000, 50_000_000),
-                                        (714_285, 714_286, 1_000_000, 8_000_000)):
-        collateral = {**COLLATERAL, 'declared_value_rub': declared}
-        expected = oracle.scored_limit(product, band, revenue, declared if PRODUCTS[product]['collateral_mode'] == 'required' else None)
-        assert scoring.scored_limit(CONFIG.product(product), band, revenue, collateral) == expected, (band, revenue, declared)
+# Secured flags each collateral mode admits: none never, required always, optional when a pledge is declared.
+SECURED_FLAGS = {'none': (False,), 'required': (True,), 'optional': (False, True)}
+
+
+@pytest.mark.parametrize('product', list(PRODUCTS))
+def test_scored_limits_follow_the_plan_formula_for_every_product(product):
+    """min(effective max, T, secured ? unsecured cap + floor(LTV x V) : unsecured cap) against the oracle, around the
+    turnover multiples, the 1m medium cap, the 20m universal unsecured cap and the 70% collateral cap."""
+    for secured in SECURED_FLAGS[PRODUCTS[product]['collateral_mode']]:
+        for band, revenue, declared in grid(('low', 'medium', 'high'),
+                                            (0, 1, 99_999, 100_000, 333_334, 600_001, 2_000_000, 6_666_666, 6_666_667, 50_000_000),
+                                            (None, 714_285, 714_286, 1_000_000, 8_000_000, 22_857_143)):
+            collateral = None if declared is None else {**COLLATERAL, 'declared_value_rub': declared}
+            expected = oracle.scored_limit(product, band, revenue, declared, secured=secured)
+            assert scoring.scored_limit(CONFIG.product(product), band, revenue, secured, collateral) == expected, \
+                (secured, band, revenue, declared)
+
+
+def test_the_universal_limit_lends_without_collateral_only_up_to_its_unsecured_cap():
+    universal = CONFIG.product('alfa_universal_limit')
+    pledge = {**COLLATERAL, 'declared_value_rub': 10_000_000}
+    assert scoring.scored_limit(universal, 'low', 12_000_000, False, None) == 20_000_000  # not 3 x 12m = 36m
+    assert scoring.scored_limit(universal, 'low', 12_000_000, True, pledge) == 27_000_000  # 20m + 70% of 10m
+    assert scoring.scored_limit(universal, 'low', 12_000_000, True, None) is None  # secured without a value: no limit
+    assert scoring.scored_limit(universal, 'medium', 12_000_000, True, pledge) == 1_000_000
+    assert scoring.indicative_limit(universal, 12_000_000, True, pledge) == 27_000_000
+
+
+def test_recommendations_scoring_and_final_bounds_share_one_limit_formula(monkeypatch):
+    """The personal-limit formula lives in one function; replacing it changes every consumer."""
+    from types import SimpleNamespace
+    from app.officer.policy import final_terms
+    from app.products_config import limits
+    from app.recommendations.service import recommend
+    from app.applications.products import Terms
+    seen = []
+
+    def formula(product, risk, revenue, *, secured, collateral_value):
+        seen.append((product['id'], risk, revenue, secured, collateral_value))
+        return 1_234_567
+    monkeypatch.setattr(limits, 'personal_limit', formula)
+    company = {'registry_status': 'active', 'entity_type': 'LLC', 'msp_registry': True, 'region': 'Москва', 'okved': '46.90'}
+    items = recommend(company, {'monthly_revenue_rub': 800_000}, {'requested_amount_rub': 1_000_000}, CONFIG)
+    assert {item['indicative_limit_rub'] for item in items} == {1_234_567}
+    assert scoring.scored_limit(CONFIG.product(TERM), 'medium', 800_000, False, None) == 1_234_567
+    accepted = [SimpleNamespace(document_type=kind, status='ACCEPTED', verified_value_rub=None)
+                for kind in ('BANK_STATEMENT', 'FINANCIAL_REPORT')]
+    evaluation = SimpleNamespace(risk='low', input_snapshot={'finance': {'monthly_revenue_rub': {'value': 800_000}}})
+    terms = Terms(product=CONFIG.product(TERM), secured=False, required_documents=['BANK_STATEMENT', 'FINANCIAL_REPORT'])
+    bounds = final_terms(SimpleNamespace(preapproved_amount_rub=2_000_000), accepted, evaluation, terms)
+    assert bounds['verified_limit_rub'] == 1_234_567 and bounds['amount_max_rub'] == 1_234_567
+    assert (TERM, 'low', 800_000, False, None) in seen and (TERM, 'medium', 800_000, False, None) in seen
 
 
 def test_rule_order_without_review_flags_matches_the_oracle():
@@ -117,6 +164,15 @@ def test_review_flags_precede_rejection_on_a_normal_check():
         decision = decide(check(SECURED, requested=4_000_000, collateral={**COLLATERAL, **change}))
         assert (decision.rule, decision.outcome) == ('R5', 'MANUAL_REVIEW') and 'collateral_unconfirmed' in decision.flags
         assert decision.scored_limit_rub == 2_400_000  # still calculable from the declared value for the officer
+
+
+@pytest.mark.parametrize('secured,flagged', [(True, True), (False, False)])
+def test_an_unconfirmed_pledge_is_reviewed_only_when_the_application_is_secured(secured, flagged):
+    """R5 reads the application's secured flag (pinned at submission), not the product's collateral mode."""
+    pledge = {**COLLATERAL, 'encumbered': True}
+    decision = decide(check('alfa_universal_limit', secured=secured, collateral=pledge))
+    assert ('collateral_unconfirmed' in decision.flags) is flagged
+    assert (decision.rule, decision.outcome) == (('R5', 'MANUAL_REVIEW') if flagged else ('R8', 'PREAPPROVED'))
 
 
 @pytest.mark.parametrize('changes', [{'revenue': 0}, {'previous': 0}])

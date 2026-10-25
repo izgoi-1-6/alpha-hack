@@ -16,7 +16,7 @@ from ..schemas import VersionInput
 from ..applications.info_requests import NEED_FIELDS, NEED_FIELDS_MESSAGE, create_info_request, open_info_request
 from ..applications.lifecycle import EXPIRING, PREAPPROVAL_TTL, ApplicationChange, expire_if_due, preapproval_notice
 from ..applications.models import Application, OfficerDecision
-from ..applications.products import application_product
+from ..applications.products import pinned_terms
 from ..applications.service import require_version
 from ..applications.views import latest_evaluation
 from ..documents import service as documents
@@ -120,7 +120,7 @@ def preapprove(db: Session, application: Application, company: Company, officer:
     require_assignee(application, officer)
     require_version(application, data.version)
     require_review(application, 'Предварительно одобрить можно заявку на рассмотрении.')
-    bounds, refusal = preapproval_terms(application, company, latest_evaluation(db, application.id), application_product(application))
+    bounds, refusal = preapproval_terms(application, company, latest_evaluation(db, application.id), pinned_terms(application).product)
     if refusal:
         raise ApiError(409, *refusal)
     low, high = bounds
@@ -189,7 +189,7 @@ def approve(db: Session, application: Application, officer: User, data: ApproveI
     if application.status != 'DOCS_UPLOADED':
         raise invalid_status('Окончательно одобрить можно заявку с переданным и проверенным комплектом документов.')
     terms = final_terms(application, documents.documents_of(db, application.id), latest_evaluation(db, application.id),
-                        application_product(application))
+                        pinned_terms(application))
     if terms['blocked_by']:
         raise ApiError(409, terms['blocked_by']['code'], terms['blocked_by']['message'])
     low, high = terms['amount_min_rub'], terms['amount_max_rub']

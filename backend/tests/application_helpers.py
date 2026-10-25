@@ -22,7 +22,7 @@ CONSENTS = [{'code': 'APPLICATION_PROCESSING', 'version': 'demo-consent-v1', 'ac
 # The spec's six-stage table, in order.
 STAGE_FIELDS = [
     ['company_confirmed', 'actual_address', 'actual_activity'],
-    ['purpose', 'funding_pattern', 'requested_amount_rub', 'term_months', 'collateral'],
+    ['purpose', 'requested_amount_rub', 'term_months', 'collateral'],
     ['monthly_revenue_rub', 'previous_monthly_revenue_rub', 'financial_period_end', 'tax_regime', 'employees', 'seasonal'],
     ['monthly_debt_payment_rub', 'tax_debt_rub', 'legal_proceedings', 'obligations_note'],
     ['representative_name', 'representative_authority_confirmed', 'beneficial_owners_confirmed'],
@@ -70,10 +70,13 @@ def default_product(fixture_id: str) -> str:
 
 def need_of(fixture_id: str, product: str | None = None, **changes) -> dict:
     """The fixture's stage-2 parameters (purpose, amount, term); a product that requires collateral gets the fixture's
-    declared collateral."""
+    declared collateral, and a product without a term gets none (its stage 2 has no term field)."""
     fixture = FIXTURES[fixture_id]
+    product = PRODUCTS[product or default_product(fixture_id)]
     need = dict(fixture['need'])
-    if PRODUCTS[product or default_product(fixture_id)]['collateral_mode'] == 'required' and fixture['collateral_status'] == 'declared':
+    if product['term_min_months'] is None:
+        need.pop('term_months', None)
+    if product['collateral_mode'] == 'required' and fixture['collateral_status'] == 'declared':
         need['collateral'] = declared_collateral(fixture['collateral_value_rub'], type=fixture['collateral_type'],
                                                  encumbered=fixture['collateral_encumbered'])
     need.update(changes)

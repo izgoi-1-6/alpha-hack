@@ -368,8 +368,11 @@ export type ApplicationProduct = { id: string } & Partial<{
   annual_rate_bps: number | null;
   rate_certainty: "full" | "preferential" | "undisclosed";
   rate_preferential_months: number | null;
+  payment_model: "annuity" | "interest_full_utilization" | "none";
   collateral_mode: CollateralMode;
   collateral_ltv_bps: number | null;
+  /** Whether the application is secured (required collateral, or an optional pledge declared); pinned at submission. */
+  secured: boolean;
   required_documents: string[];
 }>;
 export type Evaluation = {
@@ -433,6 +436,8 @@ export type FieldDescriptor = {
   max_length?: number;
   min?: number;
   max?: number;
+  /** The term's lower maximum for some purposes (`max` already follows the saved purpose). */
+  max_by_purpose?: Record<string, number>;
   options?: FieldOption[];
   statuses?: FieldOption[];
   types?: FieldOption[];

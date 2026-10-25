@@ -16,25 +16,26 @@ from . import bki, scoring, stages
 from .info_requests import create_info_request, open_info_request
 from .lifecycle import PREAPPROVAL_TTL, ApplicationChange, preapproval_notice
 from .models import Application, Evaluation
+from .products import Terms
 
-SCORED_ANSWERS = ('purpose', 'funding_pattern', 'requested_amount_rub', 'term_months', 'collateral',
-                  'monthly_debt_payment_rub', 'tax_debt_rub', 'legal_proceedings')
+SCORED_ANSWERS = ('purpose', 'requested_amount_rub', 'term_months', 'collateral', 'monthly_debt_payment_rub', 'tax_debt_rub',
+                  'legal_proceedings')
 
 
 def iso_date(value: date | None) -> str | None:
     return value.isoformat() if value else None
 
 
-def check_input(application: Application, company: Company, precheck: Precheck, product: dict) -> scoring.CheckInput:
-    """Business age counts completed months from registration to the company's business reference date (the fixture
-    date for seeded companies, the onboarding date otherwise)."""
+def check_input(application: Application, company: Company, precheck: Precheck, terms: Terms) -> scoring.CheckInput:
+    """The terms are the ones pinned at submission. Business age counts completed months from registration to the
+    company's business reference date (the fixture date for seeded companies, the onboarding date otherwise)."""
     registered, reference = company.registered_at, company.business_reference_date
     return scoring.CheckInput(
-        product=product, registry_status=company.registry_status, registry_source_status=precheck.registry_source_status,
-        turnover_source_status=precheck.turnover_source_status,
+        product=terms.product, secured=terms.secured, registry_status=company.registry_status,
+        registry_source_status=precheck.registry_source_status, turnover_source_status=precheck.turnover_source_status,
         age_months=scoring.completed_months(registered, reference) if registered and reference else None,
         finance=stages.finance_evidence(application.answers, precheck), answers=application.answers,
-        missing_answers=tuple(stages.missing(application.answers, product)))
+        missing_answers=tuple(stages.missing(application.answers, terms.product, terms.secured)))
 
 
 def bki_attempts(db: Session, application_id: str) -> int:
@@ -60,18 +61,20 @@ def outcome_notification(decision: scoring.Decision, application: Application) -
     return None
 
 
-def record_evaluation(db: Session, application: Application, company: Company, precheck: Precheck, product: dict,
+def record_evaluation(db: Session, application: Application, company: Company, precheck: Precheck,
                       check: scoring.CheckInput, decision: scoring.Decision, bki_payload: dict | None, *, now,
                       trusted_review: bool, client_response: bool = False) -> Evaluation:
-    """Stores one immutable Evaluation: what was scored (input snapshot with finance evidence, scored answers, age,
-    review flags) and the source evidence it used (precheck registry/turnover, the BKI payload)."""
+    """Stores one immutable Evaluation: what was scored (input snapshot with the product and secured flag, finance
+    evidence, scored answers, age, review flags) and the source evidence it used (precheck registry/turnover, the BKI
+    payload)."""
     sequence = (db.scalar(select(func.max(Evaluation.sequence)).where(Evaluation.application_id == application.id)) or 0) + 1
     evaluation = Evaluation(
         application_id=application.id, sequence=sequence, score=decision.score, risk=decision.risk, factors=decision.factors,
         rule=decision.rule, scored_limit_rub=decision.scored_limit_rub, outcome=decision.outcome,
         reasons=list(decision.reasons), created_at=now,
         input_snapshot={
-            'trusted_source_review': trusted_review, 'client_response': client_response, 'product_id': product['id'],
+            'trusted_source_review': trusted_review, 'client_response': client_response, 'product_id': check.product['id'],
+            'secured': check.secured,
             'catalog_version': application.catalog_version, 'rules_version': application.rules_version,
             'company': {'registry_status': company.registry_status, 'entity_type': company.entity_type,
                         'registered_at': iso_date(company.registered_at),
@@ -89,10 +92,10 @@ def record_evaluation(db: Session, application: Application, company: Company, p
     return evaluation
 
 
-def run_check(db: Session, change: ApplicationChange, company: Company, product: dict) -> Evaluation:
+def run_check(db: Session, change: ApplicationChange, company: Company, terms: Terms) -> Evaluation:
     application, now = change.application, change.now
     precheck = latest_precheck(db, company.id)
-    check = check_input(application, company, precheck, product)
+    check = check_input(application, company, precheck, terms)
     request = open_info_request(db, application.id)
     trusted_review = request is not None and request.kind == 'trusted_source'
     decision = scoring.before_bki(check)
@@ -100,7 +103,7 @@ def run_check(db: Session, change: ApplicationChange, company: Company, product:
     if decision is None:
         report = bki.request_report(company.inn, bki_attempts(db, application.id) + 1)
         decision = scoring.after_bki(check, report, trusted_source_review=trusted_review)
-    evaluation = record_evaluation(db, application, company, precheck, product, check, decision,
+    evaluation = record_evaluation(db, application, company, precheck, check, decision,
                                    None if report is None else {**report, 'requested_at': iso_utc(now)},
                                    now=now, trusted_review=trusted_review)
     if decision.info_request:
@@ -135,7 +138,7 @@ def flags_on_record(db: Session, application_id: str) -> set[str]:
             for flag in snapshot.get('review_flags', [])}
 
 
-def recheck_after_response(db: Session, change: ApplicationChange, company: Company, product: dict, *, reason_text: str,
+def recheck_after_response(db: Session, change: ApplicationChange, company: Company, terms: Terms, *, reason_text: str,
                            notification: str) -> Evaluation:
     """After an information response: a new evaluation from the revised answers with the latest trusted source
     evidence (the persisted precheck and the latest complete BKI report, reused without a new request; earlier
@@ -143,12 +146,12 @@ def recheck_after_response(db: Session, change: ApplicationChange, company: Comp
     The assignee, if any, is kept: the same officer reviews the answer."""
     application, now = change.application, change.now
     precheck = latest_precheck(db, company.id)
-    check = check_input(application, company, precheck, product)
+    check = check_input(application, company, precheck, terms)
     evidence = latest_bki_evidence(db, application.id)
     report = None if evidence is None else evidence[1]
     decision = scoring.after_response(check, report, flags_on_record(db, application.id))
     payload = None if evidence is None else {**report, 'reused_from_evaluation_id': evidence[0]}
-    evaluation = record_evaluation(db, application, company, precheck, product, check, decision, payload, now=now,
+    evaluation = record_evaluation(db, application, company, precheck, check, decision, payload, now=now,
                                    trusted_review=False, client_response=True)
     application.scored_limit_rub = decision.scored_limit_rub
     change.move('MANUAL_REVIEW', reason_code='INFO_PROVIDED', reason_text=reason_text, notification=notification)

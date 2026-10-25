@@ -1,9 +1,11 @@
 """Strict request bodies. Unknown keys are 422 at every level (no status, product, company, snapshot, score or BKI
-injection). Answers validate type and range on every partial save; completeness and product fit are checked at submit.
-Submission consents are only shape-checked here, so a missing or unchecked consent is the domain error NEED_INFO."""
+injection). Answers validate type and range on every partial save (an amount up to the policy maximum, a term of 1–120
+months); completeness and the chosen product's own bounds are checked at submit. Submission consents are only
+shape-checked here, so a missing or unchecked consent is the domain error NEED_INFO."""
 from datetime import date
 from typing import Annotated, Literal
 from pydantic import AfterValidator, Field, StrictBool, StrictStr, field_validator
+from ..recommendations.schemas import within_policy_maximum
 from ..schemas import StrictModel
 
 MAX_RUB = 9_000_000_000_000_000
@@ -42,8 +44,7 @@ class AnswersInput(StrictModel):
     actual_address: StrictStr | None = Field(default=None, max_length=300)
     actual_activity: StrictStr | None = Field(default=None, max_length=300)
     purpose: Literal['working_capital', 'business_development', 'investment', 'refinancing'] | None = None
-    funding_pattern: Literal['one_time', 'repeated'] | None = None
-    requested_amount_rub: int | None = Field(default=None, strict=True, gt=0, le=150_000_000)
+    requested_amount_rub: int | None = Field(default=None, strict=True, gt=0)
     term_months: int | None = Field(default=None, strict=True, ge=1, le=120)
     collateral: CollateralAnswer | None = None
     monthly_revenue_rub: int | None = Field(default=None, strict=True, ge=0, le=MAX_RUB)
@@ -62,6 +63,7 @@ class AnswersInput(StrictModel):
     accuracy_confirmed: StrictBool | None = None
 
     _trim = field_validator('actual_address', 'actual_activity', 'obligations_note', 'representative_name')(blank_to_none)
+    _maximum = field_validator('requested_amount_rub')(within_policy_maximum)
 
 
 class AnswersPatch(StrictModel):

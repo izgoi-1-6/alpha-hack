@@ -11,8 +11,8 @@ and always ends in MANUAL_REVIEW. Score and limit stay null when they cannot be 
 import calendar
 from dataclasses import dataclass
 from datetime import date
+from ..products_config import limits
 from ..recommendations.service import rub
-from .products import collateral_required
 
 HISTORY_POINTS = {'clean': 25, 'minor_closed': 10, 'serious': 0}
 LOW_RISK_MIN_SCORE, MEDIUM_RISK_MIN_SCORE = 75, 50
@@ -99,49 +99,34 @@ def risk_of(score: int) -> str:
     return 'low' if score >= LOW_RISK_MIN_SCORE else 'medium' if score >= MEDIUM_RISK_MIN_SCORE else 'high'
 
 
-def turnover_limit(product: dict, risk: str | None, revenue: int | None) -> int | None:
-    """low: min(ceiling, low multiple x R); medium: min(ceiling, medium cap, medium multiple x R); high, or no
-    positive known revenue: none."""
-    if risk not in ('low', 'medium') or not is_count(revenue) or revenue == 0:
-        return None
-    if risk == 'low':
-        return min(product['amount_max_rub'], product['low_risk_revenue_multiple'] * revenue)
-    return min(product['amount_max_rub'], product['medium_risk_cap_rub'], product['medium_risk_revenue_multiple'] * revenue)
-
-
-def collateral_cap(product: dict, value: int) -> int:
-    """The most a pledge of this value secures: floor(value x LTV)."""
-    return value * product['collateral_ltv_bps'] // 10000
-
-
-def scored_limit(product: dict, risk: str, revenue: int | None, collateral: dict | None) -> int | None:
-    """The turnover limit; a secured product is further capped by the collateral cap of the declared value, and
-    without a declared value there is no limit. (Final approval caps by the verified value instead: officer.policy.)"""
-    limit = turnover_limit(product, risk, revenue)
-    if limit is None or not collateral_required(product):
-        return limit
+def declared_value(collateral: dict | None) -> int | None:
     collateral = collateral or {}
-    value = collateral.get('declared_value_rub') if collateral.get('status') == 'declared' else None
-    if not is_count(value) or value == 0:
-        return None
-    return min(limit, collateral_cap(product, value))
+    return collateral.get('declared_value_rub') if collateral.get('status') == 'declared' else None
 
 
-def indicative_limit(product: dict, revenue: int | None, collateral: dict | None) -> int | None:
-    """The post-submission upper estimate: the pre-submission indicative formula (min(ceiling, low multiple x R), the
-    secured LTV cap) on the stage-3 scored revenue — the turnover source value when the source knows it, otherwise the
-    client's declared answer, which keeps its 'declared' tag in the evaluation evidence. It is not a scored limit and
-    promises no capacity; the formula coincides with the low-risk scored limit."""
-    return scored_limit(product, 'low', revenue, collateral)
+def scored_limit(product: dict, risk: str, revenue: int | None, secured: bool, collateral: dict | None) -> int | None:
+    """The personal limit (products_config.limits) at the scored risk: a secured application adds the collateral cap
+    of the declared value to the product's unsecured cap, and has no limit without a declared value. (Final approval
+    uses the verified value instead: officer.policy.)"""
+    return limits.personal_limit(product, risk, revenue, secured=secured, collateral_value=declared_value(collateral))
+
+
+def indicative_limit(product: dict, revenue: int | None, secured: bool, collateral: dict | None) -> int | None:
+    """The post-submission upper estimate: the low-risk personal limit on the stage-3 scored revenue — the turnover
+    source value when the source knows it, otherwise the client's declared answer, which keeps its 'declared' tag in the
+    evaluation evidence. It is not a scored limit and promises no capacity."""
+    return scored_limit(product, 'low', revenue, secured, collateral)
 
 
 @dataclass(frozen=True)
 class CheckInput:
-    """What one check reads: the pinned product policy, persisted company/source state and the frozen answers.
+    """What one check reads: the pinned product terms and secured flag, persisted company/source state and the frozen
+    answers.
 
     `finance` is stages.finance_evidence(): per stage-3 field the answer, the source value, the source status, the
     origin tag (source/declared/override) and the scored `value` (the source value whenever one is known)."""
     product: dict
+    secured: bool
     registry_status: str
     registry_source_status: str
     turnover_source_status: str
@@ -181,8 +166,9 @@ def before_bki(check: CheckInput) -> Decision | None:
 
 
 def review_flags(check: CheckInput, report: dict | None) -> tuple[str, ...]:
-    """R5 conditions: zero or malformed values, declared or overridden finance, unconfirmed collateral, tax/legal
-    concerns and an unconfirmed registry status. Without a BKI report only the non-BKI values are checked."""
+    """R5 conditions: zero or malformed values, declared or overridden finance, an unconfirmed pledge of a secured
+    application, tax/legal concerns and an unconfirmed registry status. Without a BKI report only the non-BKI values
+    are checked."""
     revenue, previous = (check.finance[name]['value'] for name in REVENUE_FIELDS)
     origins = {entry['origin'] for entry in check.finance.values()}
     flags = []
@@ -197,7 +183,7 @@ def review_flags(check: CheckInput, report: dict | None) -> tuple[str, ...]:
         flags.append('declared_finance')
     if 'override' in origins:
         flags.append('finance_override')
-    if collateral_required(check.product):
+    if check.secured:
         collateral = check.answers.get('collateral') or {}
         if collateral.get('owner_confirmed') is not True or collateral.get('encumbered') is not False:
             flags.append('collateral_unconfirmed')
@@ -241,7 +227,7 @@ def measure(check: CheckInput, report: dict) -> dict:
     if 'zero_revenue' not in flags and 'invalid_source' not in flags:
         score, factors = score_of(check.age_months, revenue, previous, check.answers['monthly_debt_payment_rub'], report['credit_history'])
         risk = risk_of(score)
-        limit = scored_limit(check.product, risk, revenue, check.answers.get('collateral'))
+        limit = scored_limit(check.product, risk, revenue, check.secured, check.answers.get('collateral'))
     return {'score': score, 'risk': risk, 'factors': factors, 'scored_limit_rub': limit, 'flags': flags}
 
 

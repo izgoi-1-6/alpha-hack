@@ -7,6 +7,7 @@ Credit history, scoring and approval odds are out of scope: an estimate is an up
 preapproval. Every number comes from the configuration.
 """
 from decimal import Decimal, ROUND_HALF_UP, localcontext
+from ..products_config import limits
 from ..products_config.rules import okved_class
 
 STATUS_ORDER = {'fits': 0, 'needs_info': 1, 'does_not_fit': 2}
@@ -56,11 +57,11 @@ def estimate_months(product: dict, config) -> int:
 
 
 def personal_limit(product: dict, revenue: int | None) -> int | None:
-    """min(product maximum, low multiple × monthly turnover, unsecured cap). The need states no collateral, so a
-    product that requires it has no limit yet; unknown or non-positive turnover gives none (zero is an anomaly)."""
-    if revenue is None or revenue <= 0 or product['collateral_mode'] == 'required':
-        return None
-    return min(product['amount_max_rub'], product['low_risk_revenue_multiple'] * revenue, product['unsecured_cap_rub'])
+    """The low-risk personal limit (products_config.limits): min(product maximum, low multiple × monthly turnover,
+    unsecured cap). The need states no collateral, so a product that requires it is secured by a pledge of unknown
+    value and has no limit yet; unknown or non-positive turnover gives none (zero is an anomaly)."""
+    return limits.personal_limit(product, 'low', revenue, secured=product['collateral_mode'] == 'required',
+                                 collateral_value=None)
 
 
 def registry_check(registry_status: str) -> dict:
@@ -137,16 +138,24 @@ def capacity_check(product: dict, requested: int, limit: int | None) -> dict:
     return check('amount_capacity', 'failed', 'Запрошенная сумма выше предварительной оценки. Возможно рассмотрение меньшей суммы.')
 
 
-def build_checks(company: dict, product: dict, requested: int, revenue: int | None, limit: int | None, config) -> list[dict]:
-    """The eleven criteria of the contract, in contract order."""
+def eligibility_checks(company: dict, product: dict, config) -> list[dict]:
+    """What the product requires of the company, machine-checked: entity type, SME register, region, main OKVED class
+    and an open program. The recommendation gates `can_apply` on them and submission re-checks them (R1)."""
     entity_names = ' и '.join(ENTITY_NAMES[kind] for kind in product['entity_types'])
     return [
-        registry_check(company['registry_status']),
         check('entity_type', 'passed' if company['entity_type'] in product['entity_types'] else 'failed', f'Продукт доступен {entity_names}.'),
         msp_check(product, company.get('msp_registry')),
         region_check(product, company.get('region'), config),
         okved_check(product, company.get('okved')),
         program_check(product),
+    ]
+
+
+def build_checks(company: dict, product: dict, requested: int, revenue: int | None, limit: int | None, config) -> list[dict]:
+    """The eleven criteria of the contract, in contract order."""
+    return [
+        registry_check(company['registry_status']),
+        *eligibility_checks(company, product, config),
         check('amount_min', 'passed' if requested >= product['amount_min_rub'] else 'failed',
               f"Минимальная сумма: {rub(product['amount_min_rub'])}."),
         check('catalog_max', 'passed' if requested <= product['amount_max_rub'] else 'failed',

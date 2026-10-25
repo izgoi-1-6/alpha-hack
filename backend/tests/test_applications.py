@@ -56,7 +56,7 @@ def test_draft_is_created_from_an_owned_snapshot_with_server_prefill(client, bki
     assert set(answers) == ANSWER_FIELDS
     # Stage 2 starts from the saved need, which is the amount alone: purpose, term and collateral are the client's.
     assert answers['requested_amount_rub'] == 2_000_000
-    assert all(answers[key] is None for key in ('purpose', 'funding_pattern', 'term_months', 'collateral'))
+    assert all(answers[key] is None for key in ('purpose', 'term_months', 'collateral')) and 'funding_pattern' not in answers
     # Stage 3 comes from the persisted turnover source; the debt payment is a client declaration, never prefilled.
     assert (answers['monthly_revenue_rub'], answers['previous_monthly_revenue_rub'], answers['financial_period_end']) == (800_000, 680_000, '2026-09-30')
     assert answers['monthly_debt_payment_rub'] is None and answers['tax_debt_rub'] is None
@@ -72,6 +72,7 @@ def test_draft_is_created_from_an_owned_snapshot_with_server_prefill(client, bki
     assert (product['id'], product['amount_min_rub'], product['amount_max_rub'], product['term_min_months'], product['term_max_months']) == \
            (TERM, 300_000, 30_000_000, 12, 60)  # the catalog's terms
     assert (product['collateral_mode'], product['required_documents']) == ('none', ['BANK_STATEMENT', 'FINANCIAL_REPORT'])
+    assert (product['secured'], product['payment_model']) == (False, 'annuity')
     assert application['company']['id'] == company and application['company']['inn'] == FIXTURES['strong']['inn']
     assert application['created_at'].endswith('Z')
     # Staff-only fields stay out of the customer view.
@@ -172,7 +173,9 @@ def test_dialog_declares_the_six_saved_stages(client):
     assert [stage['number'] for stage in stages] == [1, 2, 3, 4, 5, 6]
     assert [stage['title'] for stage in stages] == ['Компания', 'Параметры', 'Бизнес и финансы', 'Обязательства',
                                                      'Руководитель и владельцы', 'Проверка и согласия']
-    assert [[field['name'] for field in stage['fields']] for stage in stages] == STAGE_FIELDS
+    # The term loan takes no collateral, so its stage 2 hides the pledge (the answer key stays, empty).
+    assert [[field['name'] for field in stage['fields']] for stage in stages] == \
+           [[name for name in stage if name != 'collateral'] for stage in STAGE_FIELDS]
     assert [stage['complete'] for stage in stages] == [False, True, False, False, False, False]
     assert dialog['answers'] == application['answers'] and dialog['missing_fields'] == MISSING_IN_NEW_DRAFT
     assert all(field['label'] and field['type'] and isinstance(field['required'], bool) for stage in stages for field in stage['fields'])
@@ -180,7 +183,7 @@ def test_dialog_declares_the_six_saved_stages(client):
     assert (parameters['requested_amount_rub']['min'], parameters['requested_amount_rub']['max']) == (300_000, 30_000_000)
     assert (parameters['term_months']['min'], parameters['term_months']['max']) == (12, 60)
     assert [option['value'] for option in parameters['purpose']['options']] == PRODUCTS[TERM]['purposes']
-    assert parameters['collateral']['required'] is False and parameters['funding_pattern']['required'] is False
+    assert 'collateral' not in parameters and 'funding_pattern' not in parameters
     finance = {field['name']: field for field in stages[2]['fields']}
     assert finance['monthly_revenue_rub']['source'] == {'name': 'turnover', 'status': 'available', 'value': 800_000}
     assert finance['monthly_revenue_rub']['origin'] == 'source'
@@ -240,7 +243,9 @@ def test_collateral_answers_are_deep_merged(client):
     {'answers': {'status': 'APPROVED'}}, {'answers': {'product_id': LINE}},
     {'answers': {'monthly_debt_payment_rub': -1}}, {'answers': {'tax_debt_rub': -5}}, {'answers': {'monthly_revenue_rub': -1}},
     {'answers': {'employees': -1}}, {'answers': {'requested_amount_rub': 0}}, {'answers': {'requested_amount_rub': '1000000'}},
-    {'answers': {'requested_amount_rub': 1.5}}, {'answers': {'term_months': 121}}, {'answers': {'tax_regime': 'FLAT'}},
+    {'answers': {'requested_amount_rub': 1.5}}, {'answers': {'requested_amount_rub': 2_000_000_001}},
+    {'answers': {'term_months': 121}}, {'answers': {'term_months': 0}}, {'answers': {'tax_regime': 'FLAT'}},
+    {'answers': {'funding_pattern': 'one_time'}},
     {'answers': {'company_confirmed': 1}}, {'answers': {'actual_address': 'я' * 301}}, {'answers': {'representative_name': 'я' * 101}},
     {'answers': {'financial_period_end': 'not-a-date'}}, {'answers': {'purpose': 'consumer'}},
     {'answers': {'collateral': {'status': 'pledged'}}}, {'answers': {'collateral': {'declared_value_rub': 0}}},

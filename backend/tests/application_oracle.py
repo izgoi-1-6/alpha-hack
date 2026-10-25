@@ -1,14 +1,16 @@
 """Independent expectations for the application scoring tests.
 
-Nothing here imports application code. The factor points, risk bands, scored-limit formulas and R6-R11 order are
-transcribed from the spec ("Scoring and state machine", "Product policy and recommendations"); product bounds come
-from catalog_oracle's own reading of the catalog and policy files (a reader, not a calculator). The arithmetic deliberately differs from
-the implementation: exact fractions instead of integer cross-multiplication, and calendar stepping instead of a month
+Nothing here imports application code. The factor points, risk bands, the personal-limit formula and R6-R11 order
+are transcribed from the spec ("Scoring and state machine", "Product policy and recommendations") and the plan's config
+design; product bounds, collateral modes, unsecured caps, purposes, term ranges and documents come from catalog_oracle's
+own reading of the catalog and policy files (a reader, not a calculator). The arithmetic deliberately differs from the
+implementation: exact fractions instead of integer cross-multiplication, and calendar stepping instead of a month
 formula, so a shared mistake cannot make both agree.
 """
 import calendar
 from datetime import date
 from fractions import Fraction
+from catalog_oracle import POLICY
 from recommendation_oracle import FIXTURES, PRODUCTS
 
 # Spec constants stated literally ("low=min(ceiling,3R), medium=min(ceiling,1m,R)", "floor(value*7000/10000)").
@@ -57,17 +59,41 @@ def risk(total: int) -> str:
     return 'low' if total >= 75 else 'medium' if total >= 50 else 'high'
 
 
-def scored_limit(product_id: str, band: str, revenue: int, declared_value: int | None = None) -> int | None:
+def is_secured(product_id: str, collateral: dict | None) -> bool:
+    """Plan: secured = collateral mode required, or optional with a declared pledge."""
+    mode = PRODUCTS[product_id]['collateral_mode']
+    return mode == 'required' or (mode == 'optional' and (collateral or {}).get('status') == 'declared')
+
+
+def required_documents(secured: bool) -> list[str]:
+    """The policy file's base documents, plus its collateral documents when secured."""
+    defaults = POLICY['defaults']
+    return list(defaults['base_documents']) + (list(defaults['collateral_documents']) if secured else [])
+
+
+def term_range(product_id: str, purpose: str | None = None) -> tuple[int, int] | None:
+    """(minimum, maximum) months for the purpose (its per-purpose maximum if the catalog states one); None without a term."""
     product = PRODUCTS[product_id]
-    if band == 'high':
+    if product['term_min_months'] is None:
         return None
-    if band == 'low':
-        limit = min(product['amount_max_rub'], LOW_MULTIPLE * revenue)
-    else:
-        limit = min(product['amount_max_rub'], MEDIUM_CAP_RUB, MEDIUM_MULTIPLE * revenue)
-    if product['collateral_mode'] == 'required':
-        limit = min(limit, int(declared_value * LTV))  # positive values: int() truncation is the floor
-    return limit
+    return product['term_min_months'], product['term_max_months_by_purpose'].get(purpose, product['term_max_months'])
+
+
+def scored_limit(product_id: str, band: str, revenue: int | None, declared_value: int | None = None, *,
+                 secured: bool | None = None) -> int | None:
+    """min(effective max, T, secured ? unsecured cap + floor(LTV x V) : unsecured cap); T low min(max, 3R), medium
+    min(max, 1m, R), high none. `secured` defaults to the product's required collateral."""
+    product = PRODUCTS[product_id]
+    secured = product['collateral_mode'] == 'required' if secured is None else secured
+    if band == 'high' or not revenue or revenue < 0:
+        return None
+    turnover = LOW_MULTIPLE * revenue if band == 'low' else min(MEDIUM_CAP_RUB, MEDIUM_MULTIPLE * revenue)
+    cap = product['unsecured_cap_rub']
+    if secured:
+        if not declared_value or declared_value < 0:
+            return None
+        cap += int(declared_value * LTV)  # positive values: int() truncation is the floor
+    return min(product['amount_max_rub'], turnover, cap)
 
 
 def outcome(product_id: str, total: int, limit: int | None, requested: int) -> tuple[str, str, int | None]:

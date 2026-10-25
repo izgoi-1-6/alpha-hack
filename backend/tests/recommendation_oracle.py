@@ -104,14 +104,21 @@ def payment(product: dict, results: dict, limit: int | None, amount: int) -> int
     return full_utilization_interest_rub(base, product['annual_rate_bps'])
 
 
-def badges(product: dict, company: dict) -> list[str]:
-    """Overlay ids shown on the card: listed in applies_to, MSP registry confirmed when required, main OKVED known and
-    not denied unless the policy exempts the product."""
+def badges(product: dict, company: dict, overlays: dict | None = None) -> list[str]:
+    """Overlay ids shown on the card: listed in applies_to, the overlay active with an open limit, the company's entity
+    type and (normalised) region among the overlay's, MSP registry confirmed when required, main OKVED known and not
+    denied unless the policy exempts the product. `overlays` replaces the shipped raw overlay items (an edited copy)."""
     shown = []
-    for overlay_id in OVERLAY_IDS:
-        overlay = ITEMS[overlay_id]
+    for overlay_id, overlay in (overlays or {overlay_id: ITEMS[overlay_id] for overlay_id in OVERLAY_IDS}).items():
         eligibility = overlay['eligibility']
         if product['id'] not in overlay['display']['applies_to']:
+            continue
+        if overlay['status'] != 'active' or overlay['limit_status'] != 'open':
+            continue
+        if company['entity_type'] not in [POLICY['entity_types'][name] for name in eligibility['entity_types']]:
+            continue
+        regions = {region_key(region) for region in eligibility['regions_allow']}
+        if regions and (company['region'] is None or region_key(company['region']) not in regions):
             continue
         if eligibility['msp_registry_required'] and company['msp_registry'] is not True:
             continue

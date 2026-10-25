@@ -18,11 +18,12 @@ SOURCES = ('registry', 'turnover', 'bki')
 # from a check's missing answers may name any of them.
 ANSWER_PATHS = ANSWER_FIELDS + tuple(f'collateral.{key}' for key in CollateralAnswer.model_fields)
 # The stage-2 need is fixed once submitted: the requested amount is never rewritten (an officer wanting less
-# preapproves a smaller amount) and a different need is a new application. Collateral stays answerable.
-NEED_FIELDS = ('purpose', 'funding_pattern', 'requested_amount_rub', 'term_months')
+# preapproves a smaller amount) and a different need is a new application. Collateral stays answerable; whether the
+# application is secured is pinned at submission and does not change with an answer.
+NEED_FIELDS = ('purpose', 'requested_amount_rub', 'term_months')
 OFFICER_PATHS = tuple(path for path in ANSWER_PATHS if path not in NEED_FIELDS)
-NEED_FIELDS_MESSAGE = ('Цель, порядок использования, сумма и срок не меняются после отправки заявки: меньшую сумму можно '
-                       'одобрить предварительно, другая потребность — это новая заявка.')
+NEED_FIELDS_MESSAGE = ('Цель, сумма и срок не меняются после отправки заявки: меньшую сумму можно одобрить '
+                       'предварительно, другая потребность — это новая заявка.')
 
 
 def create_info_request(db: Session, application: Application, *, kind: str, source: str | None, requested_fields: list[str],

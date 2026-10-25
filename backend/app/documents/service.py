@@ -2,11 +2,11 @@
 officer's review on a document row. Commands run on rows the router has locked (company, then application) after the
 idempotency replay; any ApiError rolls the whole command back, and storage follows the transaction (storage.py).
 
-Checklist rules (spec "Documents and final decision"): the requirements are the pinned product's
-`required_documents`; each has at most one current revision (UPLOADED, ACCEPTED or REJECTED). Uploads and deletions
-are allowed in PREAPPROVED and DOCS_REWORK only (DOCS_UPLOADED freezes the packet); an UPLOADED or REJECTED current
-revision may be replaced or deleted, an ACCEPTED one never. Completion needs every requirement present and none
-rejected. Uploads never move the preapproval deadline.
+Checklist rules (spec "Documents and final decision"): the requirements are the application's `required_documents`
+pinned at submission (base documents, plus the collateral documents when it is secured); each has at most one current
+revision (UPLOADED, ACCEPTED or REJECTED). Uploads and deletions are allowed in PREAPPROVED and DOCS_REWORK only
+(DOCS_UPLOADED freezes the packet); an UPLOADED or REJECTED current revision may be replaced or deleted, an ACCEPTED
+one never. Completion needs every requirement present and none rejected. Uploads never move the preapproval deadline.
 """
 from datetime import datetime
 from sqlalchemy import select
@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ..errors import ApiError
 from ..applications.lifecycle import ApplicationChange
 from ..applications.models import Application
-from ..applications.products import application_product, required_documents
+from ..applications.products import application_terms
 from ..applications.service import require_version
 from .models import CURRENT_STATUSES, Document
 from .schemas import UploadDigest
@@ -26,8 +26,8 @@ LABELS = {'BANK_STATEMENT': 'Банковская выписка', 'FINANCIAL_RE
 
 
 def required_types(application: Application) -> list[str]:
-    product = application_product(application)
-    return required_documents(product) if product else []
+    terms = application_terms(application)
+    return list(terms.required_documents) if terms else []
 
 
 def documents_of(db: Session, application_id: str) -> list[Document]:

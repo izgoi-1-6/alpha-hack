@@ -88,16 +88,24 @@ export async function fillCompanyStage(page: Page) {
     .fill("Оптовая торговля (демо)");
 }
 
-/** Stage 2 starts with only the amount chosen on the product screen: the client picks the purpose and the term. */
+/**
+ * Stage 2 starts with only the amount chosen on the product screen: the client picks the purpose and the term. A
+ * product with a single purpose has it preselected; a product without a term (the revolving line) asks none: pass
+ * `term: null`.
+ */
 export async function fillParametersStage(
   page: Page,
   purpose = "Пополнение оборотных средств",
-  term = "12",
+  term: string | null = "12",
 ) {
   await page
     .getByRole("group", { name: "Цель финансирования" })
     .getByLabel(purpose)
     .check();
+  if (term === null) {
+    await expect(page.getByLabel("Срок, мес.")).toHaveCount(0);
+    return;
+  }
   await page.getByLabel("Срок, мес.").fill(term);
 }
 
@@ -147,9 +155,9 @@ export async function acceptAndSubmit(page: Page) {
 
 export type Profile = {
   amount?: string;
-  /** Stage-2 purpose label and term; default «Пополнение оборотных средств», 12 months. */
+  /** Stage-2 purpose label and term; default «Пополнение оборотных средств», 12 months; null for no term. */
   purpose?: string;
-  term?: string;
+  term?: string | null;
   revenue?: [string, string];
   debt: string;
   /** Declares the pledge on stage 2 (the secured product needs one). */

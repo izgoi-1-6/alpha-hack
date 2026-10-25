@@ -1,16 +1,19 @@
 """What the session officer may do with an application: claimable states, the reject phase per state, the actions to
 offer, the preapproval terms judged by the latest evaluation's computed values, never by its rule label (R5
 precedes R6/R7, and trusted-source recovery records a rule such as R8 with outcome MANUAL_REVIEW), and the final
-approval terms judged by the accepted document evidence."""
+approval terms judged by the accepted document evidence. Both read the terms pinned at submission (product, `secured`,
+`required_documents`), never the live product."""
 from ..applications import scoring
 from ..applications.models import Application, Evaluation
-from ..applications.products import collateral_required, required_documents
+from ..applications.products import Terms
 from ..documents.models import Document
 from ..documents.service import current_documents
 from ..models import Company
+from ..products_config import limits
 from ..recommendations.service import rub
 
 CLAIMABLE = frozenset({'MANUAL_REVIEW', 'NEED_INFO', 'PREAPPROVED', 'DOCS_UPLOADED', 'DOCS_REWORK'})
+VALUATION = 'COLLATERAL_VALUATION'  # the policy's collateral documents always include it (products_config.policy)
 REJECT_PHASE = {'MANUAL_REVIEW': 'preliminary', 'PREAPPROVED': 'final', 'DOCS_UPLOADED': 'final', 'DOCS_REWORK': 'final'}
 
 
@@ -48,29 +51,29 @@ def amount_error_message(low: int, high: int, *, final: bool = False) -> str:
     return f'Сумма {"окончательного" if final else "предварительного"} одобрения — от {rub(low)} до {rub(high)}.'
 
 
-def final_terms(application: Application, documents: list[Document], evaluation: Evaluation | None, product: dict) -> dict:
-    """The final approval bounds from persisted evidence: every required document's current revision ACCEPTED, then
-    product minimum <= final <= min(preapproved amount, the limit recomputed with the scoring rule — the evaluation's
-    risk and scored revenue and, for a secured product, the accepted valuation's verified value under the LTV cap,
-    never the client's declaration or a value sent with the approval). A bound below the product minimum refuses
-    approval (only a reasoned final rejection remains). Returns {amount_min_rub, amount_max_rub, verified_limit_rub,
-    blocked_by: null | {code, message}}; bounds are null when blocked."""
+def final_terms(application: Application, documents: list[Document], evaluation: Evaluation | None, terms: Terms) -> dict:
+    """The final approval bounds from persisted evidence: every pinned required document's current revision ACCEPTED,
+    then product minimum <= final <= min(preapproved amount, the personal limit recomputed (products_config.limits) at
+    the evaluation's risk and scored revenue and, for a pinned secured application, with the accepted valuation's
+    verified value — never the client's declaration or a value sent with the approval). A bound below the product
+    minimum refuses approval (only a reasoned final rejection remains). Returns {amount_min_rub, amount_max_rub,
+    verified_limit_rub, blocked_by: null | {code, message}}; bounds are null when blocked."""
     def blocked(code: str, message: str, limit: int | None = None) -> dict:
         return {'amount_min_rub': None, 'amount_max_rub': None, 'verified_limit_rub': limit,
                 'blocked_by': {'code': code, 'message': message}}
 
     current = current_documents(documents)
-    if any(kind not in current or current[kind].status != 'ACCEPTED' for kind in required_documents(product)):
+    if any(kind not in current or current[kind].status != 'ACCEPTED' for kind in terms.required_documents):
         return blocked('DOCUMENTS_NOT_ACCEPTED', 'Окончательное одобрение возможно, когда приняты все обязательные документы.')
     revenue = ((evaluation.input_snapshot.get('finance') or {}).get('monthly_revenue_rub') or {}).get('value') if evaluation else None
-    limit = None if evaluation is None else scoring.turnover_limit(product, evaluation.risk, revenue)
-    if limit is not None and collateral_required(product):
-        limit = min(limit, scoring.collateral_cap(product, current['COLLATERAL_VALUATION'].verified_value_rub))
+    verified = current[VALUATION].verified_value_rub if terms.secured else None
+    limit = None if evaluation is None else limits.personal_limit(terms.product, evaluation.risk, revenue,
+                                                                   secured=terms.secured, collateral_value=verified)
     if limit is None:
         return blocked('LIMIT_NOT_COMPUTABLE', 'Лимит по проверенным данным не рассчитывается: возможен только отказ с причиной.')
-    low, high = product['amount_min_rub'], min(application.preapproved_amount_rub, limit)
+    low, high = terms.product['amount_min_rub'], min(application.preapproved_amount_rub, limit)
     if high < low:
-        secured = collateral_required(product)
+        secured = terms.secured
         source = 'по проверенной стоимости залога' if secured else 'по проверенным данным'
         return blocked('COLLATERAL_INSUFFICIENT' if secured else 'LIMIT_BELOW_MINIMUM',
                        f'Лимит {source} — {rub(limit)}, ниже минимальной суммы продукта {rub(low)}: окончательное '

@@ -98,9 +98,11 @@ test("A06 medium review: claim → information request → the client answers on
   await onboard(page, "Средний риск");
   await openRecommendations(page);
   // Medium profile: 18 months, flat 600 000 ₽ turnover, 240 000 ₽ monthly debt, clean history — 65 points.
+  // The revolving line has no term: its stage 2 asks none.
   const id = await submitForReview(page, lineCard, {
     amount: "700000",
     debt: "240000",
+    term: null,
   });
 
   const officer = await officerPage(browser);

@@ -10,7 +10,8 @@ edit makes earlier snapshots and drafts stale. The app loads the configured path
 (app.recommendations.catalog); `python -m app.products_config check [--catalog P] [--policy P]` validates edits.
 
 Modules: rules (parsers, supported values), model (ProductConfig, ConfigError, paths), policy (policy-file and
-slider checks), items (catalog items to runtime products and overlays), loader (load_config), __main__ (the CLI).
+slider checks), items (catalog items to runtime products and overlays), loader (load_config), limits (the one
+personal-limit formula over a runtime product), __main__ (the CLI).
 """
 from .loader import load_config
 from .model import DEFAULT_CATALOG_PATH, DEFAULT_POLICY_PATH, ConfigError, ProductConfig, configured_paths

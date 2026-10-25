@@ -8,7 +8,7 @@ from datetime import date, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from ..clock import iso_utc
-from ..companies import latest_precheck
+from ..companies import latest_precheck, public_row
 from ..errors import ApiError
 from ..models import Company, User
 from ..documents import service as documents
@@ -17,7 +17,7 @@ from . import stages
 from .info_requests import open_info_request
 from .lifecycle import CANCELLABLE
 from .models import TERMINAL_STATUSES, Application, Evaluation, InfoRequest, Notification, StatusHistory
-from .products import application_product, required_documents
+from .products import Terms, application_terms
 
 APPLICATION_FIELDS = ('id', 'company_id', 'product_id', 'recommendation_snapshot_id', 'status', 'current_stage', 'version',
                       'answers', 'submitted_at', 'requested_amount_rub', 'indicative_limit_rub', 'scored_limit_rub',
@@ -25,7 +25,7 @@ APPLICATION_FIELDS = ('id', 'company_id', 'product_id', 'recommendation_snapshot
                       'catalog_version', 'rules_version', 'created_at', 'updated_at')
 PRODUCT_FIELDS = ('id', 'name', 'instrument_type', 'amount_min_rub', 'amount_max_rub', 'term_min_months', 'term_max_months',
                   'term_max_months_by_purpose', 'annual_rate_bps', 'rate_certainty', 'rate_preferential_months',
-                  'collateral_mode', 'collateral_ltv_bps')
+                  'payment_model', 'collateral_mode', 'collateral_ltv_bps')
 
 
 def plain(value):
@@ -41,10 +41,13 @@ def company_summary(company: Company) -> dict:
             'registry_status': company.registry_status}
 
 
-def product_summary(application: Application, product: dict | None) -> dict:
-    if product is None:
+def product_summary(application: Application, terms: Terms | None) -> dict:
+    """The product's terms with the application's `secured` flag and documents: pinned once submitted, from the
+    current answers before (only `id` once a draft's product has left the catalog)."""
+    if terms is None:
         return {'id': application.product_id}
-    return {**{key: product[key] for key in PRODUCT_FIELDS}, 'required_documents': required_documents(product)}
+    return {**{key: terms.product[key] for key in PRODUCT_FIELDS}, 'secured': terms.secured,
+            'required_documents': list(terms.required_documents)}
 
 
 def allowed_actions(application: Application, company: Company, request: InfoRequest | None,
@@ -66,16 +69,16 @@ def allowed_actions(application: Application, company: Company, request: InfoReq
     return actions
 
 
-def blocking_issues(application: Application, company: Company, product: dict | None) -> dict:
-    if product is None:
+def blocking_issues(application: Application, company: Company, terms: Terms | None) -> dict:
+    if terms is None:
         return {'product_id': 'Продукт больше не доступен: пересчитайте оценку.'}
-    return stages.issues(application.answers, product, company.entity_type)
+    return stages.issues(application.answers, terms.product, public_row(company), terms.secured)
 
 
-def missing_fields(application: Application, company: Company, product: dict | None, request: InfoRequest | None) -> list[str]:
+def missing_fields(application: Application, company: Company, terms: Terms | None, request: InfoRequest | None) -> list[str]:
     """What the client must still supply: a draft's submit blockers, or a client_answers request's fields."""
     if application.status == 'DRAFT':
-        return list(blocking_issues(application, company, product))
+        return list(blocking_issues(application, company, terms))
     if application.status == 'NEED_INFO' and request is not None and request.kind == 'client_answers':
         return list(request.requested_fields)
     return []
@@ -109,14 +112,14 @@ def current_request(db: Session, application: Application) -> InfoRequest | None
 
 def public_application(db: Session, application: Application, company: Company | None = None) -> dict:
     company = company or db.get(Company, application.company_id)
-    product = application_product(application)
+    terms = application_terms(application)
     request = current_request(db, application)
     application_documents = documents.documents_of(db, application.id)
     body = {name: plain(getattr(application, name)) for name in APPLICATION_FIELDS}
-    body.update(company=company_summary(company), product=product_summary(application, product),
+    body.update(company=company_summary(company), product=product_summary(application, terms),
                 latest_evaluation=public_evaluation(latest_evaluation(db, application.id)),
                 allowed_actions=allowed_actions(application, company, request, application_documents),
-                missing_fields=missing_fields(application, company, product, request),
+                missing_fields=missing_fields(application, company, terms, request),
                 open_info_request=public_info_request(request),
                 document_summary=documents.summary(application, application_documents))
     return body
@@ -126,16 +129,16 @@ def dialog(db: Session, application: Application) -> dict:
     """The six-stage contract: field descriptors with product bounds and stage-3 source tags, completion flags,
     current answers and what still blocks submission."""
     company = db.get(Company, application.company_id)
-    product = application_product(application)
-    if product is None:
+    terms = application_terms(application)
+    if terms is None:
         raise ApiError(409, 'RECOMMENDATION_STALE', 'Условия продукта изменились. Пересчитайте оценку и создайте новую заявку.')
     request = current_request(db, application)
-    blocking = blocking_issues(application, company, product)
+    blocking = blocking_issues(application, company, terms)
     return {'application_id': application.id, 'status': application.status, 'version': application.version,
             'current_stage': application.current_stage, 'steps_total': len(stages.STAGES),
-            'company': company_summary(company), 'product': product_summary(application, product),
-            'stages': stages.stage_contract(application.answers, product, latest_precheck(db, company.id), blocking),
-            'answers': application.answers, 'missing_fields': missing_fields(application, company, product, request),
+            'company': company_summary(company), 'product': product_summary(application, terms),
+            'stages': stages.stage_contract(application.answers, terms.product, latest_precheck(db, company.id), blocking),
+            'answers': application.answers, 'missing_fields': missing_fields(application, company, terms, request),
             'field_issues': blocking if application.status == 'DRAFT' else {},
             'allowed_actions': allowed_actions(application, company, request, documents.documents_of(db, application.id))}
 

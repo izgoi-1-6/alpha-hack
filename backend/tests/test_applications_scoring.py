@@ -93,15 +93,16 @@ def test_raw_missing_turnover_submission_lists_the_missing_answers_without_bki(c
 
 
 # The catalog's bounds (test_products_config.GOLDEN): unsecured 300k–30m over 12–60 months, the revolving line without a
-# term, secured 500k–150m over 12–120 months. The questionnaire caps an amount at 150m and a term at 120 months, so the
-# secured maxima are reached as inclusive bounds below and their overflow is refused by input validation before R1.
+# term (a term given for it is a correction), secured 500k–150m over 12–120 months. The questionnaire takes amounts up to
+# the policy maximum (2b) and terms of 1–120 months, so the secured term maximum is reached as an inclusive bound below
+# and its overflow is refused by input validation before R1. Every product's edges: test_application_products.py.
 CORRECTIONS = [
     (TERM, {'term_months': 11}, 'term_months'), (TERM, {'term_months': 61}, 'term_months'),
     (TERM, {'requested_amount_rub': 299_999}, 'requested_amount_rub'), (TERM, {'requested_amount_rub': 30_000_001}, 'requested_amount_rub'),
-    (TERM, {'purpose': 'investment'}, 'purpose'),
-    (LINE, {'purpose': 'refinancing'}, 'purpose'),
+    (TERM, {'purpose': 'investment'}, 'purpose'), (TERM, {'collateral': declared_collateral()}, 'collateral'),
+    (LINE, {'purpose': 'refinancing'}, 'purpose'), (LINE, {'term_months': 12}, 'term_months'),
     (SECURED, {'requested_amount_rub': 499_999}, 'requested_amount_rub'), (SECURED, {'purpose': 'investment'}, 'purpose'),
-    (SECURED, {'term_months': 11}, 'term_months'),
+    (SECURED, {'term_months': 11}, 'term_months'), (SECURED, {'requested_amount_rub': 150_000_001}, 'requested_amount_rub'),
 ]
 
 
@@ -117,7 +118,7 @@ def test_unsupported_parameters_need_correction_before_any_check(client, bki_cal
 
 @pytest.mark.parametrize('product,changes', [
     (TERM, {'term_months': 12}), (TERM, {'term_months': 60}), (TERM, {'requested_amount_rub': 300_000}),
-    (TERM, {'requested_amount_rub': 30_000_000}), (LINE, {'term_months': 1}), (LINE, {'term_months': 120}),
+    (TERM, {'requested_amount_rub': 30_000_000}), (LINE, {'requested_amount_rub': 300_000}), (LINE, {'requested_amount_rub': 30_000_000}),
     (SECURED, {'term_months': 12}), (SECURED, {'term_months': 120}), (SECURED, {'requested_amount_rub': 500_000}),
     (SECURED, {'requested_amount_rub': 150_000_000}),
 ])
@@ -500,12 +501,13 @@ def test_an_internal_check_reports_a_client_answer_gap_as_a_client_answers_reque
     from app.applications import checks
     from app.applications.lifecycle import ApplicationChange
     from app.applications.models import Application
+    from app.applications.products import terms_for
     application = draft(client, 'missing_turnover')
     with client.app.state.test_factory.begin() as db:
         row = db.get(Application, application['id'])
         change = ApplicationChange(db, row, actor_id=None, now=FIXED_NOW)
         change.move('CHECKING', reason_code='SUBMITTED', reason_text='Проверка без шлюза анкеты')
-        checks.run_check(db, change, db.get(Company, row.company_id), CONFIG.product(TERM))
+        checks.run_check(db, change, db.get(Company, row.company_id), terms_for(CONFIG.product(TERM), None))
     result = read(client, application)
     assert (result['status'], result['latest_evaluation']['rule']) == ('NEED_INFO', 'R3')
     request = result['open_info_request']

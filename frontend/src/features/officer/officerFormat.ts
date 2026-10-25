@@ -86,7 +86,6 @@ const ANSWER_LABELS: Record<string, string> = {
   actual_address: "Фактический адрес",
   actual_activity: "Фактическая деятельность",
   purpose: "Цель финансирования",
-  funding_pattern: "Как используются деньги",
   requested_amount_rub: "Сумма, ₽",
   term_months: "Срок, мес.",
   collateral: "Залог: все сведения",

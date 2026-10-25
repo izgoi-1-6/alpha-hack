@@ -161,13 +161,86 @@ def test_strong_company_at_two_million_literal_order_and_payments(client):
     assert result[UNIVERSAL]['indicative_limit_rub'] == 2_400_000  # min(70m, 3 × 800k, 20m unsecured)
 
 
+CERTAINTY = catalog_oracle.POLICY['ranking']['rate_certainty']
+
+
 @pytest.mark.parametrize('fixture_id', list(oracle.FIXTURES))
 @pytest.mark.parametrize('amount', [500_000, 2_000_000, 10_000_000])
-def test_the_preferential_psk_rate_never_tops_a_full_rate_product_that_also_fits(client, fixture_id, amount):
+def test_a_preferential_or_undisclosed_rate_never_tops_a_stated_full_rate_among_the_fits(client, fixture_id, amount):
+    """Among fitting products (no shortfall, no required collateral) rate certainty orders first, so the sequence of
+    certainties down the ranking never decreases: a preferential PSK rate never tops a full-rate product."""
     company = setup(client, fixture_id)
     fits = [item['product_id'] for item in body(recommend(client, company, amount))['items'] if item['status'] == 'fits']
-    if PSK_WORKING in fits and (set(fits) & {TERM, LINE, GOSCREDIT}):
-        assert fits.index(PSK_WORKING) > max(fits.index(p) for p in (TERM, LINE, GOSCREDIT) if p in fits)
+    certainties = [CERTAINTY[catalog_oracle.PRODUCTS[product_id]['rate_certainty']] for product_id in fits]
+    assert certainties == sorted(certainties), fits
+
+
+def test_the_certainty_order_is_exercised_by_a_preferential_rate_that_fits(client):
+    fits = [item['product_id'] for item in body(recommend(client, setup(client), 2_000_000))['items'] if item['status'] == 'fits']
+    assert {TERM, LINE, GOSCREDIT, PSK_WORKING} <= set(fits)
+    assert fits.index(PSK_WORKING) > max(fits.index(product_id) for product_id in (TERM, LINE, GOSCREDIT))
+
+
+def product_edges() -> list[tuple[str, int]]:
+    """Every product's inclusive amount edges (min-1, min, max, max+1) within the slider's 1 … maximum."""
+    edges = set()
+    for product in catalog_oracle.PRODUCTS.values():
+        for amount in (product['amount_min_rub'] - 1, product['amount_min_rub'], product['amount_max_rub'], product['amount_max_rub'] + 1):
+            if 1 <= amount <= catalog_oracle.POLICY['amount_slider']['max_rub']:
+                edges.add(amount)
+    return sorted(edges)
+
+
+@pytest.mark.parametrize('amount', product_edges())
+@pytest.mark.parametrize('fixture_id', ['strong', 'gov_manufacturer'])
+def test_every_product_amount_edge_matches_the_independent_oracle(client, fixture_id, amount):
+    """Restored inclusive coverage: e.g. 499,999/500,000 for the secured products, 24,999,999/25,000,000 for the
+    investment subsidy, 30,000,000/30,000,001 for the unsecured loans; statuses, gates, limits, payments, badges."""
+    fixture = oracle.FIXTURES[fixture_id]
+    company = setup(client, fixture_id)
+    actual = body(recommend(client, company, amount))['items']
+    expected = oracle.expected(oracle.company_of(fixture), fixture['monthly_revenue_rub'], amount)
+    assert [item['product_id'] for item in actual] == [row['product_id'] for row in expected]
+    for item, row in zip(actual, expected):
+        assert {c['code']: c['result'] for c in item['checks']} == row['checks'], item['product_id']
+        assert (item['status'], item['can_apply'], item['indicative_limit_rub'], item['estimated_payment_rub']) == \
+               (row['status'], row['can_apply'], row['indicative_limit_rub'], row['estimated_payment_rub']), item['product_id']
+        assert [badge['overlay_id'] for badge in item['badges']] == row['badges'], item['product_id']
+
+
+def test_the_edges_include_the_named_boundaries():
+    assert {499_999, 500_000, 24_999_999, 25_000_000, 30_000_000, 30_000_001, 150_000_000, 150_000_001} <= set(product_edges())
+
+
+OVERLAY_EDITS = {
+    'inactive': lambda overlay: overlay.update(status='inactive'),
+    'exhausted': lambda overlay: overlay.update(limit_status='exhausted'),
+    'ip_only': lambda overlay: overlay['eligibility'].update(entity_types=['ИП']),
+    'kursk_only': lambda overlay: overlay['eligibility'].update(regions_allow=['  курская   ОБЛАСТЬ ']),
+}
+
+
+@pytest.mark.parametrize('fixture_id', ['strong', 'medium', 'gov_manufacturer'])
+@pytest.mark.parametrize('edit', list(OVERLAY_EDITS))
+def test_overlay_status_entity_and_region_rules_match_the_oracle(client, monkeypatch, tmp_path, edit, fixture_id):
+    from app.products_config import load_config
+    from app.recommendations import catalog
+    edited = json.loads(catalog_oracle.CATALOG_PATH.read_text(encoding='utf-8'))
+    overlay = next(entry for entry in edited['items'] if entry['id'] == 'zont_corpmsp')
+    OVERLAY_EDITS[edit](overlay)
+    path = tmp_path / 'catalog.json'
+    path.write_text(json.dumps(edited, ensure_ascii=False), encoding='utf-8')
+    monkeypatch.setattr(catalog, 'CONFIG', load_config(path, catalog_oracle.POLICY_PATH))
+    fixture = oracle.FIXTURES[fixture_id]
+    company = oracle.company_of(fixture)
+    shown = {pid: [badge['overlay_id'] for badge in item['badges']] for pid, item in items(recommend(client, setup(client, fixture_id))).items()}
+    for product_id, product in catalog_oracle.PRODUCTS.items():
+        assert shown[product_id] == oracle.badges(product, company, {'zont_corpmsp': overlay}), (product_id, edit)
+    shipped = {pid: oracle.badges(product, company) for pid, product in catalog_oracle.PRODUCTS.items()}
+    keeps = {'inactive': False, 'exhausted': False, 'ip_only': company['entity_type'] == 'IP',
+             'kursk_only': fixture['region'] == 'Курская область'}[edit]
+    assert any(shipped.values())  # the shipped overlay shows on this company's cards
+    assert any(shown.values()) is keeps
 
 
 def test_universal_limit_is_capped_by_its_unsecured_maximum(client):

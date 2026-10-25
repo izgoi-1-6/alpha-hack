@@ -86,9 +86,9 @@ def test_questionnaire_answers_outside_the_need_can_be_requested(client, officer
     assert read(client, application)['missing_fields'] == fields
 
 
-# The stage-2 need (purpose, funding pattern, amount, term) is fixed once submitted: a smaller amount is a smaller
-# preapproval and a different need is a new application (controller ruling; spec: the request is never rewritten).
-NEED = ['purpose', 'funding_pattern', 'requested_amount_rub', 'term_months']
+# The stage-2 need (purpose, amount, term) is fixed once submitted: a smaller amount is a smaller preapproval and a
+# different need is a new application (controller ruling; spec: the request is never rewritten).
+NEED = ['purpose', 'requested_amount_rub', 'term_months']
 
 
 @pytest.mark.parametrize('fields', [[name] for name in NEED] + [['accuracy_confirmed', 'term_months'], NEED])
@@ -231,7 +231,7 @@ def test_collateral_details_are_answered_by_their_own_paths(client, officer):
     answered = ok(respond(client, application, {'collateral': {'encumbered': False}}))
     assert answered['answers']['collateral'] == {**application['answers']['collateral'], 'encumbered': False}  # merged by key
     assert answered['answers']['collateral']['declared_value_rub'] == 8_000_000
-    evaluation = answered['latest_evaluation']  # secured low risk: min(6m, 3 x 1.5m, 70% of 8m) = 4.5m; 4m requested
+    evaluation = answered['latest_evaluation']  # secured low risk: min(150m, 3 x 1.5m, 70% of 8m) = 4.5m; 4m requested
     assert (evaluation['rule'], evaluation['outcome'], evaluation['scored_limit_rub']) == ('R8', 'MANUAL_REVIEW', 4_500_000)
 
 
@@ -283,14 +283,19 @@ def internal_gap(client, application: dict) -> dict:
     from app.applications import checks
     from app.applications.lifecycle import ApplicationChange
     from app.applications.models import Application
+    from app.applications.products import pin, terms_for
     from app.models import Company
     from app.recommendations.catalog import CONFIG
     with client.app.state.test_factory.begin() as db:
         row = db.get(Application, application['id'])
         row.submitted_at = FIXED_NOW
+        terms = terms_for(CONFIG.product(TERM), None)
+        # What a submission records (the gate skipped), the pinned facts included: the response reads them.
+        row.submitted_input_snapshot = {'submitted_at': NOW, 'company': {}, 'precheck': {}, 'answers': dict(row.answers),
+                                        **pin(terms)}
         change = ApplicationChange(db, row, actor_id=None, now=FIXED_NOW)
         change.move('CHECKING', reason_code='SUBMITTED', reason_text='Проверка без шлюза анкеты')
-        checks.run_check(db, change, db.get(Company, row.company_id), CONFIG.product(TERM))
+        checks.run_check(db, change, db.get(Company, row.company_id), terms)
     return read(client, application)
 
 

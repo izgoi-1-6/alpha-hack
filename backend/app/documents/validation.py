@@ -7,8 +7,9 @@ FILE_INVALID. HTML/SVG/script markup anywhere is 415. The content must then pars
 strict mode with at least one page and no encryption; Pillow verify, then a full decode within a pixel budget), else
 422 FILE_INVALID. Data after the format's end (PNG IEND, JPEG EOI, PDF %%EOF) and PDF active content (JavaScript, JS,
 OpenAction, AA, Launch, EmbeddedFiles, RichMedia, also hex-escaped or inside object streams) are 415. Active names are
-found in the parsed objects and, for objects outside the cross-reference table, as raw tokens outside stream bodies
-(compressed or binary stream data matches such tokens by chance, roughly 0.8% per MiB).
+found in the parsed objects and, for objects outside the cross-reference table, as raw tokens in the bytes outside the
+data of the stream objects the parser read (compressed or binary stream data matches such tokens by chance, roughly
+0.8% per MiB). Every search is linear in the file size.
 """
 from dataclasses import dataclass
 import io
@@ -16,7 +17,7 @@ import re
 import unicodedata
 from PIL import Image
 from pypdf import PdfReader
-from pypdf.generic import ArrayObject, DictionaryObject, IndirectObject, NameObject
+from pypdf.generic import ArrayObject, DictionaryObject, IndirectObject, NameObject, StreamObject, read_object
 from ..errors import ApiError
 
 
@@ -36,11 +37,16 @@ MAX_PIXELS = 40_000_000  # an image above this is refused (422) from its header,
 # The explicit MAX_PIXELS check replaces Pillow's decompression-bomb guard, which would warn from 89 MP and raise only
 # from 179 MP: every oversized image gets the same 422 and no warning. Nothing else in the process uses Pillow.
 Image.MAX_IMAGE_PIXELS = None
-MARKUP = re.compile(rb'<(?:script|html|svg|iframe|object|embed|body|!doctype)[\s/>]|javascript:', re.IGNORECASE)
+# Searched in the lower-cased bytes (ASCII only, as re.IGNORECASE on bytes, at half its worst-case cost).
+MARKUP = re.compile(rb'<(?:script|html|svg|iframe|object|embed|body|!doctype)[\s/>]|javascript:')
 ACTIVE_NAMES = frozenset({'/JavaScript', '/JS', '/OpenAction', '/AA', '/Launch', '/EmbeddedFiles', '/RichMedia'})
 ACTIVE_TOKEN = re.compile(rb'/(?:JavaScript|JS|OpenAction|AA|Launch|EmbeddedFiles|RichMedia)(?=[\s()<>\[\]{}/%]|$)')
-# A stream body: from the `stream` keyword after the stream dictionary to the first `endstream`.
-STREAM_BODY = re.compile(rb'>>[\x00\t\n\f\r ]*stream(?:\r\n|\n|\r).*?endstream', re.DOTALL)
+PDF_WHITESPACE = b'\x00\t\n\f\r '  # what pypdf skips between a stream's data and `endstream`
+ENDSTREAM = b'endstream'
+# How far a stream's data is located exactly: at most this many whitespace bytes between the data and `endstream`, and
+# spaces between `stream` and its end of line (pypdf allows any number of either). Beyond it, the span is the data's
+# length just before `endstream`: still inside the data and the whitespace after it.
+STREAM_GAP = 32
 PDF_END = re.compile(rb'%%EOF[\r\n\t\f\x00 ]*\Z')
 PNG_END = b'\x00\x00\x00\x00IEND\xaeB`\x82'
 JPEG_END = b'\xff\xd9'
@@ -85,7 +91,7 @@ def inspect(name: str, client_type: str, data: bytes) -> str:
         raise invalid_file('Файл пустой.')
     if not data.startswith(kind.magic):
         raise not_allowed('Содержимое файла не соответствует его типу.')
-    if MARKUP.search(data):
+    if MARKUP.search(data.lower()):
         raise not_allowed('Файл содержит HTML-разметку или сценарий.')
     if kind is PDF:
         check_pdf(data)
@@ -119,6 +125,69 @@ def pdf_names(reader: PdfReader) -> set[str]:
     return names
 
 
+def stream_spans(reader: PdfReader, data: bytes) -> list[tuple[int, int]]:
+    """Where the data of each stream object in the cross-reference table lies in the file, as the parser read it.
+
+    The object is read again from its offset (after the first read, pypdf's xref holds the offset it actually used),
+    which leaves the reader just after the `endstream` that closed the data. The data, as many bytes as the parser
+    read, ends at that keyword or within the whitespace before it, so every span lies inside the object's own data
+    and the whitespace after it. Text that merely looks like a stream (in a comment, in a string, in a dictionary or
+    outside every object) is never skipped. Linear: each stream object is read once more and located in constant
+    time. (pypdf keeps a stream's raw bytes in `_data`; the version is pinned.)"""
+    source = io.BytesIO(data)
+    spans = []
+    for generation, numbers in reader.xref.items():
+        for number, offset in numbers.items():
+            if not isinstance(reader.get_object(IndirectObject(number, generation, reader)), StreamObject):
+                continue
+            source.seek(offset)
+            reader.read_object_header(source)
+            item = read_object(source, reader)
+            end = source.tell() - len(ENDSTREAM)
+            if isinstance(item, StreamObject) and data[end:end + len(ENDSTREAM)] == ENDSTREAM:
+                spans.append(data_span(data, end, len(item._data)))
+    return spans
+
+
+def data_span(data: bytes, end: int, size: int) -> tuple[int, int]:
+    """The `size` bytes of stream data closed by `endstream` at `end`: for the fewest whitespace bytes in between
+    whose data starts right after a `stream` keyword, else the bytes just before `endstream`. Either never starts
+    before the actual data (the true gap is always a candidate), so nothing before the data is ever skipped."""
+    for gap in range(STREAM_GAP + 1):
+        stop = end - gap
+        if gap and data[stop] not in PDF_WHITESPACE:
+            break
+        if stop - size >= 0 and keyword_ends_at(data, stop - size):
+            return stop - size, stop
+    return end - size, end
+
+
+def keyword_ends_at(data: bytes, position: int) -> bool:
+    """Whether a `stream` keyword and its end of line end at `position` as pypdf reads them: `stream`, spaces, then
+    LF, CR LF or a CR not followed by LF (spaces counted up to STREAM_GAP)."""
+    if data[position - 1:position] == b'\n':
+        eol = position - 2 if data[max(position - 2, 0):position - 1] == b'\r' else position - 1
+    elif data[position - 1:position] == b'\r' and data[position:position + 1] != b'\n':
+        eol = position - 1
+    else:
+        return False
+    keyword = eol
+    while keyword > eol - STREAM_GAP and data[keyword - 1:keyword] == b' ':
+        keyword -= 1
+    return data[max(keyword - 6, 0):keyword] == b'stream'
+
+
+def without_spans(data: bytes, spans: list[tuple[int, int]]) -> bytes:
+    """The bytes outside every span, with a space where each (merged) span was."""
+    pieces, position = [], 0
+    for start, stop in sorted(spans):
+        if start > position:
+            pieces.append(data[position:start])
+        position = max(position, stop)
+    pieces.append(data[position:])
+    return b' '.join(pieces)
+
+
 def check_pdf(data: bytes) -> None:
     try:
         reader = PdfReader(io.BytesIO(data), strict=True)
@@ -127,11 +196,12 @@ def check_pdf(data: bytes) -> None:
         if len(reader.pages) < 1:
             raise invalid_file('В PDF нет страниц.')
         active = pdf_names(reader) & ACTIVE_NAMES
+        spans = stream_spans(reader, data)
     except ApiError:
         raise
     except Exception:
         raise invalid_file('PDF повреждён или обрезан.') from None
-    if active or ACTIVE_TOKEN.search(STREAM_BODY.sub(b'>> stream endstream', data)):
+    if active or ACTIVE_TOKEN.search(without_spans(data, spans)):
         raise not_allowed('PDF содержит активное содержимое (сценарии, автозапуск или вложенные файлы).')
     if not PDF_END.search(data[-1024:]):
         raise not_allowed('После окончания PDF есть посторонние данные.')

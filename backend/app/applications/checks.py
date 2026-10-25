@@ -3,7 +3,8 @@ most once, stores an immutable Evaluation with its source evidence, opens or clo
 application to the outcome through the transition service.
 
 Submission and retry-check run it on a CHECKING application while the command holds the company and application row
-locks; registry/turnover mocks are never called here (the latest persisted precheck is read).
+locks; registry/turnover mocks are never called here (the latest persisted precheck is read). An information response
+runs `recheck_after_response` instead, which reuses the latest complete BKI report and calls no simulator.
 """
 from datetime import date
 from sqlalchemy import func, select
@@ -11,10 +12,9 @@ from sqlalchemy.orm import Session
 from ..clock import iso_utc
 from ..companies import latest_precheck
 from ..models import Company, Precheck
-from ..recommendations.service import rub
 from . import bki, scoring, stages
 from .info_requests import create_info_request, open_info_request
-from .lifecycle import PREAPPROVAL_TTL, ApplicationChange
+from .lifecycle import PREAPPROVAL_TTL, ApplicationChange, preapproval_notice
 from .models import Application, Evaluation
 
 SCORED_ANSWERS = ('purpose', 'funding_pattern', 'requested_amount_rub', 'term_months', 'collateral',
@@ -52,8 +52,7 @@ def complete_report(report: dict | None) -> bool:
 
 def outcome_notification(decision: scoring.Decision, application: Application) -> str | None:
     if decision.outcome == 'PREAPPROVED':
-        return (f'Заявка предварительно одобрена на {rub(application.preapproved_amount_rub)}. Загрузите документы до '
-                f'{application.preapproval_expires_at:%d.%m.%Y %H:%M} UTC. Это не окончательное решение.')
+        return preapproval_notice(application)
     if decision.outcome == 'REJECTED':
         return 'По заявке принят отказ. ' + decision.reasons[0]
     if decision.outcome in ('WAIT_EXTERNAL', 'NEED_INFO'):
@@ -63,7 +62,7 @@ def outcome_notification(decision: scoring.Decision, application: Application) -
 
 def record_evaluation(db: Session, application: Application, company: Company, precheck: Precheck, product: dict,
                       check: scoring.CheckInput, decision: scoring.Decision, bki_payload: dict | None, *, now,
-                      trusted_review: bool) -> Evaluation:
+                      trusted_review: bool, client_response: bool = False) -> Evaluation:
     """Stores one immutable Evaluation: what was scored (input snapshot with finance evidence, scored answers, age,
     review flags) and the source evidence it used (precheck registry/turnover, the BKI payload)."""
     sequence = (db.scalar(select(func.max(Evaluation.sequence)).where(Evaluation.application_id == application.id)) or 0) + 1
@@ -72,7 +71,7 @@ def record_evaluation(db: Session, application: Application, company: Company, p
         rule=decision.rule, scored_limit_rub=decision.scored_limit_rub, outcome=decision.outcome,
         reasons=list(decision.reasons), created_at=now,
         input_snapshot={
-            'trusted_source_review': trusted_review, 'product_id': product['id'],
+            'trusted_source_review': trusted_review, 'client_response': client_response, 'product_id': product['id'],
             'catalog_version': application.catalog_version, 'rules_version': application.rules_version,
             'company': {'registry_status': company.registry_status, 'entity_type': company.entity_type,
                         'registered_at': iso_date(company.registered_at),
@@ -117,4 +116,40 @@ def run_check(db: Session, change: ApplicationChange, company: Company, product:
         application.preapproval_expires_at = now + PREAPPROVAL_TTL
     change.move(decision.outcome, reason_code=decision.rule, reason_text=' '.join(decision.reasons),
                 notification=outcome_notification(decision, application), by_system=True)
+    return evaluation
+
+
+def latest_bki_evidence(db: Session, application_id: str) -> tuple[str, dict] | None:
+    """The newest complete BKI report among the application's evaluations, with the id of the evaluation whose
+    request produced it: the trusted evidence a re-check reuses instead of requesting the BKI again."""
+    for evaluation_id, sources in db.execute(select(Evaluation.id, Evaluation.sources).where(Evaluation.application_id == application_id)
+                                             .order_by(Evaluation.sequence.desc())):
+        report = sources.get('bki')
+        if complete_report(report):
+            return report.get('reused_from_evaluation_id', evaluation_id), report
+    return None
+
+
+def flags_on_record(db: Session, application_id: str) -> set[str]:
+    return {flag for snapshot in db.scalars(select(Evaluation.input_snapshot).where(Evaluation.application_id == application_id))
+            for flag in snapshot.get('review_flags', [])}
+
+
+def recheck_after_response(db: Session, change: ApplicationChange, company: Company, product: dict, *, reason_text: str,
+                           notification: str) -> Evaluation:
+    """After an information response: a new evaluation from the revised answers with the latest trusted source
+    evidence (the persisted precheck and the latest complete BKI report, reused without a new request; earlier
+    evaluations and the submission snapshot stay as they are), then NEED_INFO→MANUAL_REVIEW as the client's step.
+    The assignee, if any, is kept: the same officer reviews the answer."""
+    application, now = change.application, change.now
+    precheck = latest_precheck(db, company.id)
+    check = check_input(application, company, precheck, product)
+    evidence = latest_bki_evidence(db, application.id)
+    report = None if evidence is None else evidence[1]
+    decision = scoring.after_response(check, report, flags_on_record(db, application.id))
+    payload = None if evidence is None else {**report, 'reused_from_evaluation_id': evidence[0]}
+    evaluation = record_evaluation(db, application, company, precheck, product, check, decision, payload, now=now,
+                                   trusted_review=False, client_response=True)
+    application.scored_limit_rub = decision.scored_limit_rub
+    change.move('MANUAL_REVIEW', reason_code='INFO_PROVIDED', reason_text=reason_text, notification=notification)
     return evaluation

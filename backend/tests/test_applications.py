@@ -284,7 +284,8 @@ def test_owner_can_cancel_a_draft_and_cancellation_is_terminal(client, bki_calls
     items = history(client, application)
     assert [(item['from_status'], item['to_status']) for item in items] == [(None, 'DRAFT'), ('DRAFT', 'CANCELLED')]
     me = client.get('/api/v1/auth/me').json()['user']['id']
-    assert items[1]['actor_id'] == me and items[1]['reason_text'] == 'Потребность отпала' and items[1]['application_version'] == 2
+    assert items[1]['actor_role'] == 'client' and items[1]['reason_text'] == 'Потребность отпала' and items[1]['application_version'] == 2
+    assert [row.actor_id for row in rows(client, 'StatusHistory', application_id=application['id'], to_status='CANCELLED')] == [me]
     assert bki_calls == []
 
 
@@ -312,7 +313,10 @@ def test_history_records_each_transition_with_its_simulated_notification(client)
     version = application['version']
     assert [item['application_version'] for item in items] == [1, version, version]  # one increment per command
     me = client.get('/api/v1/auth/me').json()['user']['id']
-    assert [item['actor_id'] for item in items] == [me, me, None]  # the check result is a system step
+    assert [item['actor_role'] for item in items] == ['client', 'client', 'system']  # the check result is a system step
+    assert all('actor_id' not in item for item in items)  # the customer timeline names roles, never user ids
+    saved_rows = sorted(rows(client, 'StatusHistory', application_id=application['id']), key=lambda row: row.sequence)
+    assert [row.actor_id for row in saved_rows] == [me, me, None]
     assert [item['reason_code'] for item in items] == ['CREATED', 'SUBMITTED', 'R8']
     assert all(item['created_at'].endswith('Z') and item['reason_text'] for item in items)
     assert all(item['notification']['channel'] == 'demo_in_app' and item['notification']['message'] for item in items)
@@ -415,7 +419,7 @@ def test_preapproval_expires_exactly_once_at_the_fourteen_day_deadline(client, c
     assert client.get(url(application, '/dialog')).status_code == 200
     items = history(client, application)
     assert [item['to_status'] for item in items].count('EXPIRED') == 1
-    assert items[-1]['actor_id'] is None and items[-1]['from_status'] == 'PREAPPROVED'
+    assert items[-1]['actor_role'] == 'system' and items[-1]['from_status'] == 'PREAPPROVED'
     assert items[-1]['application_version'] == expired['version']
     assert len([row for row in rows(client, 'Notification', application_id=application['id']) if 'expired' in row.event_code]) == 1
     response = cancel(client, expired)

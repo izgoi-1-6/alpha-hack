@@ -1,5 +1,6 @@
-"""Customer application commands. Each runs on rows the router has already locked (company first, then application)
-and after the idempotency replay check; any ApiError rolls the whole command back.
+"""Customer application commands (create, save answers, submit, retry-check, respond-info, cancel). Each runs on rows
+the router has already locked (company first, then application) and after the idempotency replay check; any ApiError
+rolls the whole command back.
 
 Submit validates in the spec's order: version, draft, current policy, one active application per company/product,
 R1 corrections, explicit current consents, R3 required answers (skipped for a known inactive company, which the check
@@ -15,14 +16,15 @@ from ..errors import ApiError
 from ..models import Company, Consent
 from ..recommendations.models import RecommendationSnapshot
 from . import scoring, stages
-from .checks import run_check
-from .info_requests import open_info_request
+from .checks import recheck_after_response, run_check
+from .info_requests import answered_paths, open_info_request, unanswered, unrequested
 from .lifecycle import ApplicationChange, expire_if_due, record_creation
 from .models import ACTIVE_STATUSES, Application
-from .products import current_product, is_current
-from .schemas import AnswersPatch, CancelInput, CreateInput, SubmissionConsent, SubmitInput
+from .products import application_product, current_product, is_current
+from .schemas import AnswersPatch, CancelInput, CreateInput, RespondInput, SubmissionConsent, SubmitInput
 
 SUBMISSION_CONSENTS = ('APPLICATION_PROCESSING', 'BKI')
+RESPONSE_NOTICE = 'Ответ на запрос получен. Заявка вернулась на рассмотрение кредитному специалисту.'
 
 
 def stale() -> ApiError:
@@ -164,3 +166,41 @@ def cancel_application(db: Session, application: Application, user_id: str, data
     require_version(application, data.version)
     ApplicationChange(db, application, actor_id=user_id, now=now).move(
         'CANCELLED', reason_code='CANCELLED_BY_CLIENT', reason_text=data.reason)
+
+
+def respond_info(db: Session, application: Application, company: Company, user_id: str, data: RespondInput, now: datetime) -> None:
+    """NEED_INFO with an open client_answers request (an officer's or the system's): the owner sets exactly the
+    requested answer paths, validated like questionnaire saves and then against the pinned product's R1/R3
+    requirements. The request records the response and is resolved, and `recheck_after_response` scores the revised
+    answers with the stored source evidence (no BKI request) and returns the application to MANUAL_REVIEW with its
+    assignee. The submission snapshot and earlier evaluations are never changed."""
+    require_version(application, data.version)
+    request = open_info_request(db, application.id)
+    if application.status != 'NEED_INFO' or request is None:
+        raise ApiError(409, 'INVALID_STATUS', 'Ответить можно, когда по заявке запрошены сведения.')
+    if request.kind == 'trusted_source':
+        raise ApiError(409, 'TRUSTED_SOURCE_REQUIRED', 'Эти сведения приходят только из демо-источника, анкета их не принимает. '
+                                                       'Нажмите «Повторить проверку».')
+    patch = data.answers.model_dump(mode='json', exclude_unset=True)
+    paths = answered_paths(patch)
+    extra = unrequested(request.requested_fields, paths)
+    if extra:
+        raise ApiError(422, 'ANSWER_NOT_REQUESTED', 'Ответьте только на запрошенные поля.',
+                       fields={path: 'Это поле не запрашивалось' for path in extra})
+    gaps = unanswered(request.requested_fields, paths)
+    if gaps:
+        raise ApiError(422, 'NEED_INFO', 'Ответьте на все запрошенные поля.', fields={path: 'Укажите значение' for path in gaps})
+    answers = stages.merge(application.answers, patch)
+    product = application_product(application)
+    corrections = stages.corrections(answers, product, company.entity_type)
+    if corrections:
+        raise ApiError(422, 'CORRECTION_REQUIRED', 'Измените ответ под условия продукта.', fields=corrections)
+    gaps = stages.missing(answers, product)
+    if gaps:
+        raise ApiError(422, 'NEED_INFO', 'Заполните обязательные поля анкеты.', fields=gaps)
+    application.answers = answers
+    if 'requested_amount_rub' in patch:  # the client's own revision; the submission snapshot keeps the original
+        application.requested_amount_rub = patch['requested_amount_rub']
+    request.response, request.responded_at, request.resolved_at = data.response, now, now
+    recheck_after_response(db, ApplicationChange(db, application, actor_id=user_id, now=now), company, product,
+                           reason_text=data.response, notification=RESPONSE_NOTICE)

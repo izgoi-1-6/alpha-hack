@@ -5,7 +5,8 @@ monthly debt burden debt/R and the BKI credit history, compared exactly by cross
 spec table's order: `before_bki` covers R2 (known inactive), R3 (a client-answerable gap) and R4 (registry or turnover
 unavailable), so none of them spends a BKI request; `after_bki` covers the report's R4/R2/R3, then the review flags
 (R5), R6, R7 and R8-R11. A check that recovers trusted-source evidence (an open trusted_source request) ends in
-MANUAL_REVIEW unless R2, R6 or R7 rejects. Score and limit stay null when they cannot be computed.
+MANUAL_REVIEW unless R2, R6 or R7 rejects. `after_response` re-checks revised answers after an information response
+and always ends in MANUAL_REVIEW. Score and limit stay null when they cannot be computed.
 """
 import calendar
 from dataclasses import dataclass
@@ -34,7 +35,13 @@ REASONS = {
     'low': 'Низкий риск: запрошенная сумма укладывается в рассчитанный лимит. Это предварительное одобрение, '
            'не окончательное решение.',
     'medium': 'Средний риск: заявку рассмотрит кредитный специалист.',
+    'answered': 'Клиент ответил на запрос сведений: расчёт обновлён по новым ответам и сохранённым данным источников; '
+                'заявку проверит кредитный специалист.',
+    'no_bki': 'Данных демо-БКИ по заявке нет: балл и лимит не рассчитаны.',
 }
+# Flags of earlier evaluations that a re-check after an information response keeps: a declaration or a conflict with
+# the source stays on record even when the revised answers no longer show it.
+RETAINED_FLAGS = ('declared_finance', 'finance_override')
 # R5 review flags, in the order they are reported.
 FLAG_REASONS = {
     'zero_revenue': 'Нулевая выручка за текущий или предыдущий период: автоматический расчёт невозможен.',
@@ -162,16 +169,18 @@ def before_bki(check: CheckInput) -> Decision | None:
     return None
 
 
-def review_flags(check: CheckInput, report: dict) -> tuple[str, ...]:
+def review_flags(check: CheckInput, report: dict | None) -> tuple[str, ...]:
     """R5 conditions: zero or malformed values, declared or overridden finance, unconfirmed collateral, tax/legal
-    concerns and an unconfirmed registry status."""
+    concerns and an unconfirmed registry status. Without a BKI report only the non-BKI values are checked."""
     revenue, previous = (check.finance[name]['value'] for name in REVENUE_FIELDS)
     origins = {entry['origin'] for entry in check.finance.values()}
     flags = []
     if revenue == 0 or previous == 0:
         flags.append('zero_revenue')
-    counts = (revenue, previous, check.answers.get('monthly_debt_payment_rub'), check.age_months, report.get('current_overdue_days'))
-    if not all(is_count(value) for value in counts) or report.get('credit_history') not in HISTORY_POINTS:
+    counts = [revenue, previous, check.answers.get('monthly_debt_payment_rub'), check.age_months]
+    if report is not None:
+        counts.append(report.get('current_overdue_days'))
+    if not all(is_count(value) for value in counts) or (report is not None and report.get('credit_history') not in HISTORY_POINTS):
         flags.append('invalid_source')
     if 'declared' in origins:
         flags.append('declared_finance')
@@ -264,3 +273,39 @@ def after_bki(check: CheckInput, report: dict, *, trusted_source_review: bool) -
         return Decision(rule, 'MANUAL_REVIEW', (REASONS['medium'],), **measured)
     return Decision(rule, 'MANUAL_REVIEW', (f'Средний риск: запрошенная сумма выше рассчитанного лимита. Возможная сумма — '
                                             f'до {rub(limit)}; заявку рассмотрит кредитный специалист.',), **measured)
+
+
+def ordered_flags(flags) -> tuple[str, ...]:
+    present = set(flags)
+    return tuple(flag for flag in FLAG_REASONS if flag in present)
+
+
+def after_response(check: CheckInput, report: dict | None, previous_flags=()) -> Decision:
+    """A re-check after the client answered an information request: the revised answers with the latest trusted source
+    evidence (the persisted precheck and the latest complete BKI report, which is not requested again). It always ends
+    in MANUAL_REVIEW: the officer reviews the answer, so there is no automatic low-risk shortcut. The rule records what
+    the rules alone would decide, R2/R6/R7 included (the officer can then only reject), and a declaration or source
+    conflict flagged by an earlier evaluation stays flagged (RETAINED_FLAGS)."""
+    retained = tuple(flag for flag in RETAINED_FLAGS if flag in previous_flags)
+    if check.registry_status == 'inactive':
+        return Decision('R2', 'MANUAL_REVIEW', (REASONS['inactive'], REASONS['answered']))
+    if report is None:  # the gap was found before any BKI request (an internal check) and none is made now
+        flags = ordered_flags(review_flags(check, None) + retained)
+        return Decision('R5', 'MANUAL_REVIEW', tuple(FLAG_REASONS[flag] for flag in flags) + (REASONS['no_bki'], REASONS['answered']),
+                        flags=flags)
+    overdue = report.get('current_overdue_days')
+    if is_count(overdue) and overdue >= OVERDUE_STOP_DAYS:
+        return Decision('R2', 'MANUAL_REVIEW', (REASONS['overdue'], REASONS['answered']))
+    measured = measure(check, report)
+    measured['flags'] = flags = ordered_flags(measured['flags'] + retained)
+    score, risk, limit = measured['score'], measured['risk'], measured['scored_limit_rub']
+    requested = check.answers['requested_amount_rub']
+    reviews = tuple(FLAG_REASONS[flag] for flag in flags)
+    rejection = mandatory_rejection(score, limit, check.product['amount_min_rub'])
+    if rejection:
+        rule, _, reasons = rejection
+        return Decision(rule, 'MANUAL_REVIEW', reviews + reasons + (REASONS['answered'],), **measured)
+    rule = 'R5' if flags or limit is None else amount_rule(risk, requested, limit)
+    noncomputable = (REASONS['noncomputable'],) if score is None else ()
+    return Decision(rule, 'MANUAL_REVIEW', reviews + noncomputable + capacity_note(requested, limit) + (REASONS['answered'],),
+                    **measured)

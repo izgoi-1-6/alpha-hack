@@ -95,3 +95,11 @@ ReasonText = Annotated[StrictStr, AfterValidator(reason_text)]
 class CancelInput(StrictModel):
     version: int = Field(ge=1, strict=True)
     reason: ReasonText
+
+
+class RespondInput(StrictModel):
+    """The owner's answer to a client_answers request: a response text and the requested answers only (same field
+    validators as the questionnaire; credit history and overdue days are never accepted)."""
+    version: int = Field(ge=1, strict=True)
+    response: ReasonText
+    answers: AnswersInput = Field(default_factory=AnswersInput)

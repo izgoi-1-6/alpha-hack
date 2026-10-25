@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from ..clock import as_utc
 from ..errors import ApiError
 from ..models import Company
+from ..recommendations.service import rub
 from .models import Application, Notification, StatusHistory
 
 TRANSITIONS: dict[str, frozenset[str]] = {
@@ -41,6 +42,16 @@ NOTIFICATIONS = {
     'EXPIRED': 'Срок предварительного одобрения истёк. Для продолжения создайте новую заявку.',
 }
 CANCELLABLE = frozenset(status for status, targets in TRANSITIONS.items() if 'CANCELLED' in targets)
+
+
+def preapproval_notice(application: Application, *, by_officer: bool = False) -> str:
+    """The simulated message of a preliminary approval: the amount and the document deadline as a calendar date. The
+    UTC date is never later than the customer's local date in Russia's time zones; the exact moment is in the
+    application (`preapproval_expires_at`), so the message carries no raw timestamp."""
+    subject = 'Кредитный специалист предварительно одобрил заявку' if by_officer else 'Заявка предварительно одобрена'
+    return (f'{subject} на {rub(application.preapproved_amount_rub)}. Загрузите документы в течение 14 дней: срок истекает '
+            f'{as_utc(application.preapproval_expires_at):%d.%m.%Y}, точное время указано в заявке. '
+            'Это не окончательное решение.')
 
 
 def record_history(db: Session, application: Application, from_status: str | None, *, actor_id: str | None,

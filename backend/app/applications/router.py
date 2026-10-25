@@ -16,7 +16,7 @@ from ..schemas import StrictModel, VersionInput
 from . import commands, service, views
 from .lifecycle import get_owned_application, lock_owned_application, owned_applications
 from .models import Application
-from .schemas import AnswersPatch, CancelInput, CreateInput, StatusFilter, SubmitInput
+from .schemas import AnswersPatch, CancelInput, CreateInput, RespondInput, StatusFilter, SubmitInput
 
 router = APIRouter(prefix='/applications', tags=['applications'])
 
@@ -83,6 +83,13 @@ def retry_check(application_id: str, data: VersionInput, request: Request, user:
                 idempotency_key: IdempotencyKey):
     return run_command(application_id, data, request, user, db, now, idempotency_key,
                        lambda application, company: service.retry_check(db, application, company, user.id, data.version, now))
+
+
+@router.post('/{application_id}/respond-info')
+def respond_info(application_id: str, data: RespondInput, request: Request, user: ClientUser, db: Db, now: Now,
+                 idempotency_key: IdempotencyKey):
+    return run_command(application_id, data, request, user, db, now, idempotency_key,
+                       lambda application, company: service.respond_info(db, application, company, user.id, data, now))
 
 
 @router.post('/{application_id}/cancel')

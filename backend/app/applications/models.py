@@ -1,8 +1,9 @@
-"""Application lifecycle entities: Application, Evaluation, InfoRequest, StatusHistory and simulated Notification.
+"""Application lifecycle entities: Application, Evaluation, InfoRequest, StatusHistory, OfficerDecision and simulated
+Notification.
 
 UUID strings, integer RUB in BigInteger columns and timezone-aware timestamps, as in app.models. `sequence` columns
-order an application's evaluations and history rows deterministically even when a test clock does not advance;
-they are internal and not part of the public API.
+order an application's evaluations, history rows and officer decisions deterministically even when a test clock does
+not advance; they are internal and not part of the public API.
 """
 from datetime import datetime
 from sqlalchemy import (BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Integer, JSON, String, Text,
@@ -119,6 +120,38 @@ class StatusHistory(Base):
     reason_code: Mapped[str] = mapped_column(String(40))
     reason_text: Mapped[str] = mapped_column(Text)
     application_version: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+DECISION_ACTIONS = ('preapprove', 'approve', 'reject', 'request_info')
+ONCE_PREDICATE = "action IN ('preapprove', 'approve', 'reject')"
+
+
+class OfficerDecision(Base):
+    """An assigned officer's decision with its reason. Preapprove and request_info are preliminary, approve is final,
+    reject is either. A preapprove, approve or reject happens at most once per application (a partial unique index
+    backs the row lock and version check, so no replay or race can record a second one); information requests repeat."""
+    __tablename__ = 'officer_decisions'
+    __table_args__ = (
+        UniqueConstraint('application_id', 'sequence', name='officer_decision_application_sequence'),
+        CheckConstraint("phase IN ('preliminary', 'final')", name='valid_decision_phase'),
+        CheckConstraint(sql_in('action', DECISION_ACTIONS), name='valid_decision_action'),
+        CheckConstraint("(action IN ('preapprove', 'request_info') AND phase = 'preliminary')"
+                        " OR (action = 'approve' AND phase = 'final') OR action = 'reject'", name='decision_action_phase'),
+        CheckConstraint("(action IN ('preapprove', 'approve') AND amount_rub IS NOT NULL AND amount_rub > 0)"
+                        " OR (action IN ('reject', 'request_info') AND amount_rub IS NULL)", name='decision_amount'),
+        Index('uq_officer_decision_once', 'application_id', 'action', unique=True,
+              postgresql_where=text(ONCE_PREDICATE), sqlite_where=text(ONCE_PREDICATE)),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    application_id: Mapped[str] = mapped_column(ForeignKey('applications.id'), index=True)
+    sequence: Mapped[int] = mapped_column(Integer)
+    officer_id: Mapped[str] = mapped_column(ForeignKey('users.id'))
+    phase: Mapped[str] = mapped_column(String(12))
+    action: Mapped[str] = mapped_column(String(12))
+    amount_rub: Mapped[int | None] = mapped_column(BigInteger)
+    reason: Mapped[str] = mapped_column(Text)
+    evaluation_id: Mapped[str | None] = mapped_column(ForeignKey('evaluations.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

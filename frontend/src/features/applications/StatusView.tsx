@@ -96,7 +96,6 @@ function Amount({
 export function StatusView({
   application,
   history,
-  userId,
   attempts,
   reload,
   announce,
@@ -107,7 +106,6 @@ export function StatusView({
 }: {
   application: Application;
   history: HistoryItem[];
-  userId: string;
   attempts: CommandAttempts;
   reload: () => Promise<unknown>;
   announce: (text: string) => void;
@@ -324,7 +322,7 @@ export function StatusView({
             <p className="muted">Проверка по этой заявке не проводилась.</p>
           )}
         </section>
-        <Timeline items={history} userId={userId} />
+        <Timeline items={history} />
       </div>
       <div className="notice quiet">
         <Icon name="shield" />

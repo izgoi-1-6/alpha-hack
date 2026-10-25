@@ -414,7 +414,6 @@ function App() {
             <ApplicationPage
               key={`${user.id}:${applicationId}`}
               applicationId={applicationId}
-              userId={user.id}
               attempts={commandAttempts.current}
               onOpenList={() => navigate(undefined, "applications")}
               onOpenApplication={(id) => navigate(undefined, undefined, id)}

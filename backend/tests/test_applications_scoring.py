@@ -504,5 +504,5 @@ def test_an_internal_check_reports_a_client_answer_gap_as_a_client_answers_reque
     request = result['open_info_request']
     assert (request['kind'], request['source'], request['requested_by']) == ('client_answers', None, 'system')
     assert {'monthly_revenue_rub', 'previous_monthly_revenue_rub'} <= set(request['requested_fields'])
-    assert result['missing_fields'] == request['requested_fields'] and result['allowed_actions'] == ['cancel']
+    assert result['missing_fields'] == request['requested_fields'] and result['allowed_actions'] == ['respond_info', 'cancel']
     assert bki_calls == []

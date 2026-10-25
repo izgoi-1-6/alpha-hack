@@ -2,20 +2,15 @@ import { HistoryItem } from "../../api";
 import { DemoBadge } from "../../components";
 import { formatDateTime, keepAmountsTogether, statusLabel } from "./format";
 
+const ACTOR_LABELS: Record<HistoryItem["actor_role"], string> = {
+  client: "Вы",
+  officer: "Сотрудник банка",
+  system: "Система · демо-проверка",
+};
+
 /** The application's history in order; each simulated in-app notification is labelled as an imitation. */
-export function Timeline({
-  items,
-  userId,
-}: {
-  items: HistoryItem[];
-  userId: string;
-}) {
-  const actor = (item: HistoryItem) =>
-    item.actor_id === null
-      ? "Система · демо-проверка"
-      : item.actor_id === userId
-        ? "Вы"
-        : "Сотрудник банка";
+export function Timeline({ items }: { items: HistoryItem[] }) {
+  const actor = (item: HistoryItem) => ACTOR_LABELS[item.actor_role];
   return (
     <section className="card timeline-card" aria-labelledby="history-heading">
       <div className="panel-title">

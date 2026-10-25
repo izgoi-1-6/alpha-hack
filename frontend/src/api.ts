@@ -244,6 +244,7 @@ export type ApplicationAction =
   | "edit_answers"
   | "submit"
   | "retry_check"
+  | "respond_info"
   | "cancel";
 /** A saved pledge answer: keys are merged on each save and may be null (cleared or not yet given). */
 export type Collateral = {
@@ -371,7 +372,8 @@ export type HistoryItem = {
   application_id: string;
   from_status: ApplicationStatus | null;
   to_status: ApplicationStatus;
-  actor_id: string | null;
+  /** Who made the change; the customer's history never names users. */
+  actor_role: "client" | "officer" | "system";
   reason_code: string;
   reason_text: string;
   application_version: number;

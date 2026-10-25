@@ -34,7 +34,6 @@ type Loaded =
  */
 export function ApplicationPage({
   applicationId,
-  userId,
   attempts,
   onOpenList,
   onOpenApplication,
@@ -43,7 +42,6 @@ export function ApplicationPage({
   onUnauthorized,
 }: {
   applicationId: string;
-  userId: string;
   attempts: CommandAttempts;
   onOpenList: () => void;
   onOpenApplication: (id: string) => void;
@@ -177,7 +175,6 @@ export function ApplicationPage({
       <StatusView
         application={loaded.application}
         history={loaded.history}
-        userId={userId}
         attempts={attempts}
         reload={() => load()}
         announce={announce}

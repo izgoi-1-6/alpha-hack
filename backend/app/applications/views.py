@@ -1,8 +1,8 @@
 """Customer-facing serialization of applications, the dialog, evaluations, info requests and history.
 
-Staff-only data stays out: assignee, score factors, source payloads and input snapshots, consents, officer ids.
-Task 5 adds a staff serializer beside `public_application` that adds those (spec: "Staff detail additionally returns
-source snapshots, factors, decisions, claim owner and documents").
+Staff-only data stays out: assignee, score factors, source payloads and input snapshots, consents, officer ids and
+decisions; history names actor roles, not users. The staff serializers in app.officer.views build on these (spec:
+"Staff detail additionally returns source snapshots, factors, decisions, claim owner and documents").
 """
 from datetime import date, datetime
 from sqlalchemy import select
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from ..clock import iso_utc
 from ..companies import latest_precheck
 from ..errors import ApiError
-from ..models import Company
+from ..models import Company, User
 from . import stages
 from .info_requests import open_info_request
 from .lifecycle import CANCELLABLE
@@ -52,6 +52,8 @@ def allowed_actions(application: Application, company: Company, request: InfoReq
             actions.append('submit')
     if status == 'WAIT_EXTERNAL' or (status == 'NEED_INFO' and request is not None and request.kind == 'trusted_source'):
         actions.append('retry_check')
+    if status == 'NEED_INFO' and request is not None and request.kind == 'client_answers':
+        actions.append('respond_info')
     if status in CANCELLABLE:
         actions.append('cancel')
     return actions
@@ -129,15 +131,29 @@ def dialog(db: Session, application: Application) -> dict:
             'allowed_actions': allowed_actions(application, company, request)}
 
 
-def public_history(db: Session, application: Application) -> list[dict]:
-    rows = db.execute(select(StatusHistory, Notification)
+def history_rows(db: Session, application: Application) -> list[tuple[StatusHistory, Notification | None, User | None]]:
+    """The application's history in order, each row with its simulated notification and its actor (None = system)."""
+    return db.execute(select(StatusHistory, Notification, User)
                       .outerjoin(Notification, Notification.status_history_id == StatusHistory.id)
+                      .outerjoin(User, User.id == StatusHistory.actor_id)
                       .where(StatusHistory.application_id == application.id).order_by(StatusHistory.sequence)).all()
-    return [{'id': entry.id, 'application_id': entry.application_id, 'from_status': entry.from_status,
-             'to_status': entry.to_status, 'actor_id': entry.actor_id, 'reason_code': entry.reason_code,
-             'reason_text': entry.reason_text, 'application_version': entry.application_version,
-             'created_at': iso_utc(entry.created_at),
-             'notification': None if note is None else {'event_code': note.event_code, 'channel': note.channel,
-                                                        'message': note.message, 'simulated': True,
-                                                        'created_at': iso_utc(note.created_at)}}
-            for entry, note in rows]
+
+
+def actor_role(user: User | None) -> str:
+    return 'system' if user is None else 'officer' if user.role == 'CREDIT_OFFICER' else 'client'
+
+
+def history_item(entry: StatusHistory, note: Notification | None, user: User | None) -> dict:
+    """A history row with its actor's role (client, officer or system) but no actor identity."""
+    return {'id': entry.id, 'application_id': entry.application_id, 'from_status': entry.from_status,
+            'to_status': entry.to_status, 'actor_role': actor_role(user), 'reason_code': entry.reason_code,
+            'reason_text': entry.reason_text, 'application_version': entry.application_version,
+            'created_at': iso_utc(entry.created_at),
+            'notification': None if note is None else {'event_code': note.event_code, 'channel': note.channel,
+                                                       'message': note.message, 'simulated': True,
+                                                       'created_at': iso_utc(note.created_at)}}
+
+
+def public_history(db: Session, application: Application) -> list[dict]:
+    """The customer's timeline: roles only, so no officer user id is ever disclosed."""
+    return [history_item(*row) for row in history_rows(db, application)]

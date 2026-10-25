@@ -26,6 +26,8 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
     ports:
       - '127.0.0.1:8000:8000'
+    volumes:
+      - credit_route_documents:/app/var/documents
     depends_on:
       db:
         condition: service_healthy
@@ -39,3 +41,4 @@ services:
       - api
 volumes:
   credit_route_data:
+  credit_route_documents:

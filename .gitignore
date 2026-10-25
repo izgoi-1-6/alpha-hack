@@ -29,3 +29,6 @@ __pycache__/
 *.pyc
 *.sqlite*
 playwright-artifacts/
+
+# Private uploaded documents (DOCUMENT_STORAGE_DIR default)
+/var/

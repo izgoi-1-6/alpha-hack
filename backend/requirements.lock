@@ -15,6 +15,7 @@ iniconfig==2.3.1
 Mako==1.4.3
 MarkupSafe==3.0.4
 packaging==26.3
+pillow==13.0.0
 pluggy==1.7.0
 psycopg==3.2.9
 psycopg-binary==3.2.9
@@ -22,7 +23,9 @@ pycparser==3.12
 pydantic==2.14.1
 pydantic_core==2.50.1
 Pygments==2.21.0
+pypdf==6.21.2
 pytest==8.4.2
+python-multipart==0.0.32
 SQLAlchemy==2.0.41
 starlette==0.46.2
 typing-inspection==0.4.4

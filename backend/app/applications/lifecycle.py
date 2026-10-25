@@ -142,6 +142,13 @@ def get_application(db: Session, application_id: str, now: datetime, *, owner_id
     return application
 
 
+def require_application(db: Session, application_id: str, *, owner_id: str | None = None) -> None:
+    """Existence and ownership only (404), with no lock and no lazy expiry: a document upload checks this before
+    reading its body, and its command lock later records any expiry."""
+    if db.scalar(scoped(select(Application.id), owner_id).where(Application.id == application_id)) is None:
+        raise not_found()
+
+
 def lock_application(db: Session, application_id: str, now: datetime, *, owner_id: str | None = None) -> tuple[Application, Company, bool]:
     """A command: locks the company row, then the application row (always in that order, for customer and officer
     commands alike, so commands for one company serialize: duplicate-active checks, source recovery, assignment and

@@ -23,7 +23,9 @@ def expired_response() -> JSONResponse:
 
 def run_command(db: Session, request: Request, actor_id: str, key: str, data: StrictModel, now: datetime, *,
                 lock: Callable[[], tuple[Application, Company, bool]], apply: Callable[[Application, Company], None],
-                render: Callable[[Application, Company], dict]):
+                render: Callable[[Application, Company], dict], status: int = 200):
+    """`data` is the idempotency digest's body (a document upload passes its UploadDigest); `status` is the success
+    status stored for replays (the route declares the same one)."""
     application, company, expired = lock()
     scope = idempotency.scope_of(request, actor_id, key, data)
     replayed = idempotency.replay(db, scope)
@@ -32,4 +34,4 @@ def run_command(db: Session, request: Request, actor_id: str, key: str, data: St
     if expired:
         return expired_response()
     apply(application, company)
-    return idempotency.remember(db, scope, render(application, company), now=now, resource_id=application.id)
+    return idempotency.remember(db, scope, render(application, company), now=now, status=status, resource_id=application.id)

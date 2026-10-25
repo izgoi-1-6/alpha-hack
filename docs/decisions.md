@@ -53,3 +53,22 @@ Reversible choices made while building the questionnaire, submission and scoring
 | Retry-check evaluates under the product policy pinned at submission | Submitted decisions are never silently migrated to a later policy. |
 | Open info requests are shown only while the application is in progress | A terminal application has nothing to answer; the rows stay unresolved as audit evidence. |
 | The client-answers NEED_INFO of a submitted check is reachable only through an internal check | Submission already blocks missing answers with 422, so the defensive path is exercised by a service-level test, as the acceptance note on missing_turnover asks. |
+
+## Task 4b rulings (customer applications UI)
+
+Reversible presentation and interaction choices made while building the questionnaire, consent, status and list screens; the controller's 4b rulings and the canonical contract govern.
+
+| Ruling | Reason and consequence |
+|---|---|
+| The card keeps its line «Можно начать анкету: …» and adds one «Начать анкету» button under it, only where `can_apply`, in both display modes | The line already explains availability; the button is the card's single action. The plain catalog baseline can also submit, as the comparison requires. |
+| An application command reuses its idempotency key only when repeated with an identical body after an unknown outcome (network error or 5xx); success or a 4xx releases it | Unlike the company retry, which re-sends its original body, a changed body (a newer version the UI has learned) gets a new key, so no repeat can be refused as `IDEMPOTENCY_CONFLICT` and none can act twice. |
+| Every stage change saves the open stage and the stage pointer (a PATCH even with no changed answers); there is no per-keystroke autosave | Resume must land on the server's `current_stage`; each save costs a PATCH and a dialog reload. The wizard's «← Мои заявки» link saves the open stage first and reloading or closing the tab asks while edits are unsaved; leaving through the sidebar or browser history does not save the open stage's edits. |
+| Only type errors block a partial save; product-bound corrections and missing answers block submission | Partial saves are allowed by contract. Corrections show next to saved values at once, gaps once the customer has left the stage, and the review lists every blocker with a link to its stage. |
+| A stale-version reply reloads the dialog and keeps the customer's unsaved edits on top of it | "Nothing is lost silently": the newer saved answers appear, the edits stay visible, and the next save carries the new version. |
+| The two submission consents live only in the review view: unchecked on every arrival at stage 6 | Never pre-checked or stored between visits; leaving the review (for example to change an answer) asks for them again. `accuracy_confirmed` is an ordinary saved answer. |
+| Status amounts: requested, preliminary estimate (hidden after a rejection), preliminary approval, final when present; the demo score and scored limit appear only inside «Результат проверки» | Each figure has its own label and caveat; a rejected application does not show an estimate that reads like available capacity. |
+| Timeline actors: own id → «Вы», null → «Система · демо-проверка», any other → «Сотрудник банка» | The customer history still returns raw actor ids until Task 5a maps roles; no id is displayed. |
+| An open info request shows its question; a client-answers request adds that answering arrives at a later demo stage | Respond-info is Task 5; the customer is told rather than shown a dead form. |
+| Server-written texts get non-breaking spaces inside digit groups and before «₽» on the client | The backend's ASCII grouping (a ledgered Task 3 minor) would otherwise let amounts wrap mid-number; backend behaviour is unchanged. |
+| The applications feature has its own stylesheet; the extracted card's action styles sit beside the card rules in `styles.css` | `styles.css` is already over 2,000 lines; the new screens are one responsibility. |
+| The stale-recommendation paths are tested by answering single requests with the documented 409 | The live catalog only becomes stale when the policy file changes, which this task must not do; every other browser assertion runs against the real API. |

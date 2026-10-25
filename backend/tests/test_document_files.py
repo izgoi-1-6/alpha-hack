@@ -6,6 +6,7 @@ files and an empty staging area.
 Files are synthetic bytes from document_helpers (hand-written PDF/PNG, Pillow-encoded JPEG), never production helpers.
 """
 import hashlib
+import time
 from uuid import uuid4
 import zlib
 import pytest
@@ -94,6 +95,27 @@ def pdf_with(**options) -> bytes:
     return pdf_bytes(**options)
 
 
+ORPHAN = b'99 0 obj << /S /Launch >> endobj\n'
+
+
+def keyword_far_from_its_line_end() -> bytes:
+    """The real `stream` keyword has 40 spaces before its end of line (the parser accepts any number). A fake keyword
+    inside the data, followed by as many bytes as the data holds, would end at an `endstream` placed after the
+    object, past an orphan action: only the data the parser read may be skipped."""
+    data = b'x' * (len(b'\nendstream\nendobj\n') + len(ORPHAN) - len(b'stream\n')) + b'stream\n' + b'y' * 20
+    return pdf_with(objects=(b'<< /Length %d >>\nstream' % len(data) + b' ' * 40 + b'\n' + data + b'\nendstream',),
+                    tail=ORPHAN + b'endstream\n')
+
+
+def fake_keyword_in_dictionary_string() -> bytes:
+    """A fake keyword in a dictionary string, an orphan action in a comment later in that dictionary, and stream data
+    holding `endstream` exactly where data starting after the fake keyword would end."""
+    after = b')%' + ORPHAN + b'>>\nstream\n'
+    data = bytearray(b'x' * 80)
+    data[len(data) - len(after):len(data) - len(after) + len(b'endstream')] = b'endstream'
+    return pdf_with(objects=(b'<< /Length %d /Note (stream\n' % len(data) + after + bytes(data) + b'\nendstream',))
+
+
 ACTIVE_PDFS = {
     'javascript': pdf_with(catalog=b'/Names << /JavaScript 5 0 R >> ',
                            objects=(b'<< /Names [(x) 6 0 R] >>', b'<< /S /JavaScript /JS (app.alert(1)) >>')),
@@ -107,9 +129,20 @@ ACTIVE_PDFS = {
     'escaped_name': pdf_with(catalog=b'/Open#41ction 5 0 R ', objects=(b'<< /S /J#61vaScript /J#53 (app.alert(1)) >>',)),
     # An object outside the cross-reference table: the parser ignores it, a repairing viewer may not.
     'object_outside_xref': pdf_with(comment=b'99 0 obj\n<< /S /Launch /F (calc.exe) >>\nendobj\n'),
+    # A stream-like opener in a comment must not hide what follows: only the parser's own stream objects are skipped.
+    'opener_in_comment': pdf_with(comment=b'%>> stream\n' + b'99 0 obj\n<< /S /Launch /F (calc.exe) >>\nendobj\n'),
+    # A fake stream before every object, its data exactly as long as the page content's (36 bytes) and closed by
+    # `endstream`: only the parser's own objects, searched from their own offsets, define what is skipped.
+    'fake_stream_before_objects': pdf_with(comment=b'%stream\n' + b'99 0 obj << /S /Launch >> endobj'.ljust(36) + b'\nendstream\n'),
     # The same between two streams: skipping stream bodies must stop at each body's own `endstream`.
     'object_between_streams': pdf_with(tail=b'99 0 obj\n<< /S /Launch /F (calc.exe) >>\nendobj\n'
                                             b'100 0 obj\n<< /Length 4 >>\nstream\nabcd\nendstream\nendobj\n'),
+    'keyword_far_from_its_line_end': keyword_far_from_its_line_end(),
+    'fake_keyword_in_dictionary_string': fake_keyword_in_dictionary_string(),
+    # Data ending in 30 spaces: the data's position is the fewest whitespace bytes back from `endstream` after which a
+    # keyword ends; trying more first would match the fake keyword and skip the comment between it and the real one.
+    'fake_keyword_before_data_ending_in_spaces': pdf_with(objects=(
+        b'<< /Length 31 /Note (stream\n)%/Launch\n>>\nstream\n' + b'x' + b' ' * 30 + b'\nendstream',)),
 }
 
 
@@ -148,6 +181,69 @@ def test_stream_data_that_happens_to_look_like_pdf_actions_is_accepted(client, s
     assert document['sha256'] == sha256(content) and list(stored(storage).values()) == [content]
 
 
+EDGE_DATA = TOKENS + b'x' * 40 + TOKENS  # token-like bytes at both ends: a span off by a few bytes shows them
+STREAM_LAYOUTS = {  # (keyword with its end of line, what follows the data, declared /Length)
+    'lf': (b'stream\n', b'\nendstream', len(EDGE_DATA)),
+    'crlf_then_blank_lines': (b'stream\r\n', b'\r\n\r\n\r\nendstream', len(EDGE_DATA)),
+    'cr_only': (b'stream\r', b'\rendstream', len(EDGE_DATA)),
+    'spaces_before_the_line_end': (b'stream   \r\n', b'\nendstream', len(EDGE_DATA)),
+    # Beyond STREAM_GAP the data is taken as its length just before `endstream`: one byte of it is then scanned.
+    'forty_spaces_before_the_line_end': (b'stream' + b' ' * 40 + b'\n', b'\nendstream', len(EDGE_DATA)),
+    # pypdf reads one byte too many, finds `endstream` one byte back and drops that byte from the data.
+    'length_one_too_long': (b'stream\n', b'endstream', len(EDGE_DATA) + 1),
+}
+
+
+@pytest.mark.parametrize('layout', sorted(STREAM_LAYOUTS))
+def test_stream_data_is_skipped_in_every_layout_the_parser_reads(client, storage, layout):
+    """Wherever the parser's own stream data lies (line ends, spaces after `stream`, whitespace before `endstream`,
+    a length one byte too long), exactly that data is skipped by the raw token scan."""
+    keyword, after, length = STREAM_LAYOUTS[layout]
+    content = pdf_bytes(objects=(b'<< /Length %d >>\n' % length + keyword + EDGE_DATA + after,))
+    document, _ = uploaded(client, preapproved(client), content=content)
+    assert document['sha256'] == sha256(content)
+
+
+def test_skipping_stream_data_takes_linear_time():
+    """100,000 unterminated stream-like openers after the last object, and 100,000 fake `stream` keywords inside one
+    stream's dictionary, are checked well within a second. Both files are acceptable; the real stream data, which
+    holds token-like bytes, is still skipped."""
+    from app.documents.validation import check_pdf
+    trailing = pdf_bytes(tail=b'%>>stream\n' * 100_000)
+    fakes = pdf_bytes(objects=(b'<< /Note (' + b'stream\n' * 100_000 + b') /Length 8 >>\nstream\n/AA /JS \nendstream',))
+    for content in (trailing, fakes):
+        started = time.perf_counter()
+        check_pdf(content)  # raises on refusal
+        assert time.perf_counter() - started < 1, len(content)
+
+
+def test_fake_keywords_before_whitespace_data_take_linear_time():
+    """100,000 fake keywords before 1 MB of real stream data that is whitespace up to a final byte: the data is
+    located back from its `endstream` through at most STREAM_GAP whitespace bytes, never by scanning candidates."""
+    from app.documents.validation import check_pdf
+    size = 1_000_000
+    content = pdf_bytes(objects=(b'<< /Note (' + b'stream\n' * 100_000 + b') /Length %d >>\nstream\n' % size
+                                 + b' ' * (size - 1) + b'X\nendstream',))
+    started = time.perf_counter()
+    check_pdf(content)
+    assert time.perf_counter() - started < 1
+
+
+LIMIT_BODY = LIMIT - 4096  # room for the minimal PDF around a near-limit comment
+
+
+@pytest.mark.parametrize('unit', [b'<', b'<scrip', b'javascrip', b'/', b'/JavaScrip'])
+def test_markup_and_token_searches_take_linear_time_at_the_size_limit(unit):
+    """Near-miss markup and action tokens filling a file at the 20 MiB limit (a comment the parser skips): the
+    whole content check, both searches included, stays far from blocking the server."""
+    from app.documents.validation import inspect
+    content = pdf_bytes(comment=b'%' + (unit * (LIMIT_BODY // len(unit)))[:LIMIT_BODY] + b'\n')
+    assert len(content) <= LIMIT
+    started = time.perf_counter()
+    assert inspect('large.pdf', 'application/pdf', content) == 'application/pdf'
+    assert time.perf_counter() - started < 3
+
+
 @pytest.mark.parametrize('name', sorted(ACTIVE_PDFS))
 def test_pdfs_with_active_content_are_415(client, storage, name):
     application = preapproved(client)
@@ -174,6 +270,7 @@ DISAGREEING = {  # (content, filename, client MIME)
 }
 POLYGLOTS = {
     'pdf_with_html_comment': pdf_bytes(comment=b'%<html><body><script>alert(1)</script></body></html>\n'),
+    'pdf_with_uppercase_script_comment': pdf_bytes(comment=b'%<SCRIPT>alert(1)</SCRIPT>\n'),
     'pdf_with_trailing_zip': pdf_bytes() + b'PK\x03\x04' + b'\x00' * 26,
     'pdf_with_trailing_html': pdf_bytes() + b'<html><script>alert(1)</script></html>',
     'png_with_script_after_iend': png_bytes() + b'<script>alert(1)</script>',

@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { Fixture, ConsentDocument } from "../../api";
+import { AuthorityVerification, Fixture, ConsentDocument } from "../../api";
 import { Icon, DemoBadge, ErrorNotice } from "../../components";
 export function Onboarding({
   fixtures,
   consents,
   busy,
+  onVerify,
   onSubmit,
   onCancel,
   error,
@@ -12,13 +13,21 @@ export function Onboarding({
   fixtures: Fixture[];
   consents: ConsentDocument[];
   busy: boolean;
-  onSubmit: (inn: string) => void;
+  /** The mock Госуслуги check for the ИНН; null when it was refused (the error is shown) or superseded. */
+  onVerify: (inn: string) => Promise<AuthorityVerification | null>;
+  onSubmit: (inn: string, verificationId: string) => void;
   onCancel: () => void;
   error: string;
 }) {
   const [inn, setInn] = useState(""),
-    [accepted, setAccepted] = useState<Record<string, boolean>>({});
+    [accepted, setAccepted] = useState<Record<string, boolean>>({}),
+    [verification, setVerification] = useState<AuthorityVerification | null>(
+      null,
+    );
   const selected = fixtures.find((f) => f.inn === inn);
+  // A confirmation belongs to the ИНН it was given for: another ИНН needs its own.
+  const verified = verification?.inn === inn ? verification : null;
+  const innComplete = /^(\d{10}|\d{12})$/.test(inn);
   return (
     <>
       <div className="page-heading">
@@ -34,7 +43,7 @@ export function Onboarding({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              onSubmit(inn);
+              if (verified) onSubmit(inn, verified.verification_id);
             }}
           >
             <label>
@@ -69,7 +78,31 @@ export function Onboarding({
               </div>
             )}
             <div className="section-number consent-title">
-              02 <span>Разрешения на проверку</span>
+              02 <span>Полномочия представителя</span>
+            </div>
+            {verified && (
+              <div className="notice quiet" role="status">
+                <Icon name="check" />
+                <span>
+                  Полномочия подтверждены через Госуслуги:{" "}
+                  {verified.person_name}, {verified.role.toLowerCase()}.
+                </span>
+              </div>
+            )}
+            <div className="form-actions">
+              <button
+                className="button secondary"
+                type="button"
+                disabled={busy || !innComplete}
+                onClick={async () => setVerification(await onVerify(inn))}
+              >
+                {verified
+                  ? "Подтвердить заново"
+                  : "Подтвердить через Госуслуги"}
+              </button>
+            </div>
+            <div className="section-number consent-title">
+              03 <span>Разрешения на проверку</span>
             </div>
             <div className="consents">
               {consents.map((doc) => (
@@ -109,6 +142,7 @@ export function Onboarding({
                 className="button primary"
                 disabled={
                   busy ||
+                  !verified ||
                   consents.length !== 2 ||
                   !consents.every((c) => accepted[c.code])
                 }

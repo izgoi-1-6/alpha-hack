@@ -1,5 +1,7 @@
-"""Idempotent, explicitly demo-gated synthetic bootstrap: python -m app.seed."""
+"""Idempotent, explicitly demo-gated synthetic bootstrap: python -m app.seed. Every seeded company gets its seeded
+Госуслуги verification."""
 from sqlalchemy import select
+from . import authority
 from .clock import utc_now
 from .companies import FIXTURES, create_company
 from .config import settings
@@ -19,7 +21,9 @@ def seed_demo(db, *, demo_mode: bool) -> None:
     db.flush()
     for source in FIXTURES['companies']:
         if not db.scalar(select(Company).where(Company.owner_user_id==source['owner_user_id'],Company.inn==source['inn'])):
-            create_company(db,source['owner_user_id'],source,now,seeded=True)
+            # Seeded companies get their Госуслуги verification from the seed (the fixture's director, already used).
+            verification=authority.seeded(db,source['owner_user_id'],source,now)
+            create_company(db,source['owner_user_id'],source,now,verification=verification,seeded=True)
     db.flush()
 
 if __name__=='__main__':

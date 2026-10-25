@@ -27,7 +27,7 @@ class RegisterInput(LoginInput):
 
 class ConsentInput(StrictModel):
     code: Literal['ONBOARDING_PROCESSING','REGISTRY_LOOKUP']
-    version: Literal['demo-consent-v1']
+    version: Literal['demo-consent-v2']
     accepted: Literal[True]
     @field_validator('accepted', mode='before')
     @classmethod
@@ -35,9 +35,8 @@ class ConsentInput(StrictModel):
         if value is not True: raise ValueError('Требуется явное согласие')
         return value
 
-class CompanyInput(StrictModel):
+class InnInput(StrictModel):
     inn: StrictStr
-    consents: list[ConsentInput] = Field(max_length=2)
     @field_validator('inn')
     @classmethod
     def validate_inn(cls, value):
@@ -48,6 +47,14 @@ class CompanyInput(StrictModel):
         valid = digit([2,4,10,3,5,9,4,6,8])==d[9] if len(d)==10 else digit([7,2,4,10,3,5,9,4,6,8])==d[10] and digit([3,7,2,4,10,3,5,9,4,6,8])==d[11]
         if not valid: raise ValueError('Неверная контрольная сумма ИНН')
         return value
+
+class AuthorityCheckInput(InnInput):
+    """The mock Госуслуги check: the ИНН only; the person, role and user come from the fixture and the session."""
+
+class CompanyInput(InnInput):
+    consents: list[ConsentInput] = Field(max_length=2)
+    # Absent or null is the gate's refusal (403 AUTHORITY_NOT_VERIFIED), like an unknown id.
+    authority_verification_id: StrictStr | None = Field(default=None, max_length=36)
     @field_validator('consents')
     @classmethod
     def required_consents(cls, value):

@@ -7,6 +7,7 @@ decisions; history names actor roles, not users. The staff serializers in app.of
 from datetime import date, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from .. import authority
 from ..clock import iso_utc
 from ..companies import latest_precheck, public_row
 from ..errors import ApiError
@@ -130,8 +131,8 @@ def public_application(db: Session, application: Application, company: Company |
 
 
 def dialog(db: Session, application: Application) -> dict:
-    """The six-stage contract: field descriptors with product bounds and stage-3 source tags, completion flags,
-    current answers and what still blocks submission."""
+    """The six-stage contract: field descriptors with product bounds, stage-3 source tags and the read-only
+    source-owned fields, completion flags, current answers and what still blocks submission."""
     company = db.get(Company, application.company_id)
     terms = application_terms(application)
     if terms is None:
@@ -141,7 +142,8 @@ def dialog(db: Session, application: Application) -> dict:
     return {'application_id': application.id, 'status': application.status, 'version': application.version,
             'current_stage': application.current_stage, 'steps_total': len(stages.STAGES),
             'company': company_summary(company), 'product': product_summary(application, terms),
-            'stages': stages.stage_contract(application.answers, terms.product, latest_precheck(db, company.id), blocking),
+            'stages': stages.stage_contract(application.answers, terms.product, latest_precheck(db, company.id),
+                                            authority.company_verification(db, company), blocking),
             'answers': application.answers, 'missing_fields': missing_fields(db, application, company, terms, request),
             'field_issues': blocking if application.status == 'DRAFT' else {},
             'allowed_actions': allowed_actions(application, company, request, documents.documents_of(db, application.id))}

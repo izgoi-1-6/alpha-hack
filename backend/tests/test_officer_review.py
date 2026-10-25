@@ -52,7 +52,7 @@ def history_rows(client, application):
 def test_staff_routes_are_for_officers_and_customer_commands_for_owners(client, officer):
     application = medium_review(client)
     body = {'version': application['version'], 'reason': REASON}
-    commands = {'claim': {'version': application['version']}, 'request-info': {**body, 'requested_fields': ['employees']},
+    commands = {'claim': {'version': application['version']}, 'request-info': {**body, 'requested_fields': ['seasonal']},
                 'preapprove': {**body, 'amount_rub': PRODUCT_MIN}, 'reject': body}
     for path in (QUEUE, staff_url(application)):  # the owning customer cannot use staff reads
         assert refused(client.get(path), 403, 'OFFICER_REQUIRED')
@@ -82,7 +82,7 @@ def test_officer_commands_reject_unknown_and_server_owned_keys(client, officer):
                        ('preapprove', {'amount_rub': PRODUCT_MIN, 'reason': REASON, 'phase': 'final'}),
                        ('preapprove', {'amount_rub': '300000', 'reason': REASON}),
                        ('preapprove', {'amount_rub': True, 'reason': REASON}), ('preapprove', {'reason': REASON}),
-                       ('request-info', {'reason': REASON, 'requested_fields': ['employees'], 'kind': 'trusted_source'})]:
+                       ('request-info', {'reason': REASON, 'requested_fields': ['seasonal'], 'kind': 'trusted_source'})]:
         refused(staff_command(officer, application, name, body), 422, 'VALIDATION_ERROR')
     response = officer.post(staff_url(application, '/reject'), json={'version': application['version'], 'reason': REASON})
     assert response.status_code == 422  # Idempotency-Key is required
@@ -225,11 +225,11 @@ def test_claims_are_refused_outside_the_claimable_states(client, officer, bki_ca
 
 def test_decisions_need_the_assigned_officer(client, officer, second_officer):
     application = medium_review(client)
-    for response in (request_info(officer, application, ['employees']), preapprove(officer, application, PRODUCT_MIN),
+    for response in (request_info(officer, application, ['seasonal']), preapprove(officer, application, PRODUCT_MIN),
                      reject(officer, application)):
         refused(response, 409, 'ASSIGNMENT_REQUIRED')  # unassigned: claim first
     application = claimed(officer, application)
-    for response in (request_info(second_officer, application, ['employees']), preapprove(second_officer, application, PRODUCT_MIN),
+    for response in (request_info(second_officer, application, ['seasonal']), preapprove(second_officer, application, PRODUCT_MIN),
                      reject(second_officer, application)):
         refused(response, 409, 'ASSIGNMENT_REQUIRED')  # another officer's case
     assert rows(client, 'OfficerDecision') == [] and rows(client, 'InfoRequest') == []
@@ -241,7 +241,7 @@ def test_a_stale_version_decision_is_refused(client, officer):
     claimed_application = claimed(officer, application)
     for response in (preapprove(officer, claimed_application, PRODUCT_MIN, version=application['version']),
                      reject(officer, claimed_application, version=application['version']),
-                     request_info(officer, claimed_application, ['employees'], version=application['version'])):
+                     request_info(officer, claimed_application, ['seasonal'], version=application['version'])):
         refused(response, 409, 'VERSION_CONFLICT')
     assert rows(client, 'OfficerDecision') == [] and read(client, application)['status'] == 'MANUAL_REVIEW'
 
@@ -253,7 +253,7 @@ def test_a_replayed_decision_records_one_officer_decision(client, officer, bki_c
     assert first.status_code == again.status_code == 200 and again.json() == first.json()
     refused(preapprove(officer, application, MEDIUM_LIMIT - 1, key='decide-once'), 409, 'IDEMPOTENCY_CONFLICT')
     refused(preapprove(officer, application, MEDIUM_LIMIT, key='decide-twice'), 409, 'VERSION_CONFLICT')
-    refused(request_info(officer, ok(first), ['employees']), 409, 'INVALID_STATUS')  # no longer in MANUAL_REVIEW
+    refused(request_info(officer, ok(first), ['seasonal']), 409, 'INVALID_STATUS')  # no longer in MANUAL_REVIEW
     (decision,) = decisions(client, application)
     assert (decision.action, decision.amount_rub) == ('preapprove', MEDIUM_LIMIT)
     assert [row.to_status for row in history_rows(client, application)].count('PREAPPROVED') == 1
@@ -318,7 +318,7 @@ def test_officer_reasons_are_required_after_trim_up_to_2000_characters(client, o
     application = claimed(officer, medium_review(client))
     body = {'reason': reason, 'amount_rub': PRODUCT_MIN} if name == 'preapprove' else {'reason': reason}
     if name == 'request-info':
-        body['requested_fields'] = ['employees']
+        body['requested_fields'] = ['seasonal']
     response = staff_command(officer, application, name, body)
     if not valid:
         refused(response, 422, 'VALIDATION_ERROR')
@@ -413,8 +413,8 @@ def test_preapproval_is_only_from_manual_review(client, officer):
     refused(preapprove(officer, application, 2_000_000), 409, 'INVALID_STATUS')
     need_info = claimed(officer, submitted(client, 'bki_missing'))
     refused(preapprove(officer, need_info, 1_000_000), 409, 'INVALID_STATUS')
-    refused(request_info(officer, application, ['employees']), 409, 'INVALID_STATUS')
-    refused(request_info(officer, need_info, ['employees']), 409, 'INVALID_STATUS')
+    refused(request_info(officer, application, ['seasonal']), 409, 'INVALID_STATUS')
+    refused(request_info(officer, need_info, ['seasonal']), 409, 'INVALID_STATUS')
     assert rows(client, 'OfficerDecision') == []
 
 

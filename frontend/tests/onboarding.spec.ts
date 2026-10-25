@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { artifacts, settle } from "./helpers";
+import { artifacts, confirmAuthority, settle } from "./helpers";
 
 test("seeded demo login, source details, retry and persistent refresh", async ({
   page,
@@ -87,6 +87,14 @@ test("mobile registration, explicit consents, source recovery, reload, errors an
     .click();
   for (const checkbox of await page.getByRole("checkbox").all())
     await checkbox.check();
+  // Adding a company needs the representative's Госуслуги confirmation for this ИНН.
+  await expect(
+    page.getByRole("button", { name: "Добавить и проверить" }),
+  ).toBeDisabled();
+  await confirmAuthority(page);
+  await expect(page.getByRole("status")).toContainText(
+    "Фёдоров Денис Алексеевич",
+  );
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: artifacts + "/task-2-onboarding-mobile.png",

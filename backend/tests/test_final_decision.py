@@ -392,7 +392,9 @@ def test_requestable_fields_follow_the_product(client, officer):
     secured = detail(officer, preapproved(client, 'secured_investment'))
     for body in (unsecured, secured):
         assert body['requestable_fields'] and not set(body['requestable_fields']) & set(NEED_FIELDS)
-        assert {'employees', 'monthly_debt_payment_rub', 'representative_name'} <= set(body['requestable_fields'])
+        assert {'seasonal', 'monthly_debt_payment_rub', 'beneficial_owners_confirmed'} <= set(body['requestable_fields'])
+        # Source-owned answers (registry, Госуслуги) are never asked of the client.
+        assert not {'tax_regime', 'employees', 'representative_name', 'representative_authority_confirmed'} & set(body['requestable_fields'])
     assert not [path for path in unsecured['requestable_fields'] if path.split('.')[0] == 'collateral']
     assert {'collateral', 'collateral.declared_value_rub', 'collateral.owner_confirmed'} <= set(secured['requestable_fields'])
 
@@ -407,9 +409,9 @@ def test_staff_documents_name_the_reviewer_and_never_the_storage_key(client, off
     assert body['documents'][1]['reviewer'] is None
     keys = [row.storage_key for row in document_rows(client)]
     assert not any(key in json.dumps(body) for key in keys)
-    # The officer's review UI gets the same server-owned demo label as the customer's checklist.
+    # The officer's review UI gets the same server-owned review notice as the customer's checklist.
     assert body['document_notice'] == checklist(client, application)['notice']
-    assert body['document_notice'].startswith('Демонстрационная проверка документов')
+    assert body['document_notice'].startswith('Проверка документов')
     assert not any(key in json.dumps(checklist(client, application)) for key in keys)
 
 

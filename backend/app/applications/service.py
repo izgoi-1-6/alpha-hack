@@ -2,16 +2,21 @@
 the router has already locked (company first, then application) and after the idempotency replay check; any ApiError
 rolls the whole command back.
 
-Submit validates in the spec's order: version, draft, current policy, one active application per company/product,
-R1 corrections (the company's current eligibility included; with the registry source unavailable an unknown fact waits
-for R4 instead), explicit current consents, R3 required answers (skipped
-for a known inactive company, which the check rejects through R2). Only then are the consents granted, the inputs and
+Submit validates in the spec's order: version, draft, the company's Госуслуги verification (403
+AUTHORITY_NOT_VERIFIED), current policy, one active application per company/product, R1 corrections (the company's
+current eligibility included; with the registry source unavailable an unknown fact waits for R4 instead), explicit
+current consents, R3 required answers (skipped for a known inactive company, which the check rejects through R2). The
+source-owned answers are written again from their sources first. Only then are the consents granted, the inputs and
 the decision facts (products.pin: the runtime product, `secured`, `required_documents`) pinned and DRAFT→CHECKING
 recorded before the check runs. Retry-check and respond-info decide under the pinned facts.
+
+No command takes a source-owned answer from the client (422 SOURCE_OWNED_FIELDS): answers PATCH and respond-info refuse
+the tax regime, the employee count and the representative's name and authority.
 """
 from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from .. import authority
 from ..clock import iso_utc
 from ..companies import CONSENT_VERSION, latest_precheck, public_row, recover_precheck
 from ..errors import ApiError
@@ -43,6 +48,14 @@ def require_draft(application: Application) -> None:
         raise ApiError(409, 'INVALID_STATUS', 'Анкету можно менять и отправлять только в черновике.')
 
 
+def refuse_source_owned(patch: dict) -> None:
+    """422 SOURCE_OWNED_FIELDS when a patch sets a source-owned answer, whatever its value (null included)."""
+    owned = [name for name in patch if name in stages.SOURCE_OWNED]
+    if owned:
+        raise ApiError(422, 'SOURCE_OWNED_FIELDS', stages.SOURCE_OWNED_MESSAGE,
+                       fields={name: stages.source_owned_message(name) for name in owned}, details={'fields': owned})
+
+
 def create_application(db: Session, company: Company, user_id: str, data: CreateInput, now: datetime) -> Application:
     """A DRAFT from an owned saved snapshot: the product must be one of the snapshot's (supported) items and the
     snapshot's catalog/rules versions must be current. can_apply is a UI gate; submission enforces R1-R4."""
@@ -57,8 +70,9 @@ def create_application(db: Session, company: Company, user_id: str, data: Create
     product = current_product(data.product_id)
     if product is None or not is_current(snapshot.catalog_version, snapshot.rules_version):
         raise stale()
+    answers = stages.prefill(snapshot.need, latest_precheck(db, company.id), product, authority.company_verification(db, company))
     application = Application(company_id=company.id, product_id=product['id'], recommendation_snapshot_id=snapshot.id,
-                              status='DRAFT', answers=stages.prefill(snapshot.need, latest_precheck(db, company.id), product),
+                              status='DRAFT', answers=answers,
                               current_stage=1, version=1, requested_amount_rub=snapshot.need['requested_amount_rub'],
                               indicative_limit_rub=item['indicative_limit_rub'], catalog_version=snapshot.catalog_version,
                               rules_version=snapshot.rules_version, created_at=now, updated_at=now)
@@ -69,10 +83,11 @@ def create_application(db: Session, company: Company, user_id: str, data: Create
 
 
 def save_answers(db: Session, application: Application, user_id: str, data: AnswersPatch, now: datetime) -> None:
-    """A partial save of whitelisted answers (deep-merged) and the stage pointer; a same-state edit."""
+    """A partial save of whitelisted client answers (deep-merged) and the stage pointer; a same-state edit."""
     require_version(application, data.version)
     require_draft(application)
     patch = data.answers.model_dump(mode='json', exclude_unset=True)
+    refuse_source_owned(patch)
     application.answers = stages.merge(application.answers, patch)
     application.current_stage = data.current_stage
     if 'requested_amount_rub' in patch:
@@ -103,19 +118,21 @@ def consents_given(consents: list[SubmissionConsent]) -> bool:
 def submit_application(db: Session, application: Application, company: Company, user_id: str, data: SubmitInput, now: datetime) -> None:
     require_version(application, data.version)
     require_draft(application)
+    verification = authority.require_company_verification(db, company)
     product = current_product(application.product_id)
     if product is None or not is_current(application.catalog_version, application.rules_version):
         raise stale()
     reject_duplicate_active(db, application, now)
-    answers = application.answers
     precheck = latest_precheck(db, company.id)
+    # The sources own these answers: the submission carries what the registry and the verification say now.
+    application.answers = answers = {**application.answers, **stages.source_answers(precheck, verification)}
     corrections = stages.corrections(answers, product, public_row(company),
                                      registry_unavailable=precheck.registry_source_status == 'unavailable')
     if corrections:
         raise ApiError(422, 'CORRECTION_REQUIRED', 'Измените параметры заявки под условия продукта.', fields=corrections)
     if not consents_given(data.consents):
         raise ApiError(422, 'NEED_INFO', 'Отметьте оба согласия текущей версии: на обработку данных заявки и на запрос в БКИ.',
-                       fields={'consents': 'Нужны согласия APPLICATION_PROCESSING и BKI версии demo-consent-v1'})
+                       fields={'consents': f'Нужны согласия APPLICATION_PROCESSING и BKI версии {CONSENT_VERSION}'})
     terms = terms_for(product, answers.get('collateral'))
     if company.registry_status != 'inactive':
         gaps = stages.missing(answers, product, terms.secured)
@@ -155,11 +172,11 @@ def retry_check(db: Session, application: Application, company: Company, user_id
     request = open_info_request(db, application.id)
     trusted_gap = application.status == 'NEED_INFO' and request is not None and request.kind == 'trusted_source'
     if application.status != 'WAIT_EXTERNAL' and not trusted_gap:
-        raise ApiError(409, 'INVALID_STATUS', 'Повторная проверка доступна, когда заявка ждёт демо-источник.')
+        raise ApiError(409, 'INVALID_STATUS', 'Повторная проверка доступна, когда заявка ждёт ответа источника.')
     if not has_bki_consent(db, application):
         raise ApiError(409, 'CONSENT_REQUIRED', 'По заявке нет сохранённого согласия на запрос в БКИ.')
     change = ApplicationChange(db, application, actor_id=user_id, now=now)
-    change.move('CHECKING', reason_code='RETRY_CHECK', reason_text='Повторная проверка демо-источников по запросу клиента.')
+    change.move('CHECKING', reason_code='RETRY_CHECK', reason_text='Повторная проверка источников по запросу клиента.')
     precheck = latest_precheck(db, company.id)
     if 'unavailable' in (precheck.registry_source_status, precheck.turnover_source_status):
         recover_precheck(db, company, now)
@@ -175,22 +192,23 @@ def cancel_application(db: Session, application: Application, user_id: str, data
 def respond_info(db: Session, application: Application, company: Company, user_id: str, data: RespondInput, now: datetime) -> None:
     """NEED_INFO with an open client_answers request (an officer's or the system's): the owner sets exactly the
     requested answer paths, never a need field (purpose, amount, term: fixed since submission, so the request is never
-    rewritten), validated like questionnaire saves and then against the R3 requirements of the pinned terms (a pinned
-    secured application keeps its pledge; an answer never makes an application secured). The request records the
-    response and is resolved, and `recheck_after_response` scores the revised answers under the pinned terms with the
-    stored source evidence (no BKI request) and returns the application to MANUAL_REVIEW with its assignee. The
-    submission snapshot and earlier evaluations are never changed."""
+    rewritten) nor a source-owned answer, validated like questionnaire saves and then against the R3 requirements of
+    the pinned terms (a pinned secured application keeps its pledge; an answer never makes an application secured). The
+    request records the response and is resolved, and `recheck_after_response` scores the revised answers under the
+    pinned terms with the stored source evidence (no BKI request) and returns the application to MANUAL_REVIEW with its
+    assignee. The submission snapshot and earlier evaluations are never changed."""
     require_version(application, data.version)
     request = open_info_request(db, application.id)
     if application.status != 'NEED_INFO' or request is None:
         raise ApiError(409, 'INVALID_STATUS', 'Ответить можно, когда по заявке запрошены сведения.')
     if request.kind == 'trusted_source':
-        raise ApiError(409, 'TRUSTED_SOURCE_REQUIRED', 'Эти сведения приходят только из демо-источника, анкета их не принимает. '
+        raise ApiError(409, 'TRUSTED_SOURCE_REQUIRED', 'Эти сведения приходят только из источника, анкета их не принимает. '
                                                        'Нажмите «Повторить проверку».')
     patch = data.answers.model_dump(mode='json', exclude_unset=True)
     locked = [name for name in patch if name in NEED_FIELDS]
     if locked:  # whatever the request's origin: a system request built from missing answers may name one
         raise ApiError(422, 'NEED_FIELDS_LOCKED', NEED_FIELDS_MESSAGE, fields={name: NEED_FIELDS_MESSAGE for name in locked})
+    refuse_source_owned(patch)
     paths = answered_paths(patch)
     extra = unrequested(request.requested_fields, paths)
     if extra:

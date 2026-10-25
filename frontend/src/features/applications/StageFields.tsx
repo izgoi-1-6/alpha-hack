@@ -4,6 +4,7 @@ import { keepAmountsTogether, rub } from "./format";
 import {
   CollateralDraft,
   FieldDraft,
+  formatAnswer,
   formatDay,
   isMoney,
   parseInteger,
@@ -421,8 +422,32 @@ function CollateralField({
   );
 }
 
+const SOURCE_NOTES: Record<string, string> = {
+  registry: "Из открытых источников: в анкете не меняется.",
+  gosuslugi: "Подтверждено через Госуслуги: в анкете не меняется.",
+};
+
+/** A source-owned answer (registry, Госуслуги): the source's value as text. It has no input, so it is never sent. */
+function ReadOnlyField({ field }: { field: FieldDescriptor }) {
+  const source = field.source;
+  const value =
+    formatAnswer(field, source?.value ?? null) ?? "Нет данных источника";
+  const note =
+    source?.status === "unavailable"
+      ? "Реестр временно недоступен: значение уточнится после повторной проверки."
+      : SOURCE_NOTES[source?.name ?? ""];
+  return (
+    <fieldset className="field read-only-field">
+      <legend>{field.label}</legend>
+      <p>{value}</p>
+      {note && <p className="field-note">{note}</p>}
+    </fieldset>
+  );
+}
+
 /** The widget for one server-declared field; the server owns which fields exist and what blocks submission. */
 export function StageField(props: FieldProps) {
+  if (props.field.read_only) return <ReadOnlyField field={props.field} />;
   switch (props.field.type) {
     case "boolean":
       return <BooleanField {...props} />;

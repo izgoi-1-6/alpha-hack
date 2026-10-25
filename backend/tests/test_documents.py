@@ -43,7 +43,8 @@ def test_a_preapproved_application_lists_its_required_documents(client):
     notice = body.pop('notice')
     assert body == {'requirements': [{'document_type': kind, 'required': True, 'current_document': None} for kind in UNSECURED_DOCS],
                     'items': []}
-    assert notice.startswith('Демонстрационная проверка документов') and 'не антивирусная' in notice
+    # An honest scope note without demo wording (revision rule 7): no antivirus or authenticity claim.
+    assert notice.startswith('Проверка документов') and 'не антивирусная' in notice and 'не проверка подлинности' in notice
     assert application['document_summary'] == summary()
     assert application['allowed_actions'] == ['upload_document', 'cancel']
 

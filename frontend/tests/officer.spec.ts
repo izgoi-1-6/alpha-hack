@@ -174,9 +174,10 @@ test("A06 medium review: claim → information request → the client answers on
   const requestable = (await staffDetail(second, id)).requestable_fields as string[];
   await expect(secondDecision.locator(".request-fields .check-row")).toHaveCount(requestable.length);
   await expect(secondDecision.getByLabel("Подтверждаю, что сведения анкеты верны")).toBeVisible();
-  await expect(
-    secondDecision.getByLabel("Подтверждаю полномочия представителя (демо, без проверки документов)"),
-  ).toBeVisible();
+  // Source-owned answers (registry, Госуслуги) are never requested from the client.
+  for (const label of ["Налоговый режим", "Число сотрудников", "ФИО представителя (синтетические данные)"])
+    await expect(secondDecision.getByLabel(label, { exact: true })).toHaveCount(0);
+  await expect(secondDecision.getByLabel(/Подтверждаю полномочия представителя/)).toHaveCount(0);
   await expect(secondDecision.getByText(/Залог/)).toHaveCount(0);
   await secondDecision
     .getByLabel("Ежемесячные платежи по действующим кредитам и лизингу, ₽")

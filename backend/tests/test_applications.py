@@ -24,9 +24,9 @@ from test_identity_company import ORIGIN, PASSWORD, add, client, register
 import catalog_oracle
 
 pytestmark = pytest.mark.usefixtures('clock')
-MISSING_IN_NEW_DRAFT = ['company_confirmed', 'actual_address', 'actual_activity', 'tax_regime', 'employees',
-                        'monthly_debt_payment_rub', 'tax_debt_rub', 'legal_proceedings', 'representative_name',
-                        'representative_authority_confirmed', 'beneficial_owners_confirmed', 'accuracy_confirmed']
+# The tax regime, the employee count and the representative are source-owned: prefilled, never missing client input.
+MISSING_IN_NEW_DRAFT = ['company_confirmed', 'actual_address', 'actual_activity', 'monthly_debt_payment_rub', 'tax_debt_rub',
+                        'legal_proceedings', 'beneficial_owners_confirmed', 'accuracy_confirmed']
 PUBLIC_EVALUATION = {'id', 'rule', 'outcome', 'score', 'risk', 'scored_limit_rub', 'reasons', 'created_at'}
 
 
@@ -60,6 +60,9 @@ def test_draft_is_created_from_an_owned_snapshot_with_server_prefill(client, bki
     # Stage 3 comes from the persisted turnover source; the debt payment is a client declaration, never prefilled.
     assert (answers['monthly_revenue_rub'], answers['previous_monthly_revenue_rub'], answers['financial_period_end']) == (800_000, 680_000, '2026-09-30')
     assert answers['monthly_debt_payment_rub'] is None and answers['tax_debt_rub'] is None
+    # Source-owned answers: the registry payload's tax regime and staff, the Госуслуги verification's representative.
+    assert (answers['tax_regime'], answers['employees']) == (FIXTURES['strong']['tax_regime'], FIXTURES['strong']['employees'])
+    assert (answers['representative_name'], answers['representative_authority_confirmed']) == (FIXTURES['strong']['director_name'], True)
     assert all(answers[key] is None for key in MISSING_IN_NEW_DRAFT)
     assert application['requested_amount_rub'] == 2_000_000 and application['indicative_limit_rub'] == 2_400_000
     for key in ('scored_limit_rub', 'preapproved_amount_rub', 'final_amount_rub', 'submitted_at', 'preapproved_at', 'preapproval_expires_at'):
@@ -176,7 +179,8 @@ def test_dialog_declares_the_six_saved_stages(client):
     # The term loan takes no collateral, so its stage 2 hides the pledge (the answer key stays, empty).
     assert [[field['name'] for field in stage['fields']] for stage in stages] == \
            [[name for name in stage if name != 'collateral'] for stage in STAGE_FIELDS]
-    assert [stage['complete'] for stage in stages] == [False, True, False, False, False, False]
+    # Stage 3 is complete from its sources (turnover, registry); stage 5 still needs the owners' confirmation.
+    assert [stage['complete'] for stage in stages] == [False, True, True, False, False, False]
     assert dialog['answers'] == application['answers'] and dialog['missing_fields'] == MISSING_IN_NEW_DRAFT
     assert all(field['label'] and field['type'] and isinstance(field['required'], bool) for stage in stages for field in stage['fields'])
     parameters = {field['name']: field for field in stages[1]['fields']}

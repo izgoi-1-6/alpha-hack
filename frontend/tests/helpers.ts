@@ -27,13 +27,24 @@ export async function registerClient(page: Page, prefix = "client") {
   return email;
 }
 
-/** Adds a demo fixture company with every onboarding consent and waits for its source results. */
+/** Confirms the representative's authority for the chosen ИНН through the mock Госуслуги check. */
+export async function confirmAuthority(page: Page) {
+  await page
+    .getByRole("button", { name: "Подтвердить через Госуслуги" })
+    .click();
+  await expect(page.getByRole("status")).toContainText(
+    "Полномочия подтверждены через Госуслуги",
+  );
+}
+
+/** Adds a fixture company through the Госуслуги check with every onboarding consent and waits for its source results. */
 export async function onboard(page: Page, fixtureText: string) {
   await page
     .locator(".sidebar")
     .getByRole("button", { name: "Добавить компанию" })
     .click();
   await page.getByRole("button").filter({ hasText: fixtureText }).click();
+  await confirmAuthority(page);
   for (const checkbox of await page.getByRole("checkbox").all())
     await checkbox.check();
   await page.getByRole("button", { name: "Добавить и проверить" }).click();
@@ -79,7 +90,7 @@ export const saveAndContinue = (page: Page) =>
   page.getByRole("button", { name: "Сохранить и продолжить" }).click();
 
 export async function fillCompanyStage(page: Page) {
-  await page.getByLabel("Сведения о компании из демо-реестра верны").check();
+  await page.getByLabel("Сведения о компании из реестра верны").check();
   await page
     .getByLabel("Фактический адрес")
     .fill("Демо-город, ул. Синтетическая, 1");
@@ -109,12 +120,14 @@ export async function fillParametersStage(
   await page.getByLabel("Срок, мес.").fill(term);
 }
 
+/** The tax regime and the employee count are source-owned: shown read-only from the open sources, never typed. */
 export async function fillFinanceStage(page: Page) {
-  await page
-    .getByRole("group", { name: "Налоговый режим" })
-    .getByLabel("УСН")
-    .check();
-  await page.getByLabel("Число сотрудников").fill("7");
+  for (const name of ["Налоговый режим", "Число сотрудников"]) {
+    const field = page.getByRole("group", { name, exact: true });
+    await expect(field).toContainText("Из открытых источников");
+    await expect(field.getByRole("radio")).toHaveCount(0);
+    await expect(field.getByRole("textbox")).toHaveCount(0);
+  }
   await page
     .getByRole("group", { name: "Выручка зависит от сезона" })
     .getByLabel("Нет")
@@ -132,11 +145,16 @@ export async function fillObligationsStage(page: Page, debt = "160000") {
     .check();
 }
 
+/** The representative's name and authority come from the Госуслуги check (read-only); the owners stay the client's. */
 export async function fillRepresentativeStage(page: Page) {
-  await page
-    .getByLabel("ФИО представителя (синтетические данные)")
-    .fill("Демо Представитель");
-  await page.getByLabel("Подтверждаю полномочия представителя").check();
+  for (const name of [
+    "ФИО представителя",
+    "Полномочия представителя подтверждены через Госуслуги",
+  ])
+    await expect(
+      page.getByRole("group", { name, exact: true }),
+    ).toContainText("Подтверждено через Госуслуги");
+  await expect(page.getByRole("textbox")).toHaveCount(0);
   await page.getByLabel("Сведения о владельцах указаны верно").check();
 }
 

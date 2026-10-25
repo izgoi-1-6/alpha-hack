@@ -17,6 +17,8 @@ export type Company = {
   msp_registry: boolean | null;
   legal_address: string | null;
   fixture_id: string | null;
+  /** The Госуслуги verification the company was added with (null only for companies added before the check). */
+  authority_verification_id: string | null;
   version: number;
   created_at: string;
   updated_at: string;
@@ -43,6 +45,15 @@ export type Fixture = {
   turnover_source_status: string;
 };
 export type ConsentDocument = { code: string; version: string; text: string };
+/** A mock Госуслуги confirmation of the session user for an ИНН: it adds that company once within 30 minutes. */
+export type AuthorityVerification = {
+  verification_id: string;
+  inn: string;
+  person_name: string;
+  role: string;
+  verified_at: string;
+  expires_at: string;
+};
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -134,7 +145,17 @@ export const api = {
       "/consents/documents?stage=onboarding",
       { signal },
     ),
-  onboard: (inn: string, consents: ConsentDocument[]) =>
+  verifyAuthority: (inn: string, key: string) =>
+    request<AuthorityVerification>("/identity/gosuslugi/verify", {
+      method: "POST",
+      body: { inn },
+      idempotencyKey: key,
+    }),
+  onboard: (
+    inn: string,
+    consents: ConsentDocument[],
+    authorityVerificationId: string,
+  ) =>
     request<CompanyResult>("/companies", {
       method: "POST",
       body: {
@@ -144,6 +165,7 @@ export const api = {
           version,
           accepted: true,
         })),
+        authority_verification_id: authorityVerificationId,
       },
     }),
   retry: (id: string, version: number, key: string) =>
@@ -442,10 +464,12 @@ export type FieldDescriptor = {
   statuses?: FieldOption[];
   types?: FieldOption[];
   description_max_length?: number;
+  /** Source-owned (registry, Госуслуги): shown from its source, never edited or sent. */
+  read_only?: boolean;
   source?: {
-    name: "turnover";
+    name: "turnover" | "registry" | "gosuslugi";
     status: "available" | "missing" | "unavailable";
-    value: number | string | null;
+    value: number | string | boolean | null;
   };
   origin?: "source" | "override" | "declared" | null;
 };

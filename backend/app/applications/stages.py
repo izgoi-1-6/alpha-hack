@@ -7,6 +7,11 @@ InfoRequest.requested_fields and error `fields` are those names (`collateral.<ke
 Stage 2 follows the chosen runtime product: its purposes (a single one preselected), its amount bounds, its term range
 limited per purpose (no term field for a product without a term) and its collateral mode (the pledge is required,
 optional or not asked). R3 asks for the pledge details whenever the application is secured.
+
+Source-owned answers (SOURCE_OWNED) are the server's, never the client's: the tax regime and the employee count come from
+the latest precheck's registry payload (the mock open sources), the representative's name and authority from the
+company's Госуслуги verification. They are prefilled, described `read_only` with their source, written again from the
+sources at submission, and never asked by R3 (with an unavailable registry the check waits for it: R4).
 """
 from ..recommendations import catalog
 from ..recommendations.service import eligibility_checks, rub
@@ -39,7 +44,7 @@ def text(name: str, label: str, max_length: int, *, required: bool = True) -> di
 
 STAGES = (
     (1, 'Компания', (
-        boolean('company_confirmed', 'Сведения о компании из демо-реестра верны', must_be_true=True),
+        boolean('company_confirmed', 'Сведения о компании из реестра верны', must_be_true=True),
         text('actual_address', 'Фактический адрес', 300),
         text('actual_activity', 'Фактическая деятельность', 300),
     )),
@@ -66,9 +71,9 @@ STAGES = (
         text('obligations_note', 'Комментарий к обязательствам', 1000, required=False),
     )),
     (5, 'Руководитель и владельцы', (
-        text('representative_name', 'ФИО представителя (синтетические данные)', 100),
-        boolean('representative_authority_confirmed', 'Подтверждаю полномочия представителя (демо, без проверки документов)', must_be_true=True),
-        boolean('beneficial_owners_confirmed', 'Сведения о владельцах указаны верно (демо, это не согласие поручителя)', must_be_true=True),
+        text('representative_name', 'ФИО представителя', 100),
+        boolean('representative_authority_confirmed', 'Полномочия представителя подтверждены через Госуслуги', must_be_true=True),
+        boolean('beneficial_owners_confirmed', 'Сведения о владельцах указаны верно (это не согласие поручителя)', must_be_true=True),
     )),
     (6, 'Проверка и согласия', (
         boolean('accuracy_confirmed', 'Подтверждаю, что сведения анкеты верны', must_be_true=True),
@@ -77,6 +82,34 @@ STAGES = (
 ANSWER_FIELDS = tuple(field['name'] for _, _, fields in STAGES for field in fields)
 STAGE_OF = {field['name']: number for number, _, fields in STAGES for field in fields}
 FINANCE_FIELDS = ('monthly_revenue_rub', 'previous_monthly_revenue_rub', 'financial_period_end')
+REGISTRY_FIELDS = ('tax_regime', 'employees')
+AUTHORITY_FIELDS = ('representative_name', 'representative_authority_confirmed')
+SOURCE_OWNED = REGISTRY_FIELDS + AUTHORITY_FIELDS
+SOURCE_OWNED_MESSAGE = ('Налоговый режим и число сотрудников приходят из открытых источников, сведения о представителе — '
+                        'из подтверждения через Госуслуги: в анкете их не меняют и у клиента не запрашивают.')
+
+
+def source_owned_message(name: str) -> str:
+    return ('Значение приходит из открытых источников и в анкете не меняется.' if name in REGISTRY_FIELDS else
+            'Значение приходит из подтверждения через Госуслуги и в анкете не меняется.')
+
+
+def owned_sources(precheck, verification) -> dict:
+    """Each source-owned answer's source: the registry payload of the latest precheck (its status as recorded) and the
+    company's Госуслуги verification (`missing` for a company added before the check existed)."""
+    registry = precheck.registry_payload or {}
+    status = 'available' if verification is not None else 'missing'
+    return {**{name: {'name': 'registry', 'status': precheck.registry_source_status, 'value': registry.get(name)}
+               for name in REGISTRY_FIELDS},
+            'representative_name': {'name': 'gosuslugi', 'status': status,
+                                    'value': verification.person_name if verification is not None else None},
+            'representative_authority_confirmed': {'name': 'gosuslugi', 'status': status,
+                                                   'value': True if verification is not None else None}}
+
+
+def source_answers(precheck, verification) -> dict:
+    """The source-owned answers as the sources give them now."""
+    return {name: entry['value'] for name, entry in owned_sources(precheck, verification).items()}
 
 
 def source_finance(precheck) -> dict:
@@ -95,14 +128,16 @@ def term_bounds(product: dict, purpose) -> tuple[int, int]:
     return product['term_min_months'], product['term_max_months_by_purpose'].get(purpose, product['term_max_months'])
 
 
-def prefill(need: dict, precheck, product: dict) -> dict:
+def prefill(need: dict, precheck, product: dict, verification) -> dict:
     """Initial draft answers: stage 2's amount from the saved need (the need is the amount alone), the product's purpose
-    when it has only one (term and collateral start empty), stage 3 finances from the persisted source; the rest empty."""
+    when it has only one (term and collateral start empty), stage 3 finances from the persisted source, the
+    source-owned answers from their sources; the rest empty."""
     answers = dict.fromkeys(ANSWER_FIELDS)
     answers['requested_amount_rub'] = need['requested_amount_rub']
     if len(product['purposes']) == 1:
         answers['purpose'] = product['purposes'][0]
     answers.update(source_finance(precheck))
+    answers.update(source_answers(precheck, verification))
     return answers
 
 
@@ -154,11 +189,14 @@ def collateral_gaps(collateral) -> dict:
 def missing(answers: dict, product: dict, secured: bool) -> dict:
     """R3: answers required at submit that are absent, or confirmations not given, in stage order. A product without a
     term asks none; the pledge and its details are asked when the application is secured (`secured`: derived from the
-    answers before submission, pinned after it)."""
+    answers before submission, pinned after it). Source-owned answers are never client gaps: the client cannot give
+    them (submission re-checks the verification; an unavailable registry is R4)."""
     gaps = {}
     for _, _, fields in STAGES:
         for field in fields:
             name, value = field['name'], answers.get(field['name'])
+            if name in SOURCE_OWNED:
+                continue
             if name == 'collateral':
                 if secured:
                     gaps.update(collateral_gaps(value))
@@ -210,8 +248,9 @@ def issues(answers: dict, product: dict, company: dict, secured: bool, *, regist
     return dict(sorted(found.items(), key=lambda item: order.get(item[0].split('.')[0], -1)))
 
 
-def describe(field: dict, product: dict, evidence: dict, answers: dict) -> dict | None:
-    """A field descriptor for the dialog, or None for a stage-2 field the product does not ask."""
+def describe(field: dict, product: dict, evidence: dict, answers: dict, owned: dict) -> dict | None:
+    """A field descriptor for the dialog, or None for a stage-2 field the product does not ask. A source-owned field is
+    `read_only` with its source (name, status, value)."""
     described = dict(field)
     name = field['name']
     if name == 'purpose':
@@ -231,13 +270,17 @@ def describe(field: dict, product: dict, evidence: dict, answers: dict) -> dict 
         entry = evidence[name]
         described['source'] = {'name': 'turnover', 'status': entry['source_status'], 'value': entry['source']}
         described['origin'] = entry['origin']
+    if name in owned:
+        described.update(read_only=True, source=owned[name])
     return described
 
 
-def stage_contract(answers: dict, product: dict, precheck, blocking: dict) -> list[dict]:
+def stage_contract(answers: dict, product: dict, precheck, verification, blocking: dict) -> list[dict]:
     """Stage descriptors for the dialog; a stage is complete when none of its fields blocks submission."""
     evidence = finance_evidence(answers, precheck)
+    owned = owned_sources(precheck, verification)
     blocked = {STAGE_OF.get(path.split('.')[0]) for path in blocking}
     return [{'number': number, 'title': title,
-             'fields': [entry for entry in (describe(field, product, evidence, answers) for field in fields) if entry is not None],
+             'fields': [entry for entry in (describe(field, product, evidence, answers, owned) for field in fields)
+                        if entry is not None],
              'complete': number not in blocked} for number, title, fields in STAGES]

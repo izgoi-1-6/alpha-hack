@@ -17,6 +17,7 @@ from ..applications.info_requests import NEED_FIELDS, NEED_FIELDS_MESSAGE, creat
 from ..applications.lifecycle import EXPIRING, PREAPPROVAL_TTL, ApplicationChange, expire_if_due, preapproval_notice
 from ..applications.models import Application, OfficerDecision
 from ..applications.products import pinned_terms
+from ..applications.stages import SOURCE_OWNED, SOURCE_OWNED_MESSAGE
 from ..applications.service import require_version
 from ..applications.views import latest_evaluation
 from ..documents import service as documents
@@ -97,9 +98,10 @@ def require_review(application: Application, message: str) -> None:
 
 def request_info(db: Session, application: Application, officer: User, data: RequestInfoInput, now: datetime) -> None:
     """MANUAL_REVIEW → NEED_INFO: an officer client_answers request (the reason is its question), its decision row.
-    The need fields are never requested (422 NEED_FIELDS_LOCKED), nor a pledge path of an application pinned unsecured
-    (422 FIELD_NOT_REQUESTABLE: no pledge is scored or documented for it, as `requestable_fields` shows), and an
-    application with an open request gets no second one (409 INFO_REQUEST_OPEN)."""
+    The need fields are never requested (422 NEED_FIELDS_LOCKED), nor a source-owned answer (422 FIELD_NOT_REQUESTABLE:
+    the registry and the Госуслуги verification own them) or a pledge path of an application pinned unsecured (422
+    FIELD_NOT_REQUESTABLE: no pledge is scored or documented for it), as `requestable_fields` shows; an application with
+    an open request gets no second one (409 INFO_REQUEST_OPEN)."""
     require_assignee(application, officer)
     require_version(application, data.version)
     require_review(application, 'Запросить сведения можно у заявки на рассмотрении.')
@@ -107,6 +109,10 @@ def request_info(db: Session, application: Application, officer: User, data: Req
     if locked:
         raise ApiError(422, 'NEED_FIELDS_LOCKED', NEED_FIELDS_MESSAGE, fields={'requested_fields': NEED_FIELDS_MESSAGE},
                        details={'fields': locked})
+    owned = [path for path in data.requested_fields if path in SOURCE_OWNED]
+    if owned:
+        raise ApiError(422, 'FIELD_NOT_REQUESTABLE', SOURCE_OWNED_MESSAGE, fields={'requested_fields': SOURCE_OWNED_MESSAGE},
+                       details={'fields': owned})
     pledge = [path for path in data.requested_fields if path.split('.')[0] == 'collateral']
     if pledge and not pinned_terms(application).secured:
         raise ApiError(422, 'FIELD_NOT_REQUESTABLE', UNSECURED_MESSAGE, fields={'requested_fields': UNSECURED_MESSAGE},
@@ -188,8 +194,8 @@ def review_document(db: Session, application: Application, officer: User, docume
 
 
 def approve(db: Session, application: Application, officer: User, data: ApproveInput, now: datetime) -> None:
-    """DOCS_UPLOADED → APPROVED (final, a demo decision: no money moves) at an amount within the final terms, which
-    read only persisted evidence (policy.final_terms)."""
+    """DOCS_UPLOADED → APPROVED (final; no money moves and nothing is signed) at an amount within the final terms,
+    which read only persisted evidence (policy.final_terms)."""
     require_assignee(application, officer)
     require_version(application, data.version)
     if application.status != 'DOCS_UPLOADED':
@@ -208,5 +214,4 @@ def approve(db: Session, application: Application, officer: User, data: ApproveI
                     amount_rub=data.amount_rub)
     ApplicationChange(db, application, actor_id=officer.id, now=now).move(
         'APPROVED', reason_code='FINAL_APPROVED', reason_text=data.reason,
-        notification=f'Заявка одобрена на {rub(data.amount_rub)} (демонстрационное решение). Деньги не перечисляются, '
-                     'договор не подписывается.')
+        notification=f'Заявка одобрена на {rub(data.amount_rub)}. Деньги не перечисляются, договор не подписывается.')

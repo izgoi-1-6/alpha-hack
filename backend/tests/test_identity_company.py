@@ -8,7 +8,8 @@ from app.main import app
 
 ORIGIN = 'http://localhost:5173'
 PASSWORD = 'DemoCredit2026!'
-CONSENTS = [{'code': c, 'version': 'demo-consent-v1', 'accepted': True}
+CONSENT_VERSION = 'demo-consent-v2'
+CONSENTS = [{'code': c, 'version': CONSENT_VERSION, 'accepted': True}
             for c in ('ONBOARDING_PROCESSING', 'REGISTRY_LOOKUP')]
 
 @pytest.fixture
@@ -46,8 +47,22 @@ def client():
 def register(c, email='new@example.test', **extra):
     return c.post('/api/v1/auth/register', json={'email': email, 'password': PASSWORD, 'display_name': 'Новый клиент', **extra})
 
+def verify(c, inn='9900000017', *, key=None):
+    """The mock Госуслуги authority check of the session user for the ИНН."""
+    return c.post('/api/v1/identity/gosuslugi/verify', json={'inn': inn}, headers={'Idempotency-Key': key or uuid4().hex})
+
+def create_company(c, inn, verification_id, consents=None):
+    """POST /companies with the given verification id (None: the field is left out)."""
+    body = {'inn': inn, 'consents': CONSENTS if consents is None else consents}
+    if verification_id is not None:
+        body['authority_verification_id'] = verification_id
+    return c.post('/api/v1/companies', json=body)
+
 def add(c, inn='9900000017', consents=None):
-    return c.post('/api/v1/companies', json={'inn': inn, 'consents': CONSENTS if consents is None else consents})
+    """Onboarding as the UI does it: the Госуслуги check for the ИНН, then the company with that verification (a
+    refused check leaves the field out, so the company request reports its own validation or registry error)."""
+    verified = verify(c, inn)
+    return create_company(c, inn, verified.json()['verification_id'] if verified.status_code == 201 else None, consents)
 
 def test_registration_cookie_and_refresh_persistence(client):
     r = register(client, '  New@Example.test  ')
@@ -203,7 +218,7 @@ def test_consent_documents_are_versioned(client):
     r=client.get('/api/v1/consents/documents?stage=onboarding')
     assert r.status_code == 200
     assert {x['code'] for x in r.json()['items']} == {'ONBOARDING_PROCESSING','REGISTRY_LOOKUP'}
-    assert all(x['version']=='demo-consent-v1' and x['text'] for x in r.json()['items'])
+    assert all(x['version']==CONSENT_VERSION and x['text'] for x in r.json()['items'])
     assert client.get('/api/v1/consents/documents?stage=invalid').status_code == 422
 
 def test_consent_cannot_be_numeric_true(client):

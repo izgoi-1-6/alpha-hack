@@ -8,7 +8,7 @@ from .service import current_documents, required_types
 
 PUBLIC_FIELDS = ('id', 'application_id', 'document_type', 'revision', 'original_name', 'media_type', 'size_bytes', 'sha256',
                  'status', 'review_reason', 'verified_value_rub', 'created_at', 'reviewed_at')
-REVIEW_NOTICE = ('Демонстрационная проверка документов: тип и структура файла проверяются автоматически, содержание — '
+REVIEW_NOTICE = ('Проверка документов: тип и структура файла проверяются автоматически, содержание — '
                  'кредитным специалистом. Это не антивирусная проверка и не проверка подлинности.')
 # RFC 5987 attr-char: sent as is in filename*; everything else is percent-encoded UTF-8.
 ATTR_CHARS = frozenset(string.ascii_letters + string.digits + "!#$&+-.^_`|~")

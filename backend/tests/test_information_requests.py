@@ -69,7 +69,7 @@ def test_request_info_records_an_officer_request_a_decision_and_need_info(client
 @pytest.mark.parametrize('fields', [
     [], ['credit_history'], ['current_overdue_days'], ['inn'], ['company'], ['registry_status'], ['consents'], ['BKI'],
     ['score'], ['status'], ['product_id'], ['collateral.guarantor_consent'], ['collateral.'], ['unknown'],
-    ['employees', 'employees'], [3],
+    ['seasonal', 'seasonal'], [3],
 ])
 def test_requested_fields_must_be_questionnaire_answer_paths(client, officer, fields):
     application = claimed(officer, submitted(client, 'medium'))
@@ -80,7 +80,7 @@ def test_requested_fields_must_be_questionnaire_answer_paths(client, officer, fi
 
 
 @pytest.mark.parametrize('fixture_id,fields', [
-    ('medium', ['seasonal']), ('medium', ['accuracy_confirmed', 'employees']),
+    ('medium', ['seasonal']), ('medium', ['accuracy_confirmed', 'actual_activity']),
     ('secured_investment', ['collateral']), ('secured_investment', ['collateral.declared_value_rub']),
 ])
 def test_questionnaire_answers_outside_the_need_can_be_requested(client, officer, fixture_id, fields):
@@ -91,7 +91,7 @@ def test_questionnaire_answers_outside_the_need_can_be_requested(client, officer
 
 
 @pytest.mark.parametrize('product', [LINE, 'alfa_universal_limit'])  # collateral mode none; optional, no pledge declared
-@pytest.mark.parametrize('fields', [['collateral'], ['collateral.declared_value_rub'], ['employees', 'collateral.owner_confirmed']])
+@pytest.mark.parametrize('fields', [['collateral'], ['collateral.declared_value_rub'], ['seasonal', 'collateral.owner_confirmed']])
 def test_pledge_paths_cannot_be_requested_for_an_application_pinned_unsecured(client, officer, product, fields):
     """The server agrees with the officer's `requestable_fields`: an application pinned unsecured has no pledge to ask
     about (an answer would never be scored or documented)."""
@@ -127,18 +127,18 @@ def test_request_info_is_refused_while_another_request_is_open(client, officer):
     with client.app.state.test_factory.begin() as db:  # a request left open in review (no 4a path leaves one)
         db.add(InfoRequest(application_id=application['id'], kind='trusted_source', source='bki', requested_fields=[],
                            question='Открытый запрос', created_at=FIXED_NOW))
-    refused(request_info(officer, application, ['employees']), 409, 'INFO_REQUEST_OPEN')
+    refused(request_info(officer, application, ['seasonal']), 409, 'INFO_REQUEST_OPEN')
     assert len(rows(client, 'InfoRequest', application_id=application['id'])) == 1 and decisions(client, application) == []
     assert read(client, application)['status'] == 'MANUAL_REVIEW'
 
 
 def test_a_replayed_request_info_records_one_request_and_one_decision(client, officer):
     application = claimed(officer, submitted(client, 'medium'))
-    first = request_info(officer, application, ['employees'], key='ask-once')
-    again = request_info(officer, application, ['employees'], key='ask-once')
+    first = request_info(officer, application, ['actual_activity'], key='ask-once')
+    again = request_info(officer, application, ['actual_activity'], key='ask-once')
     assert first.status_code == again.status_code == 200 and again.json() == first.json()
     refused(request_info(officer, application, ['seasonal'], key='ask-once'), 409, 'IDEMPOTENCY_CONFLICT')
-    refused(request_info(officer, application, ['employees'], key='ask-twice'), 409, 'VERSION_CONFLICT')
+    refused(request_info(officer, application, ['actual_activity'], key='ask-twice'), 409, 'VERSION_CONFLICT')
     assert len(rows(client, 'InfoRequest', application_id=application['id'])) == 1
     assert [row.action for row in decisions(client, application)] == ['request_info']
     assert [row.to_status for row in history_rows(client, application)].count('NEED_INFO') == 1
@@ -256,7 +256,7 @@ def test_collateral_details_are_answered_by_their_own_paths(client, officer):
 
 
 @pytest.mark.parametrize('answers,response,status,code,fields', [
-    ({'monthly_debt_payment_rub': 240_000, 'employees': 3}, 'Ответ', 422, 'ANSWER_NOT_REQUESTED', {'employees'}),
+    ({'monthly_debt_payment_rub': 240_000, 'seasonal': True}, 'Ответ', 422, 'ANSWER_NOT_REQUESTED', {'seasonal'}),
     ({}, 'Ответ', 422, 'NEED_INFO', {'monthly_debt_payment_rub'}),
     ({'monthly_debt_payment_rub': None}, 'Ответ', 422, 'NEED_INFO', {'monthly_debt_payment_rub'}),
     ({'monthly_debt_payment_rub': -1}, 'Ответ', 422, 'VALIDATION_ERROR', None),
@@ -284,10 +284,10 @@ def test_a_response_cannot_drop_the_pledge_a_secured_product_requires(client, of
 
 
 def test_a_response_never_rewrites_the_requested_amount(client, officer):
-    application = asked(client, officer, 'medium', ['employees'], requested_amount_rub=700_000)
-    error = refused(respond(client, application, {'employees': 5, 'requested_amount_rub': 450_000}), 422, 'NEED_FIELDS_LOCKED')
+    application = asked(client, officer, 'medium', ['seasonal'], requested_amount_rub=700_000)
+    error = refused(respond(client, application, {'seasonal': True, 'requested_amount_rub': 450_000}), 422, 'NEED_FIELDS_LOCKED')
     assert set(error['fields']) == {'requested_amount_rub'}
-    answered = ok(respond(client, application, {'employees': 5}))
+    answered = ok(respond(client, application, {'seasonal': True}))
     assert (answered['requested_amount_rub'], answered['answers']['requested_amount_rub']) == (700_000, 700_000)
     assert answered['latest_evaluation']['rule'] == 'R11'  # still compared with the original 700,000 (limit 600,000)
     (_, latest) = evaluations(client, application)
@@ -335,7 +335,7 @@ def test_a_trusted_source_request_cannot_be_answered_by_the_client(client, offic
     application = submitted(client, 'bki_missing')
     assert application['open_info_request']['kind'] == 'trusted_source'
     assert application['allowed_actions'] == ['retry_check', 'cancel']  # never respond_info
-    for answers in ({}, {'employees': 3}):
+    for answers in ({}, {'seasonal': True}):
         refused(respond(client, application, answers), 409, 'TRUSTED_SOURCE_REQUIRED')
     refused(respond(client, application, {'credit_history': 'clean'}), 422, 'VALIDATION_ERROR')  # never accepts BKI fields
     assert read(client, application) == application and len(evaluations(client, application)) == 1
@@ -345,14 +345,14 @@ def test_a_trusted_source_request_cannot_be_answered_by_the_client(client, offic
 
 def test_respond_info_needs_an_open_client_answers_request_and_the_current_version(client, officer):
     review = submitted(client, 'medium')
-    refused(respond(client, review, {'employees': 3}), 409, 'INVALID_STATUS')
+    refused(respond(client, review, {'seasonal': True}), 409, 'INVALID_STATUS')
     waiting = submitted(client, 'bki_unavailable')
-    refused(respond(client, waiting, {'employees': 3}), 409, 'INVALID_STATUS')
-    application = ok(request_info(officer, claimed(officer, review), ['employees']))
-    refused(respond(client, application, {'employees': 3}, version=review['version']), 409, 'VERSION_CONFLICT')
+    refused(respond(client, waiting, {'seasonal': True}), 409, 'INVALID_STATUS')
+    application = ok(request_info(officer, claimed(officer, review), ['seasonal']))
+    refused(respond(client, application, {'seasonal': True}, version=review['version']), 409, 'VERSION_CONFLICT')
     client.post('/api/v1/auth/logout', json={})
     register(client, 'other@example.test')
-    refused(respond(client, application, {'employees': 3}), 404, 'APPLICATION_NOT_FOUND')
+    refused(respond(client, application, {'seasonal': True}), 404, 'APPLICATION_NOT_FOUND')
     refused(client.get(f"/api/v1/applications/{application['id']}/history"), 404, 'APPLICATION_NOT_FOUND')
 
 
@@ -360,9 +360,8 @@ def test_a_response_to_a_system_request_is_queued_unassigned(client, officer, bk
     """The defensive client-answers gap of an internal check (Task 4a) closes through respond-info."""
     application = internal_gap(client, draft(client, 'missing_turnover'))
     assert application['status'] == 'NEED_INFO' and application['allowed_actions'] == ['respond_info', 'cancel']
-    answers = {'company_confirmed': True, 'actual_address': 'Демо-адрес', 'actual_activity': 'Торговля', 'tax_regime': 'USN',
-               'employees': 3, 'monthly_debt_payment_rub': 160_000, 'tax_debt_rub': 0, 'legal_proceedings': False,
-               'representative_name': 'Демо Представитель', 'representative_authority_confirmed': True,
+    answers = {'company_confirmed': True, 'actual_address': 'Синтетический адрес', 'actual_activity': 'Торговля',
+               'monthly_debt_payment_rub': 160_000, 'tax_debt_rub': 0, 'legal_proceedings': False,
                'beneficial_owners_confirmed': True, 'accuracy_confirmed': True,
                'monthly_revenue_rub': 800_000, 'previous_monthly_revenue_rub': 680_000}
     answers = {name: value for name, value in answers.items() if name in application['missing_fields']}
@@ -381,7 +380,7 @@ def test_a_response_to_a_system_request_is_queued_unassigned(client, officer, bk
 
 
 def test_open_requests_on_terminal_applications_stay_as_unresolved_audit_rows(client, officer):
-    application = asked(client, officer, 'medium', ['employees'])
+    application = asked(client, officer, 'medium', ['seasonal'])
     cancelled = ok(cancel(client, application))
     assert cancelled['status'] == 'CANCELLED' and cancelled['open_info_request'] is None and cancelled['allowed_actions'] == []
     (request,) = rows(client, 'InfoRequest', application_id=application['id'])
@@ -390,12 +389,12 @@ def test_open_requests_on_terminal_applications_stay_as_unresolved_audit_rows(cl
     assert body['application']['open_info_request'] is None and body['application']['allowed_actions'] == []
     (shown,) = body['info_requests']
     assert (shown['open'], shown['resolved_at'], shown['response']) == (False, None, None)
-    refused(respond(client, cancelled, {'employees': 3}), 409, 'INVALID_STATUS')
+    refused(respond(client, cancelled, {'seasonal': True}), 409, 'INVALID_STATUS')
 
 
 def test_another_officer_sees_the_request_but_cannot_decide(client, officer, second_officer):
-    application = asked(client, officer, 'medium', ['employees'])
-    answered = ok(respond(client, application, {'employees': 5}))
+    application = asked(client, officer, 'medium', ['seasonal'])
+    answered = ok(respond(client, application, {'seasonal': True}))
     body = detail(second_officer, answered)
     assert body['application']['allowed_actions'] == [] and body['application']['assignee']['id'] == officer.user['id']
     refused(preapprove(second_officer, answered, 300_000), 409, 'ASSIGNMENT_REQUIRED')
@@ -413,14 +412,14 @@ def stored_overdue_of_thirty_days(client, application):
 
 @pytest.mark.parametrize('stop', ['company_inactive', 'stored_overdue'])
 def test_a_response_rechecked_into_a_mandatory_stop_keeps_the_declaration_flag(client, officer, stop):
-    application = asked(client, officer, 'missing_turnover', ['employees'],
+    application = asked(client, officer, 'missing_turnover', ['seasonal'],
                         answers={'monthly_revenue_rub': 800_000, 'previous_monthly_revenue_rub': 680_000})  # declared → R5
     assert evaluations(client, application)[0].input_snapshot['review_flags'] == ['declared_finance']
     if stop == 'company_inactive':
         set_company(client, application['company_id'], registry_status='inactive')
     else:
         stored_overdue_of_thirty_days(client, application)
-    answered = ok(respond(client, application, {'employees': 5}))
+    answered = ok(respond(client, application, {'seasonal': True}))
     assert (answered['status'], answered['latest_evaluation']['rule']) == ('MANUAL_REVIEW', 'R2')
     assert evaluations(client, application)[1].input_snapshot['review_flags'] == ['declared_finance']
     assert detail(officer, answered)['application']['preapproval']['blocked_by']['code'] == 'MANDATORY_STOP'

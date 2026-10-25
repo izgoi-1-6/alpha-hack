@@ -1,28 +1,25 @@
 from datetime import date, datetime
-import json
-from pathlib import Path
 from typing import Literal
 from fastapi import APIRouter, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from . import idempotency
+from . import authority, idempotency
 from .clock import iso_utc
 from .config import settings
 from .errors import ApiError
+from .fixtures import FIXTURES, SOURCES, registry_source
 from .idempotency import IdempotencyKey
 from .identity import Db, Now, ClientUser
-from .models import Company, Precheck, Consent
+from .models import AuthorityVerification, Company, Precheck, Consent
 from .schemas import CompanyInput, VersionInput
 
-DATA_PATH = Path(__file__).resolve().parents[2] / 'data' / 'demo-companies.json'
-FIXTURES = json.loads(DATA_PATH.read_text())
-SOURCES = {c['inn']:c for c in FIXTURES['companies']}
-CONSENT_VERSION='demo-consent-v1'
+# v2: the texts no longer call the service a demonstration (revision rule 7); a text change is a new version.
+CONSENT_VERSION='demo-consent-v2'
 CONSENT_TEXTS={
-    'ONBOARDING_PROCESSING':'Согласен на обработку синтетических данных компании для демонстрационного подбора финансирования.',
-    'REGISTRY_LOOKUP':'Разрешаю запрос синтетических сведений о компании и оборотах в локальных имитаторах реестра и банка.',
-    'APPLICATION_PROCESSING':'Согласен на обработку синтетических данных для демонстрационного рассмотрения заявки.',
-    'BKI':'Разрешаю демонстрационный запрос кредитной истории в локальном имитаторе БКИ после отправки заявки.',
+    'ONBOARDING_PROCESSING':'Согласен на обработку данных компании для подбора финансирования.',
+    'REGISTRY_LOOKUP':'Разрешаю запросить сведения о компании и её оборотах в реестре и открытых источниках.',
+    'APPLICATION_PROCESSING':'Согласен на обработку данных анкеты для рассмотрения заявки.',
+    'BKI':'Разрешаю запрос кредитной истории в бюро кредитных историй после отправки заявки.',
 }
 router=APIRouter(tags=['companies'])
 
@@ -59,9 +56,10 @@ def append_precheck(db: Session, company: Company, source: dict, now: datetime) 
     db.flush()
     return row
 
-def create_company(db: Session, owner_id: str, source: dict, now: datetime, *, seeded: bool=False) -> Company:
+def create_company(db: Session, owner_id: str, source: dict, now: datetime, *, verification: AuthorityVerification,
+                   seeded: bool=False) -> Company:
     # Data whitelist contains BKI oracle values; only the explicit registry/turnover subset is persisted here.
-    company=Company(owner_user_id=owner_id,inn=source['inn'],entity_type='LLC' if len(source['inn'])==10 else 'IP',name=source.get('name'),registered_at=date.fromisoformat(source['registered_at']) if source.get('registered_at') else None,registry_status=source['registry_status'],okved=source.get('okved'),region=source.get('region'),msp_registry=source.get('msp_registry'),legal_address=source.get('legal_address'),fixture_id=source['fixture_id'],business_reference_date=date.fromisoformat(FIXTURES['business_reference_date']) if seeded else now.date(),version=1,created_at=now,updated_at=now)
+    company=Company(owner_user_id=owner_id,inn=source['inn'],entity_type='LLC' if len(source['inn'])==10 else 'IP',name=source.get('name'),registered_at=date.fromisoformat(source['registered_at']) if source.get('registered_at') else None,registry_status=source['registry_status'],okved=source.get('okved'),region=source.get('region'),msp_registry=source.get('msp_registry'),legal_address=source.get('legal_address'),fixture_id=source['fixture_id'],business_reference_date=date.fromisoformat(FIXTURES['business_reference_date']) if seeded else now.date(),authority_verification_id=verification.id,version=1,created_at=now,updated_at=now)
     if seeded: company.id=source['id']
     db.add(company)
     db.flush()
@@ -87,11 +85,14 @@ def list_companies(user: ClientUser, db: Db):
 
 @router.post('/companies',status_code=201)
 def onboard(data: CompanyInput, user: ClientUser, db: Db, now: Now):
+    """A whitelisted ИНН (422 REGISTRY_NOT_FOUND), then the Госуслуги gate (403 AUTHORITY_NOT_VERIFIED: the user's own,
+    unused, unexpired verification of this ИНН), then one company per owner and ИНН (409 COMPANY_EXISTS). Any refusal
+    rolls back, so a verification is spent only by the company it adds."""
+    source=registry_source(data.inn)
+    verification=authority.consume(db,user.id,data.inn,data.authority_verification_id,now)
     if db.scalar(select(Company).where(Company.owner_user_id==user.id,Company.inn==data.inn)):
         raise ApiError(409,'COMPANY_EXISTS','Компания уже добавлена. Выберите её в списке.')
-    source=SOURCES.get(data.inn)
-    if not source: raise ApiError(422,'REGISTRY_NOT_FOUND','Компания не найдена в демо-реестре. Проверьте ИНН или выберите демо-профиль.',fields={'inn':'Выберите ИНН из демо-профилей'})
-    company=create_company(db,user.id,source,now)
+    company=create_company(db,user.id,source,now,verification=verification)
     return company_result(db,company)
 
 @router.get('/companies/{company_id}')

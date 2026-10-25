@@ -32,9 +32,26 @@ class LoginAttempt(Base):
     bucket: Mapped[str] = mapped_column(String(64), index=True)
     attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
+class AuthorityVerification(Base):
+    """A mock Госуслуги check that the user represents the company with this ИНН. The mock always confirms: the person and
+    role come from the fixture, no real ЕСИА is called, so several users may confirm the same ИНН. A verification adds one
+    company within 30 minutes (`used_at` marks it spent); the seed records its own (`method='seed'`), already used."""
+    __tablename__ = 'authority_verifications'
+    __table_args__ = (CheckConstraint("method IN ('gosuslugi_mock','seed')", name='valid_verification_method'),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), index=True)
+    inn: Mapped[str] = mapped_column(String(12))
+    person_name: Mapped[str] = mapped_column(String(100))
+    role: Mapped[str] = mapped_column(String(100))
+    method: Mapped[str] = mapped_column(String(20))
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
 class Company(Base):
     __tablename__ = 'companies'
-    __table_args__ = (UniqueConstraint('owner_user_id', 'inn', name='company_owner_inn'),)
+    __table_args__ = (UniqueConstraint('owner_user_id', 'inn', name='company_owner_inn'),
+                      UniqueConstraint('authority_verification_id', name='company_authority_verification'))
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     owner_user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), index=True)
     inn: Mapped[str] = mapped_column(String(12))
@@ -49,6 +66,10 @@ class Company(Base):
     legal_address: Mapped[str | None] = mapped_column(String(500))
     fixture_id: Mapped[str | None] = mapped_column(String(80))
     business_reference_date: Mapped[date | None] = mapped_column(Date)
+    # The Госуслуги verification the company was added with; null only for companies added before the check existed,
+    # which therefore cannot submit an application.
+    authority_verification_id: Mapped[str | None] = mapped_column(
+        ForeignKey('authority_verifications.id', name='fk_companies_authority_verification_id'))
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

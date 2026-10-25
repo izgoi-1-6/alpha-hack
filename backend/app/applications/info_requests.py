@@ -2,26 +2,29 @@
 
 trusted_source: a named source (registry, turnover or bki), no officer, no requested fields; it is closed by a
 retry-check that obtains complete source evidence, never by client answers. client_answers: no source and at least
-one requested questionnaire answer path; an officer request also carries officer_id and never names a need field. It
-is closed by the owner's respond-info, which may set only those paths and never a need field.
+one requested questionnaire answer path, never a source-owned answer (the client cannot give it); an officer request
+also carries officer_id and never names a need field. It is closed by the owner's respond-info, which may set only
+those paths and never a need field.
 """
 from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from .models import Application, InfoRequest
 from .schemas import CollateralAnswer
-from .stages import ANSWER_FIELDS
+from .stages import ANSWER_FIELDS, SOURCE_OWNED
 
 SOURCES = ('registry', 'turnover', 'bki')
-# Paths a client_answers request may name: every saved questionnaire answer, and each pledge detail. Company snapshot,
-# consents and BKI categories are not answers, so they can never be requested from the client. System requests built
-# from a check's missing answers may name any of them.
+# Every questionnaire answer path: each saved answer and each pledge detail. Company snapshot, consents and BKI
+# categories are not answers, so they can never be requested from the client.
 ANSWER_PATHS = ANSWER_FIELDS + tuple(f'collateral.{key}' for key in CollateralAnswer.model_fields)
+# What a client_answers request may name: the answers the client gives. The source-owned ones (registry, Госуслуги)
+# are never asked; system requests built from a check's missing answers may name any of the rest.
+CLIENT_PATHS = tuple(path for path in ANSWER_PATHS if path not in SOURCE_OWNED)
 # The stage-2 need is fixed once submitted: the requested amount is never rewritten (an officer wanting less
 # preapproves a smaller amount) and a different need is a new application. Collateral stays answerable; whether the
 # application is secured is pinned at submission and does not change with an answer.
 NEED_FIELDS = ('purpose', 'requested_amount_rub', 'term_months')
-OFFICER_PATHS = tuple(path for path in ANSWER_PATHS if path not in NEED_FIELDS)
+OFFICER_PATHS = tuple(path for path in CLIENT_PATHS if path not in NEED_FIELDS)
 NEED_FIELDS_MESSAGE = ('Цель, сумма и срок не меняются после отправки заявки: меньшую сумму можно одобрить '
                        'предварительно, другая потребность — это новая заявка.')
 
@@ -31,7 +34,7 @@ def create_info_request(db: Session, application: Application, *, kind: str, sou
     if kind == 'trusted_source':
         valid = source in SOURCES and officer_id is None and not requested_fields
     else:
-        allowed = ANSWER_PATHS if officer_id is None else OFFICER_PATHS
+        allowed = CLIENT_PATHS if officer_id is None else OFFICER_PATHS
         valid = (kind == 'client_answers' and source is None and bool(requested_fields)
                  and all(path in allowed for path in requested_fields))
     if not valid:

@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   api,
   ApiError,
+  AuthorityVerification,
   Company,
   CompanyResult,
   ConsentDocument,
@@ -256,12 +257,31 @@ function App() {
       if (isCurrent(scope)) setBusy(false);
     }
   }
-  async function addCompany(inn: string) {
+  async function verifyAuthority(
+    inn: string,
+  ): Promise<AuthorityVerification | null> {
     const scope = captureScope();
     setBusy(true);
     setActionError("");
     try {
-      const result = await api.onboard(inn, consents);
+      // Each confirmation is a new one: a lost response is simply confirmed again.
+      const result = await api.verifyAuthority(inn, crypto.randomUUID());
+      return isCurrent(scope) ? result : null;
+    } catch (e) {
+      if (!isCurrent(scope)) return null;
+      if (e instanceof ApiError && e.status === 401) changeAccount(null);
+      else setActionError(message(e));
+      return null;
+    } finally {
+      if (isCurrent(scope)) setBusy(false);
+    }
+  }
+  async function addCompany(inn: string, verificationId: string) {
+    const scope = captureScope();
+    setBusy(true);
+    setActionError("");
+    try {
+      const result = await api.onboard(inn, consents, verificationId);
       if (!isCurrent(scope)) return;
       navigate(result.company.id);
     } catch (e) {
@@ -513,7 +533,10 @@ function App() {
               fixtures={fixtures}
               consents={consents}
               busy={busy}
-              onSubmit={(inn) => void addCompany(inn)}
+              onVerify={verifyAuthority}
+              onSubmit={(inn, verificationId) =>
+                void addCompany(inn, verificationId)
+              }
               onCancel={() => navigate()}
               error={actionError}
             />

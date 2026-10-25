@@ -21,7 +21,7 @@ class LinkInput(StrictModel):
 
 def require_approved(application: Application) -> None:
     if application.status != 'APPROVED':
-        raise ApiError(409, 'INVALID_STATUS', 'Переход в Альфа-Бизнес (демо) доступен после окончательного одобрения.')
+        raise ApiError(409, 'INVALID_STATUS', 'Переход в Альфа-Бизнес доступен после окончательного одобрения.')
 
 
 @router.post('/link')

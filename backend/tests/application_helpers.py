@@ -12,13 +12,13 @@ from app.clock import get_clock, utc_now
 from app.models import Company, Precheck
 from application_oracle import BY_INN
 from recommendation_oracle import FIXTURES, PRODUCTS
-from test_identity_company import PASSWORD, add, register
+from test_identity_company import CONSENT_VERSION, PASSWORD, add, register
 
 FIXED_NOW = datetime(2026, 10, 24, 12, 0, tzinfo=timezone.utc)  # the fixture business date, at noon UTC
 FIXED_DATE = FIXED_NOW.date()
 TERM, LINE, SECURED = 'alfa_term_loan_unsecured', 'alfa_revolving_line_unsecured', 'alfa_term_loan_secured'
-CONSENTS = [{'code': 'APPLICATION_PROCESSING', 'version': 'demo-consent-v1', 'accepted': True},
-            {'code': 'BKI', 'version': 'demo-consent-v1', 'accepted': True}]
+CONSENTS = [{'code': 'APPLICATION_PROCESSING', 'version': CONSENT_VERSION, 'accepted': True},
+            {'code': 'BKI', 'version': CONSENT_VERSION, 'accepted': True}]
 # The spec's six-stage table, in order.
 STAGE_FIELDS = [
     ['company_confirmed', 'actual_address', 'actual_activity'],
@@ -60,7 +60,7 @@ def bki_calls():
 
 
 def declared_collateral(value: int = 8_000_000, **changes) -> dict:
-    return {'status': 'declared', 'type': 'equipment', 'declared_value_rub': value, 'description': 'Демо оборудование',
+    return {'status': 'declared', 'type': 'equipment', 'declared_value_rub': value, 'description': 'Производственное оборудование',
             'owner_confirmed': True, 'encumbered': False, **changes}
 
 
@@ -127,12 +127,12 @@ def patch_answers(client, application: dict, *, stage: int | None = None, versio
 
 
 def complete_answers(application: dict, **overrides) -> dict:
-    """Valid answers for every stage; the client declares the fixture's monthly debt payment."""
+    """Valid client answers for every stage; the client declares the fixture's monthly debt payment. The tax regime,
+    the employee count and the representative are source-owned: prefilled by the server, never sent."""
     fixture = BY_INN[application['company']['inn']]
-    return {'company_confirmed': True, 'actual_address': 'Демонстрационный адрес, офис 1',
-            'actual_activity': 'Оптовая торговля (демо)', 'tax_regime': 'USN', 'employees': 7, 'seasonal': False,
+    return {'company_confirmed': True, 'actual_address': 'Синтетический адрес, офис 1',
+            'actual_activity': 'Оптовая торговля', 'seasonal': False,
             'monthly_debt_payment_rub': fixture['monthly_debt_payment_rub'], 'tax_debt_rub': 0, 'legal_proceedings': False,
-            'representative_name': 'Демо Представитель', 'representative_authority_confirmed': True,
             'beneficial_owners_confirmed': True, 'accuracy_confirmed': True, **overrides}
 
 

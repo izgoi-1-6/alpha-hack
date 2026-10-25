@@ -132,14 +132,15 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
   const review = page.locator(".review");
   await expect(review).toContainText("Демо-город, ул. Синтетическая, 1");
   await expect(review).toContainText("2 000 000 ₽");
-  await expect(review).toContainText("УСН");
+  // Source-owned answers: the registry's tax regime and staff, the representative from the Госуслуги check.
+  await expect(review).toContainText("ОСН");
   await expect(review).toContainText("160 000 ₽");
-  await expect(review).toContainText("Демо Представитель");
+  await expect(review).toContainText("Соколов Андрей Викторович");
 
   // Two separate consents, unchecked by default, with their exact versions; submission is blocked without them.
   await expect(processingConsent(page)).not.toBeChecked();
   await expect(bkiConsent(page)).not.toBeChecked();
-  await expect(page.getByText("Версия demo-consent-v1")).toHaveCount(2);
+  await expect(page.getByText("Версия demo-consent-v2")).toHaveCount(2);
   const submit = page.getByRole("button", { name: "Отправить заявку" });
   await expect(submit).toBeDisabled();
   await page.getByLabel("Подтверждаю, что сведения анкеты верны").check();
@@ -284,7 +285,7 @@ test("unavailable demo BKI: lost submit and retry responses replay their keys; W
   ).toBeVisible();
   await expect(page.locator(".status-pill")).toHaveText("Ждём демо-источник");
   await expect(page.locator(".status-result")).toContainText(
-    "Демо-БКИ временно недоступно",
+    "БКИ временно недоступно",
   );
 
   await page.getByRole("button", { name: "Повторить проверку" }).click();

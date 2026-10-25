@@ -92,8 +92,8 @@ def staff_document(db: Session, document: Document) -> dict:
 
 
 def requestable_fields(terms: Terms | None) -> list[str]:
-    """The answer paths an officer may request for this application: info_requests.OFFICER_PATHS, with the pledge
-    paths only for an application that is secured (pinned at submission)."""
+    """The answer paths an officer may request for this application: info_requests.OFFICER_PATHS (no need field, no
+    source-owned answer), with the pledge paths only for an application that is secured (pinned at submission)."""
     secured = bool(terms and terms.secured)
     return [path for path in OFFICER_PATHS if secured or path.split('.')[0] != 'collateral']
 

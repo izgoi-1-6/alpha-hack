@@ -68,6 +68,9 @@ def plan(db: Session) -> FilePlan:
 
 @event.listens_for(Session, 'after_commit')
 def _committed(session: Session) -> None:
+    """Marks the outermost commit only: SQLAlchemy dispatches after_commit for a SAVEPOINT release too."""
+    if session.in_nested_transaction():
+        return
     pending = session.info.get(PLAN)
     if pending is not None:
         pending.committed = True

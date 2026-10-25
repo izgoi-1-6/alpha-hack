@@ -6,7 +6,9 @@ type and the magic bytes must agree, else 415 MEDIA_NOT_ALLOWED; an empty file o
 FILE_INVALID. HTML/SVG/script markup anywhere is 415. The content must then parse with a maintained parser (pypdf in
 strict mode with at least one page and no encryption; Pillow verify, then a full decode within a pixel budget), else
 422 FILE_INVALID. Data after the format's end (PNG IEND, JPEG EOI, PDF %%EOF) and PDF active content (JavaScript, JS,
-OpenAction, AA, Launch, EmbeddedFiles, RichMedia, also hex-escaped or inside object streams) are 415.
+OpenAction, AA, Launch, EmbeddedFiles, RichMedia, also hex-escaped or inside object streams) are 415. Active names are
+found in the parsed objects and, for objects outside the cross-reference table, as raw tokens outside stream bodies
+(compressed or binary stream data matches such tokens by chance, roughly 0.8% per MiB).
 """
 from dataclasses import dataclass
 import io
@@ -30,10 +32,15 @@ JPEG = FileType('image/jpeg', ('jpg', 'jpeg'), b'\xff\xd8\xff')
 PNG = FileType('image/png', ('png',), b'\x89PNG\r\n\x1a\n')
 TYPES = (PDF, JPEG, PNG)
 MAX_NAME_CHARS = 200
-MAX_PIXELS = 40_000_000  # a decoded image above this is refused before decoding (decompression bombs)
+MAX_PIXELS = 40_000_000  # an image above this is refused (422) from its header, before anything is decoded
+# The explicit MAX_PIXELS check replaces Pillow's decompression-bomb guard, which would warn from 89 MP and raise only
+# from 179 MP: every oversized image gets the same 422 and no warning. Nothing else in the process uses Pillow.
+Image.MAX_IMAGE_PIXELS = None
 MARKUP = re.compile(rb'<(?:script|html|svg|iframe|object|embed|body|!doctype)[\s/>]|javascript:', re.IGNORECASE)
 ACTIVE_NAMES = frozenset({'/JavaScript', '/JS', '/OpenAction', '/AA', '/Launch', '/EmbeddedFiles', '/RichMedia'})
 ACTIVE_TOKEN = re.compile(rb'/(?:JavaScript|JS|OpenAction|AA|Launch|EmbeddedFiles|RichMedia)(?=[\s()<>\[\]{}/%]|$)')
+# A stream body: from the `stream` keyword after the stream dictionary to the first `endstream`.
+STREAM_BODY = re.compile(rb'>>[\x00\t\n\f\r ]*stream(?:\r\n|\n|\r).*?endstream', re.DOTALL)
 PDF_END = re.compile(rb'%%EOF[\r\n\t\f\x00 ]*\Z')
 PNG_END = b'\x00\x00\x00\x00IEND\xaeB`\x82'
 JPEG_END = b'\xff\xd9'
@@ -124,7 +131,7 @@ def check_pdf(data: bytes) -> None:
         raise
     except Exception:
         raise invalid_file('PDF повреждён или обрезан.') from None
-    if active or ACTIVE_TOKEN.search(data):
+    if active or ACTIVE_TOKEN.search(STREAM_BODY.sub(b'>> stream endstream', data)):
         raise not_allowed('PDF содержит активное содержимое (сценарии, автозапуск или вложенные файлы).')
     if not PDF_END.search(data[-1024:]):
         raise not_allowed('После окончания PDF есть посторонние данные.')

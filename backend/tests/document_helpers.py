@@ -29,20 +29,22 @@ SVG = b'<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" onload="ale
 # --- synthetic files -------------------------------------------------------------------------------------------------
 
 def pdf_bytes(*, catalog: bytes = b'', objects: tuple[bytes, ...] = (), text: bytes = b'Demo', padding: int = 0,
-              comment: bytes = b'', pages: bool = True) -> bytes:
+              comment: bytes = b'', pages: bool = True, resources: bytes = b'', tail: bytes = b'') -> bytes:
     """A minimal one-page PDF 1.4 with a correct cross-reference table. `catalog` adds catalog entries, `objects`
     extra indirect objects (numbered from 5), `padding` spaces inside the page content stream; `pages=False` leaves
-    the page tree empty (the page object stays, unreferenced)."""
+    the page tree empty (the page object stays, unreferenced); `resources` adds page resource entries; `tail` is
+    written after the listed objects but is not in the cross-reference table."""
     content = b'BT /F1 12 Tf 20 100 Td (' + text + b') Tj ET\n' + b' ' * padding
     bodies = [b'<< /Type /Catalog /Pages 2 0 R ' + catalog + b'>>',
               b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>' if pages else b'<< /Type /Pages /Kids [] /Count 0 >>',
-              b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 4 0 R >>',
+              b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Contents 4 0 R /Resources << ' + resources + b'>> >>',
               b'<< /Length %d >>\nstream\n' % len(content) + content + b'\nendstream', *objects]
     out = bytearray(b'%PDF-1.4\n%\xe2\xe3\xcf\xd3\n' + comment)
     offsets = []
     for number, body in enumerate(bodies, 1):
         offsets.append(len(out))
         out += b'%d 0 obj\n' % number + body + b'\nendobj\n'
+    out += tail
     xref = len(out)
     out += b'xref\n0 %d\n0000000000 65535 f \n' % (len(bodies) + 1)
     out += b''.join(b'%010d 00000 n \n' % offset for offset in offsets)

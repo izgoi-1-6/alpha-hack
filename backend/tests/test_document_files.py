@@ -5,7 +5,9 @@ files and an empty staging area.
 
 Files are synthetic bytes from document_helpers (hand-written PDF/PNG, Pillow-encoded JPEG), never production helpers.
 """
+import hashlib
 from uuid import uuid4
+import zlib
 import pytest
 from application_helpers import clock, read
 from document_helpers import (HTML, LIMIT, MIB, SVG, docs_url, document_rows, download, jpeg_bytes, pdf_bytes,
@@ -105,7 +107,45 @@ ACTIVE_PDFS = {
     'escaped_name': pdf_with(catalog=b'/Open#41ction 5 0 R ', objects=(b'<< /S /J#61vaScript /J#53 (app.alert(1)) >>',)),
     # An object outside the cross-reference table: the parser ignores it, a repairing viewer may not.
     'object_outside_xref': pdf_with(comment=b'99 0 obj\n<< /S /Launch /F (calc.exe) >>\nendobj\n'),
+    # The same between two streams: skipping stream bodies must stop at each body's own `endstream`.
+    'object_between_streams': pdf_with(tail=b'99 0 obj\n<< /S /Launch /F (calc.exe) >>\nendobj\n'
+                                            b'100 0 obj\n<< /Length 4 >>\nstream\nabcd\nendstream\nendobj\n'),
 }
+
+
+def image_stream(data: bytes, *, compressed: bool) -> bytes:
+    """An 8-bit grey image XObject holding `data` as pixels; compressed means a stored-block deflate stream."""
+    body = zlib.compress(data, 0) if compressed else data
+    side = int(len(data) ** 0.5)
+    return (b'<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceGray /BitsPerComponent 8 %s'
+            b'/Length %d >>\nstream\n' % (side, len(data) // side, b'/Filter /FlateDecode ' if compressed else b'', len(body))
+            + body + b'\nendstream')
+
+
+def noise(size: int) -> bytes:
+    """Deterministic high-entropy bytes, like compressed or scanned image data."""
+    out = bytearray()
+    counter = 0
+    while len(out) < size:
+        out += hashlib.sha256(counter.to_bytes(8, 'big')).digest()
+        counter += 1
+    return bytes(out[:size])
+
+
+TOKENS = b'/JS /AA\n/OpenAction /Launch(/JavaScript<</EmbeddedFiles[/RichMedia%'
+
+
+@pytest.mark.parametrize('compressed', [False, True])
+def test_stream_data_that_happens_to_look_like_pdf_actions_is_accepted(client, storage, compressed):
+    """Pixel or deflate data is arbitrary bytes: a token-like sequence inside a stream body is not active content
+    (the raw scan skips stream bodies; the parsed objects are still searched)."""
+    from app.documents.validation import ACTIVE_TOKEN, MARKUP
+    pixels = noise(2 * MIB) + TOKENS + noise(64 * 1024)
+    assert ACTIVE_TOKEN.search(pixels) and not MARKUP.search(pixels)
+    content = pdf_bytes(resources=b'/XObject << /Im1 5 0 R >> ', objects=(image_stream(pixels, compressed=compressed),))
+    assert len(content) > 2 * MIB
+    document, _ = uploaded(client, preapproved(client), content=content)
+    assert document['sha256'] == sha256(content) and list(stored(storage).values()) == [content]
 
 
 @pytest.mark.parametrize('name', sorted(ACTIVE_PDFS))
@@ -201,6 +241,28 @@ def test_an_image_with_an_excessive_pixel_count_is_422(client, storage):
     nothing_kept(client, storage, application)
 
 
+def bilevel_png(width: int, height: int) -> bytes:
+    """A complete, valid one-bit grey PNG (small on disk, `width x height` pixels when decoded)."""
+    import struct
+    rows = (b'\x00' + b'\x00' * ((width + 7) // 8)) * height
+    return (b'\x89PNG\r\n\x1a\n' + png_chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 1, 0, 0, 0, 0))
+            + png_chunk(b'IDAT', zlib.compress(rows, 9)) + png_chunk(b'IEND', b''))
+
+
+@pytest.mark.parametrize('width,height', [(7_000, 7_000), (10_000, 9_500)])  # 49 MP and 95 MP, both decodable
+def test_a_valid_image_above_40_megapixels_is_422_without_a_warning(client, storage, recwarn, width, height):
+    """The 40 MP budget, not Pillow's decompression-bomb guard (a warning from 89 MP), refuses these."""
+    application = preapproved(client)
+    refused(upload(client, application, content=bilevel_png(width, height), kind='png'), 422, 'FILE_INVALID')
+    nothing_kept(client, storage, application)
+    assert [str(warning.message) for warning in recwarn] == []
+
+
+def test_an_image_exactly_at_the_pixel_budget_is_accepted(client, storage):
+    document, _ = uploaded(client, preapproved(client), content=bilevel_png(8_000, 5_000), kind='png')  # 40 MP
+    assert document['media_type'] == 'image/png' and len(stored(storage)) == 1
+
+
 LONG = 'х' * 300 + '.pdf'
 NAMES = {  # raw upload name bytes → stored original name (paths ignored, control/format characters removed)
     b'../../etc/passwd.pdf': 'passwd.pdf',
@@ -266,6 +328,34 @@ def test_malformed_upload_forms_are_422_validation_errors(client, storage, name)
     nothing_kept(client, storage, application)
 
 
+@pytest.mark.parametrize('headers', [b'X-Padding: ' + b'a' * 5000 + b'\r\n',  # one header line above 4 KiB
+                                     b''.join(b'X-Extra-%d: 1\r\n' % number for number in range(8)),  # 10 headers
+                                     b'X-Same: 1\r\n' * 7])  # 9 headers, one name repeated
+def test_oversized_or_too_many_part_headers_are_422(client, storage, headers):
+    from document_helpers import BOUNDARY, form_fields, multipart
+    application = preapproved(client)
+    body, content_type = multipart(form_fields(application))
+    file_part = (b'--' + BOUNDARY.encode() + b'\r\nContent-Disposition: form-data; name="file"; filename="a.pdf"\r\n'
+                 b'Content-Type: application/pdf\r\n' + headers + b'\r\n' + pdf_bytes() + b'\r\n')
+    body = body.replace(b'--' + BOUNDARY.encode() + b'--\r\n', file_part + b'--' + BOUNDARY.encode() + b'--\r\n')
+    response = client.post(docs_url(application), content=body,
+                           headers={'content-type': content_type, 'Idempotency-Key': uuid4().hex})
+    refused(response, 422, 'VALIDATION_ERROR')
+    nothing_kept(client, storage, application)
+
+
+def test_the_intake_caps_part_headers_itself(storage):
+    """The limit is the intake's own, whatever the parser library's defaults are."""
+    from app.documents.intake import HEADER_BYTES, receive_upload
+    from app.documents.storage import DocumentStorage
+    from app.errors import ApiError
+    head = b'--b\r\nContent-Disposition: form-data; name="document_type"\r\nX-Padding: '
+    with pytest.raises(ApiError) as caught, DocumentStorage(storage).staged() as staged:
+        receive_upload(iter([head, b'a' * HEADER_BYTES, b'\r\n\r\nBANK_STATEMENT\r\n--b--\r\n']),
+                       {'content-type': 'multipart/form-data; boundary=b'}, staged)
+    assert (caught.value.status, caught.value.code) == (422, 'VALIDATION_ERROR') and stored(storage) == {}
+
+
 def test_two_files_a_json_body_or_a_missing_key_are_refused(client, storage):
     application = preapproved(client)
     two = client.post(docs_url(application), headers={'Idempotency-Key': uuid4().hex},
@@ -324,3 +414,30 @@ def test_a_rolled_back_delete_keeps_the_bytes_and_a_committed_one_removes_them(c
     assert response.status_code == 200, response.text
     assert stored(storage) == {} and document_rows(client)[0].status == 'DELETED'
     refused(download(client, application, document), 404, 'DOCUMENT_NOT_FOUND')
+
+
+def test_a_savepoint_release_settles_no_files(client, storage):
+    """after_commit also fires when a SAVEPOINT is released; only the outermost transaction may settle files."""
+    from sqlalchemy import text
+    from app.documents.storage import DocumentStorage
+    private = DocumentStorage(storage)
+    created, deleted = 'a' * 32, 'b' * 32
+    storage.mkdir(parents=True, exist_ok=True)
+    (storage / deleted).write_bytes(b'kept unless the deletion commits')
+    with client.app.state.test_factory() as db:
+        db.execute(text('SELECT 1'))
+        with private.staged() as staged:
+            staged.write(pdf_bytes())
+            private.place(db, staged, created)
+        private.remove_after_commit(db, deleted)
+        db.begin_nested().commit()  # a savepoint release
+        assert sorted(stored(storage)) == [created, deleted]
+        db.rollback()  # the outermost transaction does not commit
+    assert list(stored(storage)) == [deleted]
+    with client.app.state.test_factory() as db:
+        db.execute(text('SELECT 1'))
+        private.remove_after_commit(db, deleted)
+        db.begin_nested().commit()
+        assert list(stored(storage)) == [deleted]
+        db.commit()
+    assert stored(storage) == {}

@@ -98,22 +98,32 @@ def risk_of(score: int) -> str:
     return 'low' if score >= LOW_RISK_MIN_SCORE else 'medium' if score >= MEDIUM_RISK_MIN_SCORE else 'high'
 
 
-def scored_limit(product: dict, risk: str, revenue: int | None, collateral: dict | None) -> int | None:
-    """low: min(ceiling, low multiple x R); medium: min(ceiling, medium cap, medium multiple x R); high: none. A secured
-    product is further capped by floor(declared value x LTV); without a declared value there is no limit."""
-    if risk == 'high' or not is_count(revenue) or revenue == 0:
+def turnover_limit(product: dict, risk: str | None, revenue: int | None) -> int | None:
+    """low: min(ceiling, low multiple x R); medium: min(ceiling, medium cap, medium multiple x R); high, or no
+    positive known revenue: none."""
+    if risk not in ('low', 'medium') or not is_count(revenue) or revenue == 0:
         return None
     if risk == 'low':
-        limit = min(product['amount_max_rub'], product['low_risk_revenue_multiple'] * revenue)
-    else:
-        limit = min(product['amount_max_rub'], product['medium_risk_cap_rub'], product['medium_risk_revenue_multiple'] * revenue)
-    if not product['collateral_required']:
+        return min(product['amount_max_rub'], product['low_risk_revenue_multiple'] * revenue)
+    return min(product['amount_max_rub'], product['medium_risk_cap_rub'], product['medium_risk_revenue_multiple'] * revenue)
+
+
+def collateral_cap(product: dict, value: int) -> int:
+    """The most a pledge of this value secures: floor(value x LTV)."""
+    return value * product['collateral_ltv_bps'] // 10000
+
+
+def scored_limit(product: dict, risk: str, revenue: int | None, collateral: dict | None) -> int | None:
+    """The turnover limit; a secured product is further capped by the collateral cap of the declared value, and
+    without a declared value there is no limit. (Final approval caps by the verified value instead: officer.policy.)"""
+    limit = turnover_limit(product, risk, revenue)
+    if limit is None or not product['collateral_required']:
         return limit
     collateral = collateral or {}
     value = collateral.get('declared_value_rub') if collateral.get('status') == 'declared' else None
     if not is_count(value) or value == 0:
         return None
-    return min(limit, value * product['collateral_ltv_bps'] // 10000)
+    return min(limit, collateral_cap(product, value))
 
 
 def indicative_limit(product: dict, revenue: int | None, collateral: dict | None) -> int | None:

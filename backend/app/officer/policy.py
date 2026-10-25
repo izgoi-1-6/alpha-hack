@@ -61,11 +61,10 @@ def final_terms(application: Application, documents: list[Document], evaluation:
     current = current_documents(documents)
     if any(kind not in current or current[kind].status != 'ACCEPTED' for kind in product['required_documents']):
         return blocked('DOCUMENTS_NOT_ACCEPTED', 'Окончательное одобрение возможно, когда приняты все обязательные документы.')
-    collateral = None
-    if product['collateral_required']:
-        collateral = {'status': 'declared', 'declared_value_rub': current['COLLATERAL_VALUATION'].verified_value_rub}
     revenue = ((evaluation.input_snapshot.get('finance') or {}).get('monthly_revenue_rub') or {}).get('value') if evaluation else None
-    limit = None if evaluation is None or evaluation.risk is None else scoring.scored_limit(product, evaluation.risk, revenue, collateral)
+    limit = None if evaluation is None else scoring.turnover_limit(product, evaluation.risk, revenue)
+    if limit is not None and product['collateral_required']:
+        limit = min(limit, scoring.collateral_cap(product, current['COLLATERAL_VALUATION'].verified_value_rub))
     if limit is None:
         return blocked('LIMIT_NOT_COMPUTABLE', 'Лимит по проверенным данным не рассчитывается: возможен только отказ с причиной.')
     low, high = product['amount_min_rub'], min(application.preapproved_amount_rub, limit)

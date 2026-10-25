@@ -305,6 +305,31 @@ def test_reads_at_the_deadline_expire_a_submitted_packet_exactly_once(client, of
     assert expiries(client, application) == 1 and len(stored(storage)) == 2
 
 
+@pytest.mark.parametrize('arrives_at,accepted', [(DEADLINE - timedelta(seconds=1), True), (DEADLINE, False)])
+def test_an_upload_is_judged_at_the_time_its_body_has_arrived(client, clock, storage, monkeypatch, arrives_at, accepted):
+    """The request starts a second before `arrives_at` and the body takes that second to arrive: the command, its
+    lazy expiry and `created_at` use the arrival time."""
+    from app.documents import intake
+    application = preapproved(client)
+    clock.now = arrives_at - timedelta(seconds=1)
+    relogin(client)
+    receive = intake.receive_upload
+
+    def slow(*args, **kwargs):
+        form = receive(*args, **kwargs)
+        clock.now = arrives_at
+        return form
+
+    monkeypatch.setattr(intake, 'receive_upload', slow)
+    response = upload(client, application)
+    if accepted:
+        assert response.status_code == 201, response.text
+        assert response.json()['document']['created_at'] == '2026-11-07T11:59:59Z' and len(stored(storage)) == 1
+        return
+    refused(response, 409, 'APPLICATION_EXPIRED')
+    assert expiries(client, application) == 1 and document_rows(client) == [] and stored(storage) == {}
+
+
 # --- PostgreSQL races ------------------------------------------------------------------------------------------------
 
 pg_only = pytest.mark.skipif(not os.getenv('TEST_DATABASE_URL'), reason='concurrent commands need PostgreSQL row locks')
@@ -334,6 +359,25 @@ def race(client, application, calls):
 
 
 @pg_only
+def test_an_upload_holds_no_open_transaction_while_its_body_is_read(client, storage, monkeypatch):
+    """The ownership read ends its transaction before the body streams, so a slow upload holds no pooled connection
+    in an open transaction; the locked command begins a fresh one."""
+    from sqlalchemy import text
+    from app.documents import intake
+    receive, seen = intake.receive_upload, []
+
+    def observed(*args, **kwargs):
+        with client.app.state.test_factory() as db:
+            seen.append(db.scalar(text("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                                       "AND state LIKE 'idle in transaction%'")))
+        return receive(*args, **kwargs)
+
+    application = preapproved(client)
+    monkeypatch.setattr(intake, 'receive_upload', observed)
+    assert upload(client, application).status_code == 201 and seen == [0]
+
+
+@pg_only
 def test_two_uploads_for_one_requirement_leave_one_current_document_and_one_file(client, storage):
     application = preapproved(client)
     contents = [pdf_bytes(text=b'Alpha'), pdf_bytes(text=b'Beta')]
@@ -356,16 +400,19 @@ def test_a_concurrently_replayed_upload_records_one_document(client, storage):
 
 
 @pg_only
-def test_completion_racing_an_officer_review_lets_only_one_through(client, officer, storage):
-    from document_helpers import review, reviewed
+def test_a_deletion_racing_completion_on_one_version_lets_only_one_through(client, storage):
+    """Both commands are valid on their own for this version; only the row lock makes the second see the first.
+    Without it both would succeed, and a deletion could land in a submitted packet."""
     application, documents = upload_all(client, preapproved(client))
-    application = claimed(officer, completed(client, application))
-    _, application = reviewed(officer, application, documents['FINANCIAL_REPORT'], 'reject', reason='Замените отчёт.')
-    replacement, application = uploaded(client, read(client, application), 'FINANCIAL_REPORT', png_bytes(), kind='png')
-    outcome = race(client, application, [(client.cookies, lambda worker: complete_docs(worker, application)),
-                                         (officer.cookies, lambda worker: review(worker, application, documents['BANK_STATEMENT']))])
-    statuses = sorted(response.status_code for response in outcome)
-    assert statuses == [200, 409]
-    assert read(client, application)['status'] == 'DOCS_UPLOADED'
-    bank = next(row for row in document_rows(client) if row.document_type == 'BANK_STATEMENT')
-    assert bank.status == 'UPLOADED' and bank.reviewer_id is None  # the review never applied
+    statement = documents['BANK_STATEMENT']
+    outcome = race(client, application, [(client.cookies, lambda worker: delete(worker, application, statement)),
+                                         (client.cookies, lambda worker: complete_docs(worker, application))])
+    assert sorted(response.status_code for response in outcome) == [200, 409]
+    assert next(r for r in outcome if r.status_code == 409).json()['error']['code'] == 'VERSION_CONFLICT'
+    final = read(client, application)
+    (row,) = [row for row in document_rows(client) if row.document_type == 'BANK_STATEMENT']
+    if final['status'] == 'DOCS_UPLOADED':  # completion won: the submitted packet is whole
+        assert row.status == 'UPLOADED' and len(stored(storage)) == 2
+    else:  # deletion won: still collecting, the file is gone
+        assert (final['status'], row.status) == ('PREAPPROVED', 'DELETED') and len(stored(storage)) == 1
+    assert final['version'] == application['version'] + 1

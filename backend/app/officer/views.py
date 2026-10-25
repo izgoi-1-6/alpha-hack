@@ -12,7 +12,7 @@ from ..applications import stages
 from ..applications.info_requests import OFFICER_PATHS
 from ..documents import service as documents
 from ..documents.models import Document
-from ..documents.views import ordered, public_document
+from ..documents.views import REVIEW_NOTICE, ordered, public_document
 from ..applications.models import TERMINAL_STATUSES, Application, Evaluation, InfoRequest, OfficerDecision
 from ..applications.products import application_product
 from ..applications.views import (APPLICATION_FIELDS, company_summary, current_request, history_item, history_rows,
@@ -133,4 +133,5 @@ def staff_detail(db: Session, application: Application, officer_id: str) -> dict
             'info_requests': [staff_info_request(db, row, application) for row in requests],
             'history': staff_history(db, application),
             'documents': [staff_document(db, row) for row in ordered(application, documents.documents_of(db, application.id))],
+            'document_notice': REVIEW_NOTICE,
             'requestable_fields': requestable_fields(application_product(application))}

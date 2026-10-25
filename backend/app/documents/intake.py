@@ -3,8 +3,9 @@ staging file: the body is never buffered whole and no system temporary file is u
 
 Limits: the file part holds at most MAX_FILE_BYTES (20 MiB); one byte more is 413 FILE_TOO_LARGE, detected while
 reading. The whole body may exceed that only by ENVELOPE_BYTES (boundaries, part headers, two short fields), and a
-declared Content-Length above the body limit is refused before anything is read. The form has exactly the parts
-`file` (with a file name), `document_type` and `version`, once each; anything else is 422 VALIDATION_ERROR.
+declared Content-Length above the body limit is refused before anything is read. Each part may carry at most
+HEADER_COUNT headers of at most HEADER_BYTES (name plus value). The form has exactly the parts `file` (with a file
+name), `document_type` and `version`, once each; anything else is 422 VALIDATION_ERROR.
 """
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
@@ -19,6 +20,8 @@ from .storage import StagedFile
 ENVELOPE_BYTES = 64 * 1024
 MAX_BODY_BYTES = MAX_FILE_BYTES + ENVELOPE_BYTES
 FIELD_BYTES = 256
+HEADER_BYTES = 4096  # one part header, name plus value
+HEADER_COUNT = 8  # headers per part
 FIELDS = ('document_type', 'version')
 FILE = 'file'
 
@@ -48,22 +51,32 @@ class _Parts:
         self.content_type = ''
         self.ended = False
         self._headers: dict[bytes, bytes] = {}
-        self._header_name = self._header_value = b''
+        self._header_count = 0
+        self._header_name, self._header_value = bytearray(), bytearray()
         self._part: str | None = None
         self._value = bytearray()
 
     def on_part_begin(self) -> None:
-        self._headers, self._part, self._value = {}, None, bytearray()
+        self._headers, self._header_count, self._part, self._value = {}, 0, None, bytearray()
+
+    def _header_room(self) -> None:
+        if len(self._header_name) + len(self._header_value) > HEADER_BYTES:
+            raise invalid_form({FILE: 'Слишком длинный заголовок части формы'})
 
     def on_header_field(self, data: bytes, start: int, end: int) -> None:
         self._header_name += data[start:end]
+        self._header_room()
 
     def on_header_value(self, data: bytes, start: int, end: int) -> None:
         self._header_value += data[start:end]
+        self._header_room()
 
     def on_header_end(self) -> None:
-        self._headers[self._header_name.lower()] = self._header_value
-        self._header_name = self._header_value = b''
+        self._headers[bytes(self._header_name).lower()] = bytes(self._header_value)
+        self._header_name, self._header_value = bytearray(), bytearray()
+        self._header_count += 1
+        if self._header_count > HEADER_COUNT:
+            raise invalid_form({FILE: 'Слишком много заголовков части формы'})
 
     def on_headers_finished(self) -> None:
         _, options = parse_options_header(self._headers.get(b'content-disposition', b''))
@@ -114,7 +127,8 @@ def receive_upload(chunks: Iterable[bytes], headers: Mapping[str, str], staged: 
     if declared.isdigit() and int(declared) > MAX_BODY_BYTES:
         raise too_large()
     parts = _Parts(staged)
-    parser = MultipartParser(boundary, parts.callbacks())
+    # The library's own limits are only a looser backstop: the intake's limits above apply first.
+    parser = MultipartParser(boundary, parts.callbacks(), max_header_count=2 * HEADER_COUNT, max_header_size=2 * HEADER_BYTES)
     received = 0
     try:
         for chunk in chunks:

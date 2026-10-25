@@ -100,6 +100,32 @@ def test_a_rejected_document_moves_the_packet_to_rework_and_accepted_ones_stay_f
     assert stored(storage) == before
 
 
+def test_the_owner_may_delete_a_rejected_current_file_and_the_requirement_reopens(client, officer, storage):
+    """Ruling: a REJECTED current revision is deletable; the DELETED row keeps its review, the bytes go."""
+    application, documents = in_review(client, officer)
+    rejected = documents['FINANCIAL_REPORT']
+    _, application = reviewed(officer, application, rejected, 'reject', reason='Отчёт за другой период.')
+    customer = read(client, application)
+    assert customer['allowed_actions'] == ['upload_document', 'delete_document', 'cancel']
+    (before,) = document_rows(client, document_type='FINANCIAL_REPORT')
+    response = delete(client, customer, rejected)
+    assert response.status_code == 200, response.text
+    customer = response.json()['application']
+    (row,) = document_rows(client, document_type='FINANCIAL_REPORT')
+    assert (row.status, row.review_reason, row.reviewer_id) == ('DELETED', 'Отчёт за другой период.', officer.user['id'])
+    assert before.storage_key not in stored(storage) and len(stored(storage)) == 1  # the statement stays
+    refused(download(client, customer, rejected), 404, 'DOCUMENT_NOT_FOUND')
+    refused(download(officer, customer, rejected), 404, 'DOCUMENT_NOT_FOUND')
+    assert customer['document_summary'] == {'required_total': 2, 'current_uploaded': 1, 'accepted': 0, 'rejected': 0,
+                                            'missing': ['FINANCIAL_REPORT'], 'can_complete': False}
+    assert customer['allowed_actions'] == ['upload_document', 'delete_document', 'cancel']
+    staff_row = next(item for item in detail(officer, application)['documents'] if item['id'] == rejected['id'])
+    assert (staff_row['status'], staff_row['review_reason'], staff_row['download_url']) == ('DELETED', 'Отчёт за другой период.', None)
+    replacement, customer = uploaded(client, customer, 'FINANCIAL_REPORT', png_bytes(), kind='png')
+    assert (replacement['revision'], replacement['status']) == (2, 'UPLOADED')
+    assert completed(client, customer)['status'] == 'DOCS_UPLOADED'
+
+
 def test_only_an_accepted_valuation_carries_a_positive_verified_value(client, officer):
     application, documents = in_review(client, officer, 'secured_investment')
     valuation, statement = documents['COLLATERAL_VALUATION'], documents['BANK_STATEMENT']
@@ -381,6 +407,9 @@ def test_staff_documents_name_the_reviewer_and_never_the_storage_key(client, off
     assert body['documents'][1]['reviewer'] is None
     keys = [row.storage_key for row in document_rows(client)]
     assert not any(key in json.dumps(body) for key in keys)
+    # The officer's review UI gets the same server-owned demo label as the customer's checklist.
+    assert body['document_notice'] == checklist(client, application)['notice']
+    assert body['document_notice'].startswith('Демонстрационная проверка документов')
     assert not any(key in json.dumps(checklist(client, application)) for key in keys)
 
 

@@ -1,5 +1,5 @@
 import { AnswerValue, Answers } from "../../api";
-import { formatDay } from "../applications/fields";
+import { answerAt, formatDay } from "../applications/fields";
 import {
   formatDateTime,
   keepAmountsTogether,
@@ -18,15 +18,6 @@ const ENUMS: Record<string, string> = {
   none: "нет",
   unknown: "не знаю",
 };
-
-function valueAt(answers: Answers, path: string): AnswerValue | undefined {
-  const [name, key] = path.split(".");
-  const value = answers[name];
-  if (!key) return value;
-  return value && typeof value === "object"
-    ? (value as Record<string, AnswerValue>)[key]
-    : undefined;
-}
 
 /** The current answer at a path, in plain words (the pledge as its short summary). */
 function answerText(path: string, value: AnswerValue | undefined): string {
@@ -98,7 +89,7 @@ export function InfoRequestsPanel({
                         <dt>{answerLabel(path)}</dt>
                         <dd>
                           сейчас в анкете:{" "}
-                          {answerText(path, valueAt(answers, path))}
+                          {answerText(path, answerAt(answers, path))}
                         </dd>
                       </div>
                     ))}

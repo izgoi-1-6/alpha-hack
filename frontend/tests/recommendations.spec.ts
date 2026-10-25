@@ -1,5 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
-const artifacts = "../.superpowers/sdd/2026-10-24-credit-route";
+import { artifacts, onboard, registerClient } from "./helpers";
 const strong = "e230a446-129b-570f-b450-3cd8f7ddc8e5";
 const term = '[data-product-id="alfa_term_loan_unsecured"]';
 const line = '[data-product-id="alfa_revolving_line_unsecured"]';
@@ -286,26 +286,8 @@ test("plain catalog mode keeps catalog order and the same figures without fit gu
 
 // Fresh synthetic clients keep these checks independent of the mutable seeded companies.
 async function onboardFixture(page: Page, fixtureText: string) {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Регистрация", exact: true }).click();
-  await page.getByLabel("Ваше имя").fill("Демо Предприниматель");
-  await page
-    .getByLabel("Электронная почта")
-    .fill(
-      `rec-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`,
-    );
-  await page.getByLabel("Пароль", { exact: true }).fill("DemoCredit2026!");
-  await page
-    .getByRole("button", { name: "Создать аккаунт", exact: true })
-    .click();
-  await page
-    .getByRole("main")
-    .getByRole("button", { name: "Добавить компанию", exact: true })
-    .click();
-  await page.getByRole("button").filter({ hasText: fixtureText }).click();
-  for (const checkbox of await page.getByRole("checkbox").all())
-    await checkbox.check();
-  await page.getByRole("button", { name: "Добавить и проверить" }).click();
+  await registerClient(page, "rec");
+  await onboard(page, fixtureText);
   await page.getByRole("button", { name: "Подобрать финансирование" }).click();
 }
 

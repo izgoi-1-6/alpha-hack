@@ -8,6 +8,10 @@ export const rub = (value: number) =>
   NBSP +
   "₽";
 
+/** An amount that may be unknown: «нет значения» instead of a figure. */
+export const rubOrNone = (value: number | null) =>
+  value === null ? "нет значения" : rub(value);
+
 /** Server texts format amounts with ordinary spaces; keep their digit groups and the ruble sign together. */
 export const keepAmountsTogether = (text: string) =>
   text

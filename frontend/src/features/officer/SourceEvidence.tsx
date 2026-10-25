@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { DemoBadge } from "../../components";
-import { formatDateTime, rub } from "../applications/format";
+import { formatDateTime, rub, rubOrNone } from "../applications/format";
 import { formatDay } from "../applications/fields";
 import { FinanceEvidence, SourceStatus, StaffDetail } from "./officerApi";
 import {
@@ -17,8 +17,6 @@ const REGISTRY_STATUS = {
 };
 const tone = (status: SourceStatus) =>
   status === "available" ? "success" : "warning";
-const money = (value: number | null) =>
-  value === null ? "нет значения" : rub(value);
 /** Facts of one source, separated by «·» so dates ending in «г.» never get a second period. */
 const facts = (...parts: (string | false | null | undefined)[]) =>
   capitalize(parts.filter(Boolean).join(" · "));
@@ -70,8 +68,8 @@ export function SourcesPanel({
         </SourceRow>
         <SourceRow name="Обороты" status={precheck.turnover_source_status}>
           {facts(
-            `выручка за текущий период ${money(precheck.monthly_revenue_rub)}`,
-            `за предыдущий ${money(precheck.previous_monthly_revenue_rub)}`,
+            `выручка за текущий период ${rubOrNone(precheck.monthly_revenue_rub)}`,
+            `за предыдущий ${rubOrNone(precheck.previous_monthly_revenue_rub)}`,
             precheck.financial_period_end &&
               `период до ${formatDay(precheck.financial_period_end)}`,
           )}

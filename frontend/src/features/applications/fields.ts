@@ -1,4 +1,5 @@
 import {
+  Answers,
   AnswerValue,
   Collateral,
   DialogStage,
@@ -17,6 +18,19 @@ export type CollateralDraft = {
 };
 export type FieldDraft = string | boolean | null | CollateralDraft;
 type Parsed = { value: AnswerValue; errors: Record<string, string> };
+
+/** The saved answer at an answer path: a whole answer, or one pledge detail (`collateral.<key>`). */
+export function answerAt(
+  answers: Answers,
+  path: string,
+): AnswerValue | undefined {
+  const [name, key] = path.split(".");
+  const value = answers[name];
+  if (!key) return value;
+  return value && typeof value === "object"
+    ? (value as Record<string, AnswerValue>)[key]
+    : undefined;
+}
 
 export const isMoney = (field: FieldDescriptor) => field.name.endsWith("_rub");
 

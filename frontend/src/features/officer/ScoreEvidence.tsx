@@ -6,10 +6,11 @@ import {
   points,
   RISK,
   rub,
+  rubOrNone,
   signedRub,
   STATUS,
 } from "../applications/format";
-import { Amount } from "../applications/StatusView";
+import { Amount } from "../applications/Amount";
 import { EvaluationRecord, StaffApplication, StaffEvaluation } from "./officerApi";
 import {
   capitalize,
@@ -91,8 +92,6 @@ export function ReviewAmounts({
 
 const numberAt = (value: unknown) =>
   typeof value === "number" ? value : null;
-const money = (value: number | null) =>
-  value === null ? "нет значения" : rub(value);
 
 /** The latest evaluation: total, risk, the rule, each factor with its points, review flags and the server's reasons. */
 export function ScorePanel({
@@ -113,13 +112,13 @@ export function ScorePanel({
         ["Возраст бизнеса", `${factors.age_months} мес.`, factors.age_points, 20],
         [
           "Динамика выручки",
-          `${money(revenue)} к ${money(previous)} за прошлый период`,
+          `${rubOrNone(revenue)} к ${rubOrNone(previous)} за прошлый период`,
           factors.revenue_growth_points,
           25,
         ],
         [
           "Долговая нагрузка",
-          `${money(debt)} в месяц при выручке ${money(revenue)}`,
+          `${rubOrNone(debt)} в месяц при выручке ${rubOrNone(revenue)}`,
           factors.debt_burden_points,
           30,
         ],

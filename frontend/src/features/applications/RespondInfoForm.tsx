@@ -10,7 +10,13 @@ import {
 } from "../../api";
 import { Icon } from "../../components";
 import { CommandAttempts } from "./commands";
-import { answerPaths, FieldDraft, fromDraft, toDraft } from "./fields";
+import {
+  answerAt,
+  answerPaths,
+  FieldDraft,
+  fromDraft,
+  toDraft,
+} from "./fields";
 import { idOf, StageField } from "./StageFields";
 import { useCommand } from "./useCommand";
 
@@ -60,15 +66,6 @@ function requestedFields(dialog: Dialog, paths: string[]): FieldDescriptor[] {
   return fields;
 }
 
-function savedValue(answers: Answers, path: string): AnswerValue | undefined {
-  const [name, key] = path.split(".");
-  const value = answers[name];
-  if (!key) return value;
-  return value && typeof value === "object"
-    ? (value as Record<string, AnswerValue>)[key]
-    : undefined;
-}
-
 /** Puts a parsed value at its answer path; pledge details are merged into one partial `collateral` object. */
 function setAnswer(answers: Answers, path: string, value: AnswerValue) {
   const [name, key] = path.split(".");
@@ -111,7 +108,7 @@ export function RespondInfoForm({
     Object.fromEntries(
       fields.map((field) => [
         field.name,
-        toDraft(field, savedValue(application.answers, field.name)),
+        toDraft(field, answerAt(application.answers, field.name)),
       ]),
     ),
   );

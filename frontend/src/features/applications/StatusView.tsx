@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Application, applicationsApi, Dialog, HistoryItem } from "../../api";
 import { DemoBadge, Icon } from "../../components";
+import { Amount } from "./Amount";
 import { CancelAction } from "./CancelAction";
 import { CommandAttempts } from "./commands";
 import {
@@ -64,32 +65,6 @@ function explanation(application: Application, byOfficer: boolean) {
     default:
       return nextStep(application);
   }
-}
-
-/** One labelled amount tile; each figure keeps its own label and caveat. */
-export function Amount({
-  label,
-  value,
-  note,
-  tone,
-}: {
-  label: string;
-  value: string;
-  note: string;
-  tone?: string;
-}) {
-  const id = useId();
-  return (
-    <div
-      className={"card amount" + (tone ? " " + tone : "")}
-      role="group"
-      aria-labelledby={id}
-    >
-      <span id={id}>{label}</span>
-      <strong>{value}</strong>
-      <small>{note}</small>
-    </div>
-  );
 }
 
 export function StatusView({

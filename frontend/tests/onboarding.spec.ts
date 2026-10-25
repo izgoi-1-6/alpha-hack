@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-const artifacts = "../.superpowers/sdd/2026-10-24-credit-route";
+import { artifacts, settle } from "./helpers";
 
 test("seeded demo login, source details, retry and persistent refresh", async ({
   page,
@@ -137,15 +137,6 @@ test("mobile registration, explicit consents, source recovery, reload, errors an
   ).toBeVisible();
 });
 
-async function settleBrowserUpdates(page: import("@playwright/test").Page) {
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-      ),
-  );
-}
-
 for (const outcome of ["success", "unauthorized"] as const) {
   test(`delayed retry ${outcome} for A cannot replace B or clear B's pending command`, async ({
     page,
@@ -220,7 +211,7 @@ for (const outcome of ["success", "unauthorized"] as const) {
     try {
       releaseA();
       await completedA;
-      await settleBrowserUpdates(page);
+      await settle(page);
       await expect(
         page.getByRole("heading", { name: "ООО «Демо Неактивный бизнес»" }),
       ).toBeVisible();
@@ -295,7 +286,7 @@ for (const outcome of ["success", "unauthorized"] as const) {
     ).toBeVisible();
     release();
     await completed;
-    await settleBrowserUpdates(page);
+    await settle(page);
     await expect(
       page.getByRole("heading", { name: "Здесь появятся ваши компании" }),
     ).toBeVisible();
@@ -356,7 +347,7 @@ test("company retry retains its replay body and key after navigation and a lost 
   ).toBeVisible();
   release();
   await completed;
-  await settleBrowserUpdates(page);
+  await settle(page);
   await page
     .getByLabel("Ваша компания", { exact: true })
     .selectOption(companyA);

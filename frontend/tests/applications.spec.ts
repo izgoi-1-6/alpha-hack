@@ -1,48 +1,25 @@
 import { test, expect, Page } from "@playwright/test";
-
-// Every scenario registers a fresh synthetic client and onboards its own fixture company, so no
-// application is ever created on the seeded client@demo.local companies.
-const artifacts = "../.superpowers/sdd/2026-10-24-credit-route";
-const termCard = '[data-product-id="alfa_term_loan_unsecured"]';
-const lineCard = '[data-product-id="alfa_revolving_line_unsecured"]';
-const securedCard = '[data-product-id="alfa_term_loan_secured"]';
-
-async function registerClient(page: Page) {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Регистрация", exact: true }).click();
-  await page.getByLabel("Ваше имя").fill("Демо Предприниматель");
-  await page
-    .getByLabel("Электронная почта")
-    .fill(
-      `app-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`,
-    );
-  await page.getByLabel("Пароль", { exact: true }).fill("DemoCredit2026!");
-  await page
-    .getByRole("button", { name: "Создать аккаунт", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Здесь появятся ваши компании" }),
-  ).toBeVisible();
-}
-
-async function onboard(page: Page, fixtureText: string) {
-  await page
-    .locator(".sidebar")
-    .getByRole("button", { name: "Добавить компанию" })
-    .click();
-  await page.getByRole("button").filter({ hasText: fixtureText }).click();
-  for (const checkbox of await page.getByRole("checkbox").all())
-    await checkbox.check();
-  await page.getByRole("button", { name: "Добавить и проверить" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Что удалось узнать" }),
-  ).toBeVisible();
-}
-
-async function openRecommendations(page: Page) {
-  await page.getByRole("button", { name: "Подобрать финансирование" }).click();
-  await expect(page.locator(termCard)).toBeVisible();
-}
+import {
+  acceptAndSubmit,
+  artifacts,
+  bkiConsent,
+  expectNoPageOverflow,
+  expectStage,
+  expectTouchTargets,
+  fillCompanyStage,
+  fillFinanceStage,
+  fillObligationsStage,
+  fillRepresentativeStage,
+  history,
+  lineCard,
+  onboard,
+  openRecommendations,
+  processingConsent,
+  registerClient,
+  saveAndContinue,
+  securedCard,
+  termCard,
+} from "./helpers";
 
 async function startDraft(page: Page, card: string) {
   await page
@@ -53,59 +30,6 @@ async function startDraft(page: Page, card: string) {
   const id = new URL(page.url()).searchParams.get("application");
   expect(id).toMatch(/^[0-9a-f-]{36}$/);
   return id!;
-}
-
-async function expectStage(page: Page, number: number, title: string) {
-  await expect(
-    page.getByText(`Шаг ${number} из 6`, { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { level: 2, name: title, exact: true }),
-  ).toBeVisible();
-}
-
-const saveAndContinue = (page: Page) =>
-  page.getByRole("button", { name: "Сохранить и продолжить" }).click();
-
-async function fillCompanyStage(page: Page) {
-  await page.getByLabel("Сведения о компании из демо-реестра верны").check();
-  await page
-    .getByLabel("Фактический адрес")
-    .fill("Демо-город, ул. Синтетическая, 1");
-  await page
-    .getByLabel("Фактическая деятельность")
-    .fill("Оптовая торговля (демо)");
-}
-
-async function fillFinanceStage(page: Page) {
-  await page
-    .getByRole("group", { name: "Налоговый режим" })
-    .getByLabel("УСН")
-    .check();
-  await page.getByLabel("Число сотрудников").fill("7");
-  await page
-    .getByRole("group", { name: "Выручка зависит от сезона" })
-    .getByLabel("Нет")
-    .check();
-}
-
-async function fillObligationsStage(page: Page) {
-  await page
-    .getByLabel("Ежемесячные платежи по действующим кредитам и лизингу, ₽")
-    .fill("160000");
-  await page.getByLabel("Налоговая задолженность, ₽").fill("0");
-  await page
-    .getByRole("group", { name: "Есть судебные разбирательства" })
-    .getByLabel("Нет")
-    .check();
-}
-
-async function fillRepresentativeStage(page: Page) {
-  await page
-    .getByLabel("ФИО представителя (синтетические данные)")
-    .fill("Демо Представитель");
-  await page.getByLabel("Подтверждаю полномочия представителя").check();
-  await page.getByLabel("Сведения о владельцах указаны верно").check();
 }
 
 // Stages 1–5 with a low-risk profile, ending on the review stage.
@@ -128,66 +52,11 @@ async function completeQuestionnaire(page: Page, check?: () => Promise<void>) {
   await expectStage(page, 6, "Проверка и согласия");
 }
 
-const processingConsent = (page: Page) =>
-  page.getByRole("checkbox", { name: /рассмотрения заявки/ });
-const bkiConsent = (page: Page) =>
-  page.getByRole("checkbox", { name: /запрос кредитной истории/ });
-
-async function acceptAndSubmit(page: Page) {
-  await page.getByLabel("Подтверждаю, что сведения анкеты верны").check();
-  await processingConsent(page).check();
-  await bkiConsent(page).check();
-  await page.getByRole("button", { name: "Отправить заявку" }).click();
-}
-
-async function history(page: Page, id: string) {
-  const response = await page.request.get(`/api/v1/applications/${id}/history`);
-  expect(response.status()).toBe(200);
-  return (await response.json()).items as {
-    from_status: string | null;
-    to_status: string;
-    reason_code: string;
-  }[];
-}
-
-async function expectNoHorizontalOverflow(page: Page) {
-  const overflow = await page.evaluate(() =>
-    [...document.querySelectorAll("body *")]
-      .filter((el) => {
-        const box = el.getBoundingClientRect();
-        return box.width > 0 && box.right > innerWidth + 1;
-      })
-      .map((el) => `${el.tagName}.${el.className}`),
-  );
-  expect(overflow).toEqual([]);
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-}
-
-async function expectTouchTargets(page: Page) {
-  const small = await page.evaluate(() =>
-    [
-      ...document.querySelectorAll(
-        "main button, main a, main .choice, main .check-row",
-      ),
-    ]
-      .filter((el) => {
-        const box = el.getBoundingClientRect();
-        return box.width > 0 && box.height < 44;
-      })
-      .map((el) => `${el.tagName}.${el.className}: ${el.textContent?.trim()}`),
-  );
-  expect(small).toEqual([]);
-}
-
 test("strong company: card → saved six-stage questionnaire → reload resumes → explicit consents → preliminary approval with distinct amounts and labelled simulated notifications", async ({
   page,
 }) => {
   test.setTimeout(120_000);
-  await registerClient(page);
+  await registerClient(page, "app");
   await onboard(page, "Сильный бизнес");
   await openRecommendations(page);
   // Informational research items never get an application action.
@@ -364,7 +233,7 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
 
   // Another client cannot open this application's URL.
   await page.getByRole("button", { name: "Выйти из аккаунта" }).click();
-  await registerClient(page);
+  await registerClient(page, "app");
   await page.goto(`/?application=${id}`);
   await expect(
     page.getByRole("heading", { level: 1, name: "Заявка не найдена" }),
@@ -379,7 +248,7 @@ test("unavailable demo BKI: lost submit and retry responses replay their keys; W
   page,
 }) => {
   test.setTimeout(120_000);
-  await registerClient(page);
+  await registerClient(page, "app");
   await onboard(page, "БКИ недоступно");
   await openRecommendations(page);
   const id = await startDraft(page, termCard);
@@ -472,7 +341,7 @@ test("My Applications lists every application with status and next step; cancel 
   page,
 }) => {
   test.setTimeout(90_000);
-  await registerClient(page);
+  await registerClient(page, "app");
   await onboard(page, "Сильный бизнес");
   await openRecommendations(page);
   const termId = await startDraft(page, termCard);
@@ -553,7 +422,7 @@ test("My Applications lists every application with status and next step; cancel 
 test("open-stage edits are saved when leaving through the sidebar or the browser history", async ({
   page,
 }) => {
-  await registerClient(page);
+  await registerClient(page, "app");
   await onboard(page, "Сильный бизнес");
   await openRecommendations(page);
   const id = await startDraft(page, termCard);
@@ -604,7 +473,7 @@ test("open-stage edits are saved when leaving through the sidebar or the browser
 test("a value that cannot be saved is never dropped silently: stay and fix, or leave without that field", async ({
   page,
 }) => {
-  await registerClient(page);
+  await registerClient(page, "app");
   await onboard(page, "Сильный бизнес");
   await openRecommendations(page);
   const id = await startDraft(page, termCard);
@@ -656,7 +525,7 @@ test("a save from an outdated tab gets the stale-version reply: the page reloads
   page,
   context,
 }) => {
-  await registerClient(page);
+  await registerClient(page, "app");
   await onboard(page, "Сильный бизнес");
   await openRecommendations(page);
   const id = await startDraft(page, termCard);
@@ -693,7 +562,7 @@ test("submitting a second draft for a product already in progress explains the c
   page,
 }) => {
   test.setTimeout(120_000);
-  await registerClient(page);
+  await registerClient(page, "app");
   await onboard(page, "Сильный бизнес");
   await openRecommendations(page);
   const first = await startDraft(page, termCard);
@@ -742,7 +611,7 @@ test("submitting a second draft for a product already in progress explains the c
 test("secured product: an unknown pledge must be declared before submission", async ({
   page,
 }) => {
-  await registerClient(page);
+  await registerClient(page, "app");
   await onboard(page, "Сильный бизнес");
   await openRecommendations(page);
   await expect(page.locator(securedCard)).toContainText("Нужны сведения");
@@ -793,7 +662,7 @@ test("fault injection: a stale recommendation on create and on submit is explain
       },
     },
   };
-  await registerClient(page);
+  await registerClient(page, "app");
   await onboard(page, "Сильный бизнес");
   await openRecommendations(page);
   await page.route(
@@ -850,16 +719,16 @@ for (const viewport of [
     page,
   }) => {
     test.setTimeout(120_000);
-    await registerClient(page);
+    await registerClient(page, "app");
     await onboard(page, "Сильный бизнес");
     await openRecommendations(page);
     const id = await startDraft(page, termCard);
     await page.setViewportSize(viewport);
     await expectStage(page, 1, "Компания");
-    await expectNoHorizontalOverflow(page);
+    await expectNoPageOverflow(page);
     await expectTouchTargets(page);
     await completeQuestionnaire(page, async () => {
-      await expectNoHorizontalOverflow(page);
+      await expectNoPageOverflow(page);
       await expectTouchTargets(page);
       if (
         viewport.name === "mobile" &&
@@ -872,11 +741,11 @@ for (const viewport of [
         });
       }
     });
-    await expectNoHorizontalOverflow(page);
+    await expectNoPageOverflow(page);
     await expectTouchTargets(page);
     if (viewport.name === "mobile") {
       await page.setViewportSize({ width: 360, height: 780 });
-      await expectNoHorizontalOverflow(page);
+      await expectNoPageOverflow(page);
       await page.setViewportSize(viewport);
     }
     await acceptAndSubmit(page);
@@ -886,7 +755,7 @@ for (const viewport of [
         name: "Заявка предварительно одобрена",
       }),
     ).toBeVisible();
-    await expectNoHorizontalOverflow(page);
+    await expectNoPageOverflow(page);
     await expectTouchTargets(page);
     // Captured before any resize: a full-page capture right after a resize can repeat the first screen.
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -896,7 +765,7 @@ for (const viewport of [
     });
     if (viewport.name === "mobile") {
       await page.setViewportSize({ width: 360, height: 780 });
-      await expectNoHorizontalOverflow(page);
+      await expectNoPageOverflow(page);
     }
     expect((await history(page, id)).at(-1)?.to_status).toBe("PREAPPROVED");
   });

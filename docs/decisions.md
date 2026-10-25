@@ -34,3 +34,22 @@ Reversible implementation choices made while building the preliminary calculator
 | «Обычный каталог» is the baseline: the same server figures in fixed catalog order, with no rank, status, reasons, alternatives or criteria | The later comparison needs identical data with guidance removed; the display mode is local UI state until Task 7 assigns it per run. |
 | The UI archive list hides the three research entries that reuse a supported product id | They share an id with a live demo product but carry different unverified parameters; the API still returns all nine with `can_apply=false`. |
 | One snapshot is saved per calculator edit (after a 300 ms debounce) | The contract wants a saved snapshot id for each estimate; there is no pruning or rate limit in the demo. |
+
+## Task 4a rulings (applications backend)
+
+Reversible choices made while building the questionnaire, submission and scoring API; the controller's binding decisions (lazy expiry placement, respond-info in Task 5, allowed actions, debt as a client answer, attempt-indexed BKI recovery, check order) are in the SDD ledger and the canonical contract.
+
+| Ruling | Reason and consequence |
+|---|---|
+| A known BKI overdue of 30 days or more rejects (R2) even when the history category is missing | R2 precedes R3 in the spec's rule table, and a retry for the missing history could not change a mandatory stop. The fixtures never combine both. |
+| A known turnover source value stays authoritative and is the scored value; a client override is kept beside it and routes R5 | "Persisted company/source fields are authoritative": an inflated override cannot raise the scored limit an officer works within. A value the source lacks is scored as declared and routes R5. A missing turnover source still reports its period end, so that prefill is tagged `source`. |
+| A known inactive company's submission persists both consents and goes DRAFT→CHECKING→REJECTED | The submission was accepted for processing with valid consents; no BKI request is made. Missing answers do not block it (known inactive overrides missing finance). |
+| Drafts can be created for any supported product in an owned snapshot, whatever `can_apply` says | The contract makes `can_apply` a UI gate and has an unconfirmed-registry case reach the R4 check on submission. `allowed_actions` omits `submit` for a known inactive company. |
+| Submit checks conflicts before input: version, draft, current policy, duplicate active application, then R1, consents, R3 | A state conflict cannot be fixed by editing answers. Lazy expiry of the other applications runs inside the duplicate check. |
+| One command increments the version once; the check result is a system history step | DRAFT→CHECKING (client) and CHECKING→outcome (system, actor null) share one revision, matching "successful changes increment it once". |
+| A command that is the first touch after the preapproval deadline returns a committed 409 `APPLICATION_EXPIRED` | A raised error would roll the lazily recorded expiry back; the refusal now persists exactly one EXPIRED row. |
+| Trusted-source recovery records the computed rule (for example R8) with outcome MANUAL_REVIEW | The evaluation shows what scoring alone would decide while the forced review is explicit in its outcome and reasons; R2/R6/R7 still reject. |
+| `indicative_limit_rub` is recomputed at submission from current sources (the low-risk upper-estimate formula) | Old estimates must not promise capacity; the draft keeps the snapshot's figure until then. |
+| Retry-check evaluates under the product policy pinned at submission | Submitted decisions are never silently migrated to a later policy. |
+| Open info requests are shown only while the application is in progress | A terminal application has nothing to answer; the rows stay unresolved as audit evidence. |
+| The client-answers NEED_INFO of a submitted check is reachable only through an internal check | Submission already blocks missing answers with 422, so the defensive path is exercised by a service-level test, as the acceptance note on missing_turnover asks. |

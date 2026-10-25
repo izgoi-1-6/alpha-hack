@@ -2,7 +2,7 @@
 
 Russian business-finance demo built with React/TypeScript/Vite, FastAPI, SQLAlchemy/Alembic and PostgreSQL 17. All company/source data is synthetic. No real registry, bank, BKI, SMS or payment calls are made.
 
-The implemented vertical slice includes registration, session login/logout, role-separated demo access, persisted company onboarding, versioned consents, source results and idempotent source retry, plus the preliminary financing calculator: a versioned demo product catalog, explained ranking, an amount/term calculator with indicative payments and immutable saved recommendation snapshots (no BKI request, scoring or approval promise). Application, officer decision and document workflows are subsequent milestones.
+The implemented vertical slice includes registration, session login/logout, role-separated demo access, persisted company onboarding, versioned consents, source results and idempotent source retry, plus the preliminary financing calculator: a versioned demo product catalog, explained ranking, an amount/term calculator with indicative payments and immutable saved recommendation snapshots (no BKI request, scoring or approval promise). The applications API is implemented on the backend: drafts from a saved snapshot, the six saved questionnaire stages, explicit consented submission, a local BKI simulator called only after consent, scoring with R1–R11 outcomes (preliminary approval, manual review, rejection, waiting for a source, information requests), retry, cancellation, lazy 14-day expiry and a status history with simulated in-app notifications. The customer application screens, officer decisions and document workflows are subsequent milestones.
 
 ## Local development
 

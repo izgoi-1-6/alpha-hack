@@ -73,8 +73,8 @@ class Consent(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     user_id: Mapped[str] = mapped_column(ForeignKey('users.id'), index=True)
     company_id: Mapped[str] = mapped_column(ForeignKey('companies.id'), index=True)
-    # Application FK is introduced by the application milestone migration.
-    application_id: Mapped[str | None] = mapped_column(String(36))
+    # Set for the submission consents (APPLICATION_PROCESSING, BKI); null for onboarding grants.
+    application_id: Mapped[str | None] = mapped_column(ForeignKey('applications.id', name='fk_consents_application_id'), index=True)
     code: Mapped[str] = mapped_column(String(40))
     text_version: Mapped[str] = mapped_column(String(80))
     granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -92,3 +92,7 @@ class IdempotencyRecord(Base):
     response_body: Mapped[dict] = mapped_column(JSON)
     resource_id: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+# The consents FK targets the applications table: register it whenever these shared models are imported (seed and
+# scripts import only this module), so the ORM can always resolve the foreign key.
+from .applications import models as _application_models  # noqa: E402,F401

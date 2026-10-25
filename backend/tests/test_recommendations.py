@@ -420,13 +420,16 @@ def test_comparison_input_limits_are_inclusive_and_never_crash(client):
 def test_recommendations_never_access_bki_source_or_score(client,monkeypatch):
     company=setup(client)
     from app import companies
+    from app.applications import bki
     class ForbiddenSource:
         def __getitem__(self,key):
             pytest.fail('Recommendations must not query external/source fixtures (including BKI)')
         def get(self,*args):
             pytest.fail('Recommendations must use persisted precheck only')
     monkeypatch.setattr(companies,'SOURCES',ForbiddenSource())
+    bki.CALLS.clear()
     result=items(recommend(client,company))
+    assert bki.CALLS==[]  # the BKI simulator's call log: no request before a consented submission
     assert all('БКИ не запрашивалось' in ' '.join(i['reasons']) for i in result.values())
     assert not any('score' in i or 'approval_probability' in i for i in result.values())
 

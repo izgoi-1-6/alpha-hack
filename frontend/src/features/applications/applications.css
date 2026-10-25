@@ -625,6 +625,27 @@
 .status-next .notice {
   margin: 0;
 }
+.officer-comment {
+  background: #f6f4f4;
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-size: 13px;
+  display: grid;
+  gap: 4px;
+}
+.respond-form {
+  display: grid;
+  gap: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+}
+.respond-form h3 {
+  font-size: 17px;
+  margin: 0;
+}
+.respond-form > .button {
+  justify-self: start;
+}
 .status-actions {
   display: flex;
   flex-wrap: wrap;
@@ -966,7 +987,8 @@
     padding: 18px;
   }
   .status-actions > .button,
-  .status-actions .cancel-trigger {
+  .status-actions .cancel-trigger,
+  .respond-form > .button {
     width: 100%;
   }
 }

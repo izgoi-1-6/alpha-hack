@@ -460,4 +460,15 @@ export const applicationsApi = {
       body,
       idempotencyKey: key,
     }),
+  /** Answers an open client_answers request: exactly its requested paths plus a response for the officer. */
+  respondInfo: (
+    id: string,
+    body: { version: number; response: string; answers: Answers },
+    key: string,
+  ) =>
+    request<ApplicationBody>(applicationPath(id) + "/respond-info", {
+      method: "POST",
+      body,
+      idempotencyKey: key,
+    }),
 };

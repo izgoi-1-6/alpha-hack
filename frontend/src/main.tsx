@@ -21,6 +21,14 @@ import {
 } from "./features/applications/ApplicationPage";
 import { MyApplications } from "./features/applications/MyApplications";
 import { CommandAttempts } from "./features/applications/commands";
+import { NoAccess } from "./features/officer/NoAccess";
+import {
+  OfficerQueue,
+  queueParams,
+  readQueueFilters,
+} from "./features/officer/OfficerQueue";
+import { QueueFilters } from "./features/officer/officerApi";
+import { ReviewPage } from "./features/officer/ReviewPage";
 import "./styles.css";
 function App() {
   const [user, setUser] = useState<User | null>(null),
@@ -48,12 +56,18 @@ function App() {
   const leaveGuard = useRef<LeaveGuard | null>(null);
   const leaving = useRef(false);
   const shownUrl = useRef(window.location.href);
+  // The officer's last queue filters, so the way back from a review returns to the same list.
+  const lastQueue = useRef<QueueFilters>({});
   const onboard = url.searchParams.get("view") === "onboard";
   const selectedId = url.searchParams.get("company");
   const recommending = url.searchParams.get("view") === "recommendations";
   const applicationList = url.searchParams.get("view") === "applications";
   const applicationId = url.searchParams.get("application");
   const inApplications = applicationList || !!applicationId;
+  const queueView = url.searchParams.get("view") === "queue";
+  const officer = user?.role === "CREDIT_OFFICER";
+  if (officer && queueView)
+    lastQueue.current = readQueueFilters(url.searchParams);
   const captureScope = () => ({ ...generation.current });
   const isCurrent = (scope: { session: number; view: number }) =>
     scope.session === generation.current.session &&
@@ -73,6 +87,7 @@ function App() {
     invalidateView();
     retryAttempts.current.clear();
     commandAttempts.current.clear();
+    lastQueue.current = {};
     leaving.current = false;
     setUser(nextUser);
     setCompanies([]);
@@ -112,12 +127,19 @@ function App() {
       else stay();
     });
   }
-  function navigate(id?: string, view?: string, application?: string) {
+  function navigate(
+    id?: string,
+    view?: string,
+    application?: string,
+    params: Record<string, string> = {},
+  ) {
     const next = new URL(window.location.href);
     next.search = "";
     if (id) next.searchParams.set("company", id);
     if (view) next.searchParams.set("view", view);
     if (application) next.searchParams.set("application", application);
+    for (const [name, value] of Object.entries(params))
+      next.searchParams.set(name, value);
     afterLeaving(() => {
       window.history.pushState({}, "", next);
       changeView(next);
@@ -184,7 +206,9 @@ function App() {
       if (!active()) return;
       const id =
         selectedId ??
-        (!onboard && !inApplications ? list.items[0]?.id : undefined);
+        (!onboard && !inApplications && !queueView
+          ? list.items[0]?.id
+          : undefined);
       const result = id ? await api.company(id, controller.signal) : null;
       if (!active()) return;
       setCompanies(list.items);
@@ -284,16 +308,27 @@ function App() {
         <Brand />
         <div className="nav-label">Рабочее пространство</div>
         <nav>
-          <button
-            className={!onboard && !inApplications ? "active" : ""}
-            onClick={() => navigate()}
-          >
-            <Icon name="building" />
-            {user.role === "CLIENT" ? "Мои компании" : "Кабинет специалиста"}
-            {user.role === "CLIENT" && (
+          {officer && (
+            <button
+              className="active"
+              onClick={() => navigate(undefined, "queue")}
+            >
+              <Icon name="file" />
+              Очередь заявок
+            </button>
+          )}
+          {user.role === "CLIENT" && (
+            <button
+              className={
+                !onboard && !inApplications && !queueView ? "active" : ""
+              }
+              onClick={() => navigate()}
+            >
+              <Icon name="building" />
+              Мои компании
               <span className="nav-count">{companies.length}</span>
-            )}
-          </button>
+            </button>
+          )}
           {user.role === "CLIENT" && (
             <button
               className={inApplications ? "active" : ""}
@@ -351,10 +386,12 @@ function App() {
           </button>
           <span className="breadcrumbs">
             Бизнес <span>/</span>{" "}
-            {onboard
-              ? "Новая компания"
-              : user.role !== "CLIENT"
-                ? "Специалист"
+            {officer
+              ? applicationId
+                ? "Рассмотрение заявки"
+                : "Очередь заявок"
+              : onboard
+                ? "Новая компания"
                 : inApplications
                   ? "Мои заявки"
                   : "Мои компании"}
@@ -365,44 +402,48 @@ function App() {
           </div>
         </header>
         <main className="main-content">
-          {user.role === "CREDIT_OFFICER" ? (
-            <>
-              <div className="page-heading">
-                <div className="eyebrow accent">Кабинет специалиста</div>
-                <h1>Доступ подтверждён</h1>
-                <p>
-                  Вы вошли как кредитный специалист демонстрационного сервиса.
-                </p>
-              </div>
-              <section className="card officer-card">
-                <span className="large-icon">
-                  <Icon name="shield" size={32} />
-                </span>
-                <h2>{user.display_name}</h2>
-                <p>
-                  Роль кредитного специалиста назначена сервером через
-                  демо-инструменты.
-                </p>
-                <dl>
-                  <div>
-                    <dt>Аккаунт</dt>
-                    <dd>{user.email}</dd>
-                  </div>
-                  <div>
-                    <dt>Роль</dt>
-                    <dd>CREDIT_OFFICER</dd>
-                  </div>
-                </dl>
-                <div className="notice quiet">
-                  <Icon name="info" />
-                  <span>
-                    Данные клиентских компаний защищены. Для проверки
-                    клиентского маршрута войдите под демо-клиентом.
-                  </span>
-                </div>
-              </section>
-              {actionError && <ErrorNotice error={actionError} />}
-            </>
+          {officer && actionError && <ErrorNotice error={actionError} />}
+          {officer ? (
+            applicationId ? (
+              <ReviewPage
+                key={`${user.id}:${applicationId}`}
+                applicationId={applicationId}
+                userId={user.id}
+                attempts={commandAttempts.current}
+                onOpenQueue={() =>
+                  navigate(
+                    undefined,
+                    "queue",
+                    undefined,
+                    queueParams(lastQueue.current),
+                  )
+                }
+                onUnauthorized={() => changeAccount(null)}
+              />
+            ) : queueView || !url.search ? (
+              <OfficerQueue
+                key={user.id}
+                userId={user.id}
+                filters={readQueueFilters(url.searchParams)}
+                onFilter={(filters) =>
+                  navigate(undefined, "queue", undefined, queueParams(filters))
+                }
+                onOpen={(id) => navigate(undefined, undefined, id)}
+                onUnauthorized={() => changeAccount(null)}
+              />
+            ) : (
+              <NoAccess
+                text="Этот раздел доступен только клиентам: компании, подбор и анкеты ведут сами клиенты. Отправленные заявки — в очереди."
+                action="Перейти к очереди заявок"
+                onAction={() => navigate(undefined, "queue")}
+              />
+            )
+          ) : queueView ? (
+            <NoAccess
+              text="Очередь заявок доступна только кредитным специалистам. Ваши заявки и их статус — в разделе «Мои заявки»."
+              action="Перейти к моим заявкам"
+              onAction={() => navigate(undefined, "applications")}
+            />
           ) : loading ? (
             <Loading />
           ) : loadError ? (

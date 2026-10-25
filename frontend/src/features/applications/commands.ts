@@ -47,16 +47,19 @@ export type CommandProblem = {
     | "other";
   message: string;
   fields: Record<string, string>;
+  /** The API's error code, when the failure was an API answer, for callers that react to one code. */
+  code?: string;
   activeApplicationId?: string;
 };
 
-/** Maps the API's documented command errors to what the customer can do next. */
+/** Maps the API's documented command errors to what the customer or officer can do next. */
 export function commandProblem(error: unknown): CommandProblem {
+  const code = error instanceof ApiError ? error.code : "";
   const problem = (
     kind: CommandProblem["kind"],
     message: string,
     fields: Record<string, string> = {},
-  ): CommandProblem => ({ kind, message, fields });
+  ): CommandProblem => ({ kind, message, fields, code });
   if (!(error instanceof ApiError))
     return problem(
       "other",
@@ -84,13 +87,23 @@ export function commandProblem(error: unknown): CommandProblem {
         "version",
         "Заявка изменилась в другой вкладке или окне. Мы загрузили сохранённую версию.",
       );
+    // State conflicts: the screen reloads to show the current state, with the server's message.
     case "INVALID_STATUS":
     case "APPLICATION_EXPIRED":
+    case "TRUSTED_SOURCE_REQUIRED":
+    case "ALREADY_ASSIGNED":
+    case "ASSIGNMENT_REQUIRED":
+    case "INFO_REQUEST_OPEN":
+    case "MANDATORY_STOP":
+    case "LIMIT_NOT_COMPUTABLE":
       return problem("status", error.message);
     case "VALIDATION_ERROR":
     case "CORRECTION_REQUIRED":
     case "NEED_INFO":
     case "PRODUCT_NOT_SUPPORTED":
+    case "ANSWER_NOT_REQUESTED":
+    case "NEED_FIELDS_LOCKED":
+    case "AMOUNT_OUT_OF_BOUNDS":
       return problem("fields", error.message, error.fields ?? {});
     default:
       return problem("other", error.message);

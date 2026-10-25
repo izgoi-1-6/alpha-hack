@@ -1095,21 +1095,6 @@ dd {
 .empty-features svg {
   color: #927397;
 }
-.officer-card {
-  max-width: 700px;
-  padding: 35px;
-}
-.officer-card > p {
-  margin-top: 15px;
-  color: var(--muted);
-}
-.officer-card dl {
-  max-width: 470px;
-  margin-bottom: 24px;
-}
-.officer-card .notice {
-  margin-bottom: 0;
-}
 @media (min-width: 1550px) {
   .auth-story {
     padding-left: 65px;
@@ -1506,15 +1491,6 @@ dd {
   .notice {
     font-size: 12px;
     padding: 14px;
-  }
-  .officer-card dl > div {
-    font-size: 10px;
-  }
-  .officer-card {
-    padding: 25px 20px;
-  }
-  .officer-card .notice {
-    font-size: 12px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

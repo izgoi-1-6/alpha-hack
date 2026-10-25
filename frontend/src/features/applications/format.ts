@@ -14,12 +14,40 @@ export const keepAmountsTogether = (text: string) =>
     .replace(/(\d) (?=\d{3}(?!\d))/g, "$1" + NBSP)
     .replace(/(\d) ₽/g, "$1" + NBSP + "₽");
 
+/** A signed RUB difference: «+100 000 ₽», «−50 000 ₽», «0 ₽». */
+export const signedRub = (value: number) =>
+  (value > 0 ? "+" : value < 0 ? "−" : "") + rub(Math.abs(value));
+
+export const RISK = {
+  low: "низкий риск",
+  medium: "средний риск",
+  high: "высокий риск",
+};
+
+/** «1 балл», «2 балла», «65 баллов». */
+export const points = (n: number) => {
+  const tail = n % 100;
+  const last = n % 10;
+  const word =
+    tail >= 11 && tail <= 14
+      ? "баллов"
+      : last === 1
+        ? "балл"
+        : last >= 2 && last <= 4
+          ? "балла"
+          : "баллов";
+  return `${n} ${word}`;
+};
+
+/** «25 октября 2026 г.» with the year suffix kept on the year's line. */
 export const formatDate = (value: string) =>
   new Intl.DateTimeFormat("ru-RU", {
     day: "numeric",
     month: "long",
     year: "numeric",
-  }).format(new Date(value));
+  })
+    .format(new Date(value))
+    .replace(/\s(?=г\.$)/, NBSP);
 
 export const formatDateTime = (value: string) =>
   new Intl.DateTimeFormat("ru-RU", {
@@ -125,7 +153,7 @@ export function nextStep(application: Application): string {
     case "NEED_INFO":
       return request?.kind === "trusted_source"
         ? "Повторите проверку: нужен повторный запрос к демо-источнику"
-        : "Специалисту нужны сведения: ответ на запрос появится на следующем этапе демо";
+        : "Ответьте на запрос сведений";
     case "MANUAL_REVIEW":
       return "Дождитесь решения кредитного специалиста";
     case "PREAPPROVED":

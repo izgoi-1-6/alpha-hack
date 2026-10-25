@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Application, applicationsApi, HistoryItem } from "../../api";
+import { Application, applicationsApi, Dialog, HistoryItem } from "../../api";
 import { DemoBadge, Icon } from "../../components";
 import { CancelAction } from "./CancelAction";
 import { CommandAttempts } from "./commands";
@@ -9,34 +9,28 @@ import {
   formatDateTime,
   keepAmountsTogether,
   nextStep,
+  points,
   productName,
+  RISK,
   rub,
   STATUS,
 } from "./format";
+import { RespondInfoForm } from "./RespondInfoForm";
 import { Timeline } from "./Timeline";
 import { useCommand } from "./useCommand";
 
-const RISK = {
-  low: "низкий риск",
-  medium: "средний риск",
-  high: "высокий риск",
-};
-const points = (n: number) => {
-  const tail = n % 100;
-  const last = n % 10;
-  const word =
-    tail >= 11 && tail <= 14
-      ? "баллов"
-      : last === 1
-        ? "балл"
-        : last >= 2 && last <= 4
-          ? "балла"
-          : "баллов";
-  return `${n} ${word}`;
-};
+/** The officer's own decision that brought the application to its current status, if one did. */
+function officerDecision(application: Application, history: HistoryItem[]) {
+  const last = history[history.length - 1];
+  return last?.actor_role === "officer" &&
+    last.to_status === application.status &&
+    ["R12", "FINAL_REJECTED"].includes(last.reason_code)
+    ? last
+    : null;
+}
 
 /** What the customer can expect and do now, in plain language; never reads as a final approval. */
-function explanation(application: Application) {
+function explanation(application: Application, byOfficer: boolean) {
   const request = application.open_info_request;
   switch (application.status) {
     case "CHECKING":
@@ -46,7 +40,9 @@ function explanation(application: Application) {
     case "NEED_INFO":
       return request?.kind === "trusted_source"
         ? "Демо-источник ответил не полностью. Эти сведения нельзя указать в анкете — их даёт только источник. Нажмите «Повторить проверку»."
-        : "Для продолжения нужны дополнительные сведения по анкете.";
+        : request?.requested_by === "officer"
+          ? "Кредитному специалисту нужны дополнительные сведения. Ответьте на запрос ниже — заявка вернётся на рассмотрение к тому же специалисту."
+          : "Для продолжения нужны дополнительные сведения по анкете: ответьте на запрос ниже.";
     case "MANUAL_REVIEW":
       return "Заявку рассмотрит кредитный специалист: решение и возможная сумма определятся после проверки. Пока это не одобрение.";
     case "PREAPPROVED":
@@ -58,7 +54,9 @@ function explanation(application: Application) {
     case "APPROVED":
       return "Это демонстрационное решение: деньги не перечисляются, договор не подписывается.";
     case "REJECTED":
-      return "Причина — в результате проверки ниже. Можно подобрать другой продукт или изменить параметры.";
+      return byOfficer
+        ? "Решение принял кредитный специалист — его комментарий ниже. Можно подобрать другой продукт или изменить параметры."
+        : "Причина — в результате проверки ниже. Можно подобрать другой продукт или изменить параметры.";
     case "CANCELLED":
       return "Заявка отменена и больше не рассматривается. Новую заявку можно начать из подбора.";
     case "EXPIRED":
@@ -68,7 +66,8 @@ function explanation(application: Application) {
   }
 }
 
-function Amount({
+/** One labelled amount tile; each figure keeps its own label and caveat. */
+export function Amount({
   label,
   value,
   note,
@@ -96,6 +95,7 @@ function Amount({
 export function StatusView({
   application,
   history,
+  dialog,
   attempts,
   reload,
   announce,
@@ -106,6 +106,8 @@ export function StatusView({
 }: {
   application: Application;
   history: HistoryItem[];
+  /** The questionnaire contract, loaded only while an information request can be answered. */
+  dialog: Dialog | null;
   attempts: CommandAttempts;
   reload: () => Promise<unknown>;
   announce: (text: string) => void;
@@ -129,6 +131,7 @@ export function StatusView({
     application.status,
   );
   const term = application.answers.term_months;
+  const decision = officerDecision(application, history);
 
   async function retry() {
     const body = { version: application.version };
@@ -174,7 +177,13 @@ export function StatusView({
 
       <section className="card status-next" aria-labelledby="next-heading">
         <h2 id="next-heading">Что дальше</h2>
-        <p>{explanation(application)}</p>
+        <p>{explanation(application, !!decision)}</p>
+        {decision && (
+          <div className="officer-comment">
+            <b>Комментарий кредитного специалиста</b>
+            <p>{keepAmountsTogether(decision.reason_text)}</p>
+          </div>
+        )}
         {request && (
           <div className="info-request">
             <b>
@@ -183,11 +192,23 @@ export function StatusView({
                 : "Запрос кредитного специалиста"}
             </b>
             <p>{keepAmountsTogether(request.question)}</p>
-            {request.kind === "client_answers" && (
-              <p>Ответить на запрос можно будет на следующем этапе демо.</p>
-            )}
           </div>
         )}
+        {request?.kind === "client_answers" &&
+          actions.includes("respond_info") &&
+          dialog && (
+            <RespondInfoForm
+              key={request.id}
+              application={application}
+              request={request}
+              dialog={dialog}
+              attempts={attempts}
+              reload={reload}
+              announce={announce}
+              onResponded={() => setFocusRequest((n) => n + 1)}
+              onUnauthorized={onUnauthorized}
+            />
+          )}
         {command.problem && (
           <div className="notice error" role="alert">
             <Icon name="info" />

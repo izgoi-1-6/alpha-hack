@@ -8,9 +8,17 @@ const ACTOR_LABELS: Record<HistoryItem["actor_role"], string> = {
   system: "Система · демо-проверка",
 };
 
-/** The application's history in order; each simulated in-app notification is labelled as an imitation. */
-export function Timeline({ items }: { items: HistoryItem[] }) {
-  const actor = (item: HistoryItem) => ACTOR_LABELS[item.actor_role];
+/**
+ * The application's history in order; each simulated in-app notification is labelled as an imitation. Actors are
+ * named from the customer's point of view unless the staff page passes its own `actorLabel`.
+ */
+export function Timeline<T extends HistoryItem>({
+  items,
+  actorLabel = (item) => ACTOR_LABELS[item.actor_role],
+}: {
+  items: T[];
+  actorLabel?: (item: T) => string;
+}) {
   return (
     <section className="card timeline-card" aria-labelledby="history-heading">
       <div className="panel-title">
@@ -31,7 +39,7 @@ export function Timeline({ items }: { items: HistoryItem[] }) {
                 </time>
               </div>
               <p>{keepAmountsTogether(item.reason_text)}</p>
-              <small>{actor(item)}</small>
+              <small>{actorLabel(item)}</small>
               {item.notification && (
                 <div className="timeline-notification">
                   <DemoBadge label="Демо · имитация уведомления" />

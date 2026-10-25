@@ -24,7 +24,13 @@ type Loaded =
       dialog: Dialog;
       consents: ConsentDocument[];
     }
-  | { kind: "status"; application: Application; history: HistoryItem[] }
+  | {
+      kind: "status";
+      application: Application;
+      history: HistoryItem[];
+      /** Field descriptors for answering an open information request, else null. */
+      dialog: Dialog | null;
+    }
   /** A draft whose product policy was withdrawn: the dialog answers 409 RECOMMENDATION_STALE. */
   | { kind: "stale"; application: Application };
 
@@ -73,8 +79,13 @@ export function ApplicationPage({
   async function read(signal: AbortSignal): Promise<Loaded> {
     const { application } = await applicationsApi.get(applicationId, signal);
     if (application.status !== "DRAFT") {
-      const { items } = await applicationsApi.history(applicationId, signal);
-      return { kind: "status", application, history: items };
+      const [{ items }, dialog] = await Promise.all([
+        applicationsApi.history(applicationId, signal),
+        application.allowed_actions.includes("respond_info")
+          ? applicationsApi.dialog(applicationId, signal)
+          : null,
+      ]);
+      return { kind: "status", application, history: items, dialog };
     }
     try {
       const [dialog, documents] = await Promise.all([
@@ -175,6 +186,7 @@ export function ApplicationPage({
       <StatusView
         application={loaded.application}
         history={loaded.history}
+        dialog={loaded.dialog}
         attempts={attempts}
         reload={() => load()}
         announce={announce}

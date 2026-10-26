@@ -1,15 +1,50 @@
 # Compact project context
 
-User requested a full-stack credit journey for customers and a credit officer, with a useful recommendation feature and honest proof of business benefit. Deadline is under 24 hours. User chose React + TypeScript + Vite / FastAPI / PostgreSQL, three fully supported financing products, and the newer analyst lifecycle (preapproval, documents, officer final approval, simulated Alfa-Business handoff). On 2026-10-24 user approved implementation of the roadmap and explicitly chose subagent-driven development. Execute all milestones continuously, settle reversible ambiguity with documented rulings.
+**Where things stand (2026-10-26).**
+- The user asked for a full-stack credit journey for small-business customers and a credit officer: React + TypeScript + Vite, FastAPI, PostgreSQL.
+- The first plan (`plans/2026-10-24-credit-route.md`, Tasks 1–6) built the lifecycle: onboarding, recommendations, a six-stage questionnaire, scoring R1–R12, the officer review, documents, final approval and the Alfa-Business hand-off. Its Task 7 (a baseline-versus-guided comparison) was dropped by the user.
+- The user's post-testing revision (`plans/2026-10-25-catalog-ux-revision.md`, Tasks 8–13) is complete:
+  - products come from the bank's catalog plus a policy file, with eleven card products;
+  - the product screen takes the amount only, on explained two-column cards;
+  - purpose, term and pledge are chosen in the questionnaire;
+  - the tax regime, staff and representative come read-only from the sources;
+  - a mock Госуслуги authority check is needed to add a company;
+  - an interactive client walkthrough;
+  - no «демо»/«имитация» wording in the app;
+  - seven end-to-end browser journeys, a verified Docker stack, a guarded reset script and hand-over docs.
+- Next: one final whole-branch review, then hand-over to the user. No push, merge or deployment is authorized.
 
-Source checkout: `/Users/ren1kron/Developer/hakatons/alpha-hack` on main. Original untracked research lives there under `drafts&notes/`; do not modify or wholesale commit it. Active implementation worktree: `/Users/ren1kron/Developer/hakatons/alpha-hack/.worktrees/credit-route-mvp`, branch `codex/credit-route-mvp`, original base `3e8e842`. Native worktree was initially created under `.codex/worktrees/ddbf`, then relocated using git worktree move because sandbox could not write there. Main checkout remains unchanged apart from local `.git/info/exclude` ignoring `.worktrees/`.
+**Where to look.**
+- Run, present and reset the app: [docs/demo.md](../demo.md).
+- What is executed and what is assumed, with the known limitations: [docs/evidence.md](../evidence.md).
+- The contract: the [design](specs/2026-10-24-credit-route-design.md), as amended by the revision plan's binding rule changes.
+- The reasoning: [decisions](../decisions.md), with a table of rulings per task.
+- Interfaces: [implementation](../api/implementation.md).
+- The catalog and policy rules: [catalog](../catalog.md).
 
-No application existed at start. Only README placeholders, Python scoring notebook and analyst research. Latest complete analyst artifact is source checkout `drafts&notes/credit-route_files/a_Sxsi.html` (real content); outer `credit-route.html` is wrapper. Embedded catalog exactly matches `drafts&notes/credit_catalog.json`: five bank products, three government programs, one guarantee overlay. Other important sources: `Business-analists-notes.txt`, `functional-requirements.md`, `stage-1-registration.md`, `flow-probably.txt`, `synthetic_tests_client_flow_v2/README.md`, JSON fixtures and validator, `starter-html/Chat.dc.html`. Notebook `scoring/alfa_scoring_simple.ipynb` is tracked.
+**Repository and workflow.**
+- Source checkout: `/Users/ren1kron/Developer/hakatons/alpha-hack` on `main`.
+- Active worktree: `.worktrees/credit-route-mvp` on branch `codex/credit-route-mvp` (original base `3e8e842`). The main checkout is unchanged apart from `.git/info/exclude` ignoring `.worktrees/`.
+- Work is subagent-driven, one task at a time: implementer → reviewer → fix rounds, each increment committed.
+- The SDD scratch (`.superpowers/sdd/<plan>/`, git-ignored) holds briefs, reports, reviews, raw test output and screenshots. Its `progress.md` ledger records every ruling.
+- After a context reset, read the ledger, `git log` and the latest report; never redo a completed task.
 
-Earlier research targeted IP only and documents before evaluation with final OFFERED/signing/disbursement. New artifact supports IP and LLC and documents after preliminary approval. It has contradictory collateral treatment (needs_info versus fits), treats secured catalog ceiling as personal capacity, treats majority owner as consenting guarantor, lacks reliable login, and lacks officer workspace. Resolve those rather than copy them. It has no calibrated approval probability. Rates/legal/program terms are research claims, not verified production policy. Mock examples must not represent real bank offers.
+**Runtime.**
+- PostgreSQL runs in the compose container `credit-route-db-1` on 127.0.0.1:5432. It holds the development database `credit_route` and the disposable `credit_route_test`.
+- The local API runs on :8000 and Vite on :5173.
+- `docker compose up --build -d` runs the same app in containers on the same ports and the same database. Never pass `-v`.
+- `scripts/reset-demo.sh` returns the development database to the seed.
 
-Scoring: age >=24 months 20, 6–23 10, under6 0; revenue growth >10% 25, -10% through10% 15, below -10% 0; monthly debt/revenue <=30% 30, <=50% 15, >50% 0; history clean25, minor_closed10, serious0. >=75 low risk, >=50 medium, below50 high. Known inactive or current overdue >=30d is hard rejection. Zero denominators/data conflicts require review. Original demo product limit low=min(3m,3*monthly revenue), medium=min(1m,monthly revenue); original 100k–3m/6–36m parameters are historical and must be distinguished from three new demo products.
+**Provenance.**
+- Original analyst research lives untracked under `drafts&notes/` in the source checkout. Do not modify it or commit it wholesale.
+- The latest analyst artifact is `drafts&notes/credit-route_files/a_Sxsi.html`.
+- `data/credit_catalog.json` is the user's `credit_catalog_updated.json` plus card texts. `data/catalog.research.json` keeps the nine archived research claims as history; the app never reads it.
+- The scoring table comes from `scoring/alfa_scoring_simple.ipynb`:
+  - business age 20/10/0 points;
+  - revenue growth 25/15/0;
+  - debt load 30/15/0;
+  - credit history 25/10/0;
+  - 75+ points is low risk, 50–74 medium, below 50 high.
+- Rates, legal and program terms in the catalog are research claims, not verified bank policy. The policy file is local decision rules.
 
-Initial fixture validator actually ran: 26 core variants internally consistent; 14 new-flow and 10 dedup scenarios only structurally checked. No existing application was tested. Do not claim these are backend passes. User wants clean proof: technical execution plus controlled baseline-versus-guided task comparison, with business revenue explicitly modeled until real outcomes exist.
-
-Progress is owned by this plan only: `docs/superpowers/plans/2026-10-24-credit-route.md`; SDD workspace `.superpowers/sdd/2026-10-24-credit-route/`. After compaction read progress.md, git log, and latest report; never redo completed tasks. Agents must use isolated prompts (fork_turns none), explicit model/effort, no child delegation by implementers/reviewers. Implement sequentially; review each task then final broad review. No remote publish/push/merge authorized.
+**Proof boundaries.** The evidence is technical: backend suites (SQLite and PostgreSQL), browser journeys against the real app, mutation checks and a container smoke test. No real user, conversion or revenue has been measured, and none may be claimed.

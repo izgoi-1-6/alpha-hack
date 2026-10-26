@@ -39,7 +39,9 @@ Term-loan payment at 1m/12m/23.50% rounds to94,318 RUB (the annuity formula); th
 
 Pinned at submission: `secured` (collateral mode required, or optional with a declared pledge), `required_documents` (BANK_STATEMENT, FINANCIAL_REPORT, plus COLLATERAL_OWNERSHIP, COLLATERAL_VALUATION when secured) and the runtime product with its effective terms. Retry, R5, respond-info, the checklist, requestable fields and the officer's preapproval and final bounds read the pinned facts even after the live policy changes.
 
-## Genuine implementation acceptance scenarios (execute later)
+## Genuine implementation acceptance scenarios
+
+Executed: the backend suites, the browser specs and the seven end-to-end journeys cover these scenarios; [evidence.md](../evidence.md) records the runs, their numbers and what remains assumed. A12, A13 and the comparison protocol below belong to the dropped Task 7 and were not built.
 
 | ID | Driver and assertions |
 |---|---|
@@ -54,8 +56,8 @@ Pinned at submission: `secured` (collateral mode required, or optional with a de
 | A09 | Browser+HTTP: strong preapproval→two required uploads→complete→officer rejects file→DOCS_REWORK→replacement→complete→all accept→final APPROVED→local simulated handoff; original rejected file remains audit evidence. |
 | A10 | HTTP+clock: incomplete/unaccepted docs deny approve, secured requires four and verified value; all preapproved doc states expire exactly once at deadline; no expiry on approved; final file replacement denied. |
 | A11 | HTTP+DB: idempotent officer replay one decision, stale or competing officer forbidden; preapproved/final amounts independently bounded; cancellation terminal; clients cannot manufacture BKI/history/score. |
-| A12 | HTTP+browser: baseline/guided see same fixture/catalog; events allowlisted/≤4KiB, unknown fields rejected, run/application ownership checked, server timestamps/cohort, replay dedup, held-out answers hidden; empty summary nulls. |
-| A13 | Controlled synthetic trials run three held-out tasks in both modes; compute correct/N completed, completion/N started, median server duration/N; label synthetic. No claim of human behavior or revenue uplift. |
+| A12 | (Dropped with Task 7.) HTTP+browser: baseline/guided see same fixture/catalog; events allowlisted/≤4KiB, unknown fields rejected, run/application ownership checked, server timestamps/cohort, replay dedup, held-out answers hidden; empty summary nulls. |
+| A13 | (Dropped with Task 7.) Controlled synthetic trials run three held-out tasks in both modes; compute correct/N completed, completion/N started, median server duration/N; label synthetic. No claim of human behavior or revenue uplift. |
 | A14 | HTTP+DB+process restart: submit bki_missing→system NEED_INFO with null officer_id/kind=trusted_source/source=bki/empty requested_fields; respond-info409 TRUSTED_SOURCE_REQUIRED; retry with stored consent→fresh mock clean evidence→MANUAL_REVIEW same ID/assignee, score100/limit2.4m, old evidence retained; replay no second source call/evaluation. Secured valuation review persists positive verified_value_rub on accepted current revision; restart and approve still enforce3.5m cap from verified5m, never original8m declaration. Missing/rejected/superseded valuation cannot approve. Assigned officer can reject PREAPPROVED/DOCS_UPLOADED/DOCS_REWORK with incomplete/unaccepted docs and reason; same conditions deny approve. |
 | A15 | HTTP+DB+browser: the Госуслуги check per fixture (person = `director_name`, role by entity type, expiry +30 min, idempotent per key); onboarding refuses an absent, unknown, another user's, another ИНН's, used or expired verification with 403 `AUTHORITY_NOT_VERIFIED` and persists nothing; two users may add the same ИНН; seeded companies carry seeded verifications; submission without one is 403 with no BKI; `tax_regime`, `employees`, `representative_name`, `representative_authority_confirmed` are prefilled read-only, refused in answers PATCH and respond-info (422 `SOURCE_OWNED_FIELDS`), never requestable (422 `FIELD_NOT_REQUESTABLE`) and pinned from their sources at submission; `registry_unavailable` still waits (R4); no server text or fixture name says «демо»/«имитац…», and no rendered version or human text says "demo" outside the named technical exceptions; two concurrent creates with one verification admit exactly one (PostgreSQL). |
 
@@ -83,6 +85,6 @@ Original notebook/fixture requirements were 100k–3m,6–36m and OFFERED→SIGN
 
 At source research time, the original validator checked 26 core variants for internal consistency; NF14/D10 only had structural checks. Those counts are not backend passes. Task 1's preserved verification independently checks new data/math/doc coverage. Genuine integration/browser results must be added later with exact executed commands, environment, counts, failures and limits.
 
-## Frozen held-out comparison protocol
+## Frozen held-out comparison protocol (dropped with Task 7; kept as history)
 
 Task IDs `comparison-working-capital`, `comparison-single`, `comparison-investment` contain human-authored expected choices and criteria in JSON before engine implementation. Task1 commit SHA freezes answer_key_version. Do not compute answer keys by calling recommendation code. Counterbalance synthetic run order baseline/guided to exercise instrumentation, never present speed of automation as human task speed. A real consenting participant study, if separately run, must label cohort, participant count, order, duration measurement, missing observations and avoid conflating repeated trials with people. Model financial assumptions separately; no observed signing/funding/revenue exists.

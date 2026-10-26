@@ -1,6 +1,10 @@
 import { useRef, useState } from "react";
 import { Icon } from "../../components";
-import { CommandAttempts, CommandProblem } from "../applications/commands";
+import {
+  CommandAttempts,
+  CommandProblem,
+  unknownOutcome,
+} from "../applications/commands";
 import { rub, STATUS } from "../applications/format";
 import { useCommand } from "../applications/useCommand";
 import { PreapproveForm, RejectForm, RequestInfoForm } from "./DecisionForms";
@@ -27,7 +31,10 @@ const TERMINAL = ["APPROVED", "REJECTED", "CANCELLED", "EXPIRED"];
 function problemText(problem: CommandProblem, form: "offered" | "gone" | null) {
   switch (problem.kind) {
     case "network":
-      return "Нет связи с сервером. Команда могла уже выполниться: повторите её — повтор с тем же ключом не создаст второе решение.";
+      return unknownOutcome(
+        problem,
+        "Команда могла уже выполниться: повторите её — повтор с тем же ключом не создаст второе решение.",
+      );
     case "version":
       return (
         "Заявка изменилась после загрузки страницы: мы показали актуальную версию." +

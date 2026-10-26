@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Application, applicationsApi } from "../../api";
 import { Icon } from "../../components";
-import { CommandAttempts } from "./commands";
+import { CommandAttempts, unknownOutcome } from "./commands";
 import { useCommand } from "./useCommand";
 
 /** Cancellation is final, so it always asks for confirmation and a short reason (the API requires one). */
@@ -96,7 +96,10 @@ export function CancelAction({
           <Icon name="info" />
           <span>
             {command.problem.kind === "network"
-              ? "Нет связи с сервером. Заявка могла уже отмениться: повторите — повтор не отменит её дважды."
+              ? unknownOutcome(
+                  command.problem,
+                  "Заявка могла уже отмениться: повторите — повтор не отменит её дважды.",
+                )
               : command.problem.message}
           </span>
         </div>

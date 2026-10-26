@@ -11,7 +11,7 @@ import { DocumentChecklist } from "../documents/DocumentChecklist";
 import { HandoffAction } from "../documents/HandoffAction";
 import { Amount } from "./Amount";
 import { CancelAction } from "./CancelAction";
-import { CommandAttempts } from "./commands";
+import { CommandAttempts, unknownOutcome } from "./commands";
 import {
   formatDate,
   formatDateTime,
@@ -202,7 +202,10 @@ export function StatusView({
             <Icon name="info" />
             <span>
               {command.problem.kind === "network"
-                ? "Нет связи с сервером. Проверка могла уже выполниться: нажмите «Повторить проверку» ещё раз — повтор не создаст второе решение."
+                ? unknownOutcome(
+                    command.problem,
+                    "Проверка могла уже выполниться: нажмите «Повторить проверку» ещё раз — повтор не создаст второе решение.",
+                  )
                 : command.problem.message}
             </span>
           </div>

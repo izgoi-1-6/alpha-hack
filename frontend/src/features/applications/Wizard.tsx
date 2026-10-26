@@ -10,7 +10,12 @@ import {
 } from "../../api";
 import { Icon } from "../../components";
 import { CancelAction } from "./CancelAction";
-import { CommandAttempts, CommandProblem, commandProblem } from "./commands";
+import {
+  CommandAttempts,
+  CommandProblem,
+  commandProblem,
+  unknownOutcome,
+} from "./commands";
 import {
   answerPaths,
   FieldDraft,
@@ -24,7 +29,7 @@ import {
 import { formatTime, productName, STATUS } from "./format";
 import { ReviewStage } from "./ReviewStage";
 import { idOf, ProductFacts, StageField } from "./StageFields";
-import { UnsavedFieldsDialog } from "./UnsavedFieldsDialog";
+import { UnsavedFieldsDialog, UnsavedLeaveDialog } from "./UnsavedFieldsDialog";
 import { useCommand } from "./useCommand";
 import { DraftSummary, Stepper } from "./WizardChrome";
 
@@ -91,6 +96,14 @@ export function Wizard({
     { path: string; label: string; message: string }[] | null
   >(null);
   const answerPrompt = useRef<((proceed: boolean) => void) | null>(null);
+  // Leaving after a failed save: the reason shown, and the answer the leave guard waits for.
+  const [leavePrompt, setLeavePrompt] = useState<string | null>(null);
+  const leaveAnswer = useRef<((leave: boolean) => void) | null>(null);
+  // Why the last save failed, if it did; a stage move resets it.
+  const failedSave = useRef<string | null>(null);
+  // A leave asked while a save or the submission runs waits until it has finished; `settled` counts finished runs.
+  const waitingLeave = useRef<((ok: boolean) => void) | null>(null);
+  const [settled, setSettled] = useState(0);
   const submission = useCommand(attempts, onUnauthorized);
   const alive = submission.alive;
   const heading = useRef<HTMLHeadingElement>(null);
@@ -154,35 +167,41 @@ export function Wizard({
     return messages;
   }
 
-  async function recover(error: unknown) {
+  /** Shows why a save failed and returns that message (null when there is nothing left to say: a lost session, or
+   * the questionnaire is no longer a draft). */
+  async function recover(error: unknown): Promise<string | null> {
     const problem = commandProblem(error);
-    if (problem.kind === "session") return onUnauthorized();
+    if (problem.kind === "session") {
+      onUnauthorized();
+      return null;
+    }
     if (problem.kind === "version" || problem.kind === "status") {
       const fresh = await refresh(
         "Анкета уже отправлена или отменена в другой вкладке: изменения не сохранены.",
       );
-      if (!alive.current || !fresh) return;
-      setSaveProblem({
-        ...problem,
-        message:
-          "Заявка изменилась в другой вкладке или окне. Мы загрузили сохранённую версию и оставили ваши несохранённые изменения в форме — проверьте их и сохраните снова.",
-      });
-      return;
+      if (!alive.current || !fresh) return null;
+      const message =
+        "Заявка изменилась в другой вкладке или окне. Мы загрузили сохранённую версию и оставили ваши несохранённые изменения в форме — проверьте их и сохраните снова.";
+      setSaveProblem({ ...problem, message });
+      return message;
     }
     if (problem.kind === "fields") {
       const paths = answerPaths(problem.fields);
       setErrors((previous) => ({ ...previous, ...paths }));
       focusFirst(Object.keys(paths));
     }
-    setSaveProblem(
+    const shown =
       problem.kind === "network"
         ? {
             ...problem,
-            message:
-              "Нет связи с сервером. Ответы этого шага не сохранены — повторите попытку.",
+            message: unknownOutcome(
+              problem,
+              "Ответы этого шага не сохранены — повторите попытку.",
+            ),
           }
-        : problem,
-    );
+        : problem;
+    setSaveProblem(shown);
+    return shown.message;
   }
 
   /** The open stage's changed answers; values that cannot be saved are reported and, if dropped, left as saved. */
@@ -253,6 +272,7 @@ export function Wizard({
     setSaveProblem(null);
     if (!Object.keys(patch).length && target === dialog.current_stage) {
       setEdits({});
+      setErrors({});
       return dialog;
     }
     setSaving(true);
@@ -265,7 +285,7 @@ export function Wizard({
     } catch (error) {
       if (!alive.current) return null;
       setSaving(false);
-      await recover(error);
+      failedSave.current = await recover(error);
       return null;
     }
     const fresh = await refresh();
@@ -280,6 +300,7 @@ export function Wizard({
 
   /** Saves before a stage change or leaving; an unsaveable value is fixed or explicitly left out first. */
   async function move(target: number): Promise<Dialog | null> {
+    failedSave.current = null;
     const { found } = collect(false);
     if (!Object.keys(found).length) return save(target);
     setErrors((previous) => ({ ...previous, ...found }));
@@ -300,22 +321,51 @@ export function Wizard({
   async function go(target: number, highlight = false) {
     if (busy || target === stage || target < 1 || target > total) return;
     const leaving = stage;
-    const fresh = await move(target);
-    if (!fresh || !alive.current) return;
-    setVisited((previous) => [
-      ...new Set([...previous, leaving, ...(highlight ? [target] : [])]),
-    ]);
-    setStage(target);
-    setFocusRequest((n) => n + 1);
-    const title = fresh.stages.find((entry) => entry.number === target)?.title;
-    announce(`Сохранено. Шаг ${target} из ${total}: ${title}.`);
+    try {
+      const fresh = await move(target);
+      if (!fresh || !alive.current) return;
+      setVisited((previous) => [
+        ...new Set([...previous, leaving, ...(highlight ? [target] : [])]),
+      ]);
+      setStage(target);
+      setFocusRequest((n) => n + 1);
+      const title = fresh.stages.find((entry) => entry.number === target)?.title;
+      announce(`Сохранено. Шаг ${target} из ${total}: ${title}.`);
+    } finally {
+      if (alive.current) setSettled((n) => n + 1);
+    }
   }
 
-  /** The leave guard: nothing to keep, or the open stage saved (an unsaveable value fixed or knowingly left out). */
-  async function confirmLeave() {
-    if (busy || prompt) return false;
+  /** Asks whether to leave without the open stage's answers after their save failed. */
+  function askLeave(message: string) {
+    return new Promise<boolean>((resolve) => {
+      leaveAnswer.current = resolve;
+      setLeavePrompt(message);
+    });
+  }
+  function settleLeave(leave: boolean) {
+    const resolve = leaveAnswer.current;
+    leaveAnswer.current = null;
+    setLeavePrompt(null);
+    resolve?.(leave);
+  }
+
+  /**
+   * The leave guard: nothing to keep, or the open stage saved (an unsaveable value fixed or knowingly left out). A
+   * save that fails on the way out asks whether to leave without it, so leaving (logout included) is never refused
+   * outright; a leave asked during a save or the submission waits for it to finish.
+   */
+  async function confirmLeave(): Promise<boolean> {
+    if (prompt || leavePrompt) return false;
+    if (busy)
+      return new Promise<boolean>((resolve) => {
+        waitingLeave.current = resolve;
+      });
     if (!unsaved) return true;
-    return (await move(stage)) !== null;
+    if ((await move(stage)) !== null) return true;
+    const failure = failedSave.current;
+    if (!alive.current || !failure) return false;
+    return askLeave(failure);
   }
   const guard = useRef(confirmLeave);
   guard.current = confirmLeave;
@@ -323,9 +373,31 @@ export function Wizard({
     registerLeaveGuard(() => guard.current());
     return () => registerLeaveGuard(null);
   }, []);
+  // A save or the submission has finished: the leave that waited for it decides on what it left behind.
+  useEffect(() => {
+    const resolve = waitingLeave.current;
+    if (!resolve || busy) return;
+    waitingLeave.current = null;
+    void guard.current().then(resolve);
+  }, [settled]);
+  // A questionnaire that disappears meanwhile (submitted, or the session ended) has nothing left to keep.
+  useEffect(
+    () => () => {
+      waitingLeave.current?.(true);
+      leaveAnswer.current?.(false);
+    },
+    [],
+  );
 
   async function submit(documents: ConsentDocument[]) {
     if (busy) return;
+    try {
+      await submitNow(documents);
+    } finally {
+      if (alive.current) setSettled((n) => n + 1);
+    }
+  }
+  async function submitNow(documents: ConsentDocument[]) {
     const fresh = await save(total);
     if (!fresh || !alive.current) return;
     const body = {
@@ -354,8 +426,10 @@ export function Wizard({
     if (problem.kind === "network")
       submission.setProblem({
         ...problem,
-        message:
-          "Нет связи с сервером. Заявка могла уже отправиться: нажмите «Отправить заявку» ещё раз — повтор не создаст вторую заявку.",
+        message: unknownOutcome(
+          problem,
+          "Заявка могла уже отправиться: нажмите «Отправить заявку» ещё раз — повтор не создаст вторую заявку.",
+        ),
       });
     else if (problem.kind === "version" || problem.kind === "status")
       await refresh("Заявка уже отправлена или отменена в другой вкладке.");
@@ -515,6 +589,13 @@ export function Wizard({
           fields={prompt}
           onStay={() => settlePrompt(false)}
           onProceed={() => settlePrompt(true)}
+        />
+      )}
+      {leavePrompt && (
+        <UnsavedLeaveDialog
+          message={leavePrompt}
+          onStay={() => settleLeave(false)}
+          onLeave={() => settleLeave(true)}
         />
       )}
     </div>

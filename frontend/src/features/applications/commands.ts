@@ -52,6 +52,14 @@ export type CommandProblem = {
   activeApplicationId?: string;
 };
 
+/**
+ * The words for an unknown outcome (kind "network"): no answer at all, or a server failure (5xx, e.g. a gateway
+ * that lost the API), then what to do next. Both keep the command's key, so a repeat is replayed, never doubled.
+ */
+export function unknownOutcome(problem: CommandProblem, next: string) {
+  return `${problem.code === "NETWORK_ERROR" ? "Нет связи с сервером." : "Сервер не смог выполнить запрос."} ${next}`;
+}
+
 /** Maps the API's documented command errors to what the customer or officer can do next. */
 export function commandProblem(error: unknown): CommandProblem {
   const code = error instanceof ApiError ? error.code : "";

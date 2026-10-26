@@ -1,6 +1,6 @@
 import { Application } from "../../api";
 import { Icon } from "../../components";
-import { CommandAttempts } from "../applications/commands";
+import { CommandAttempts, unknownOutcome } from "../applications/commands";
 import { useCommand } from "../applications/useCommand";
 import { documentsApi } from "./documentsApi";
 
@@ -73,7 +73,7 @@ export function HandoffAction({
           <Icon name="info" />
           <span>
             {command.problem.kind === "network"
-              ? "Нет связи с сервером. Повторите попытку."
+              ? unknownOutcome(command.problem, "Повторите попытку.")
               : command.problem.message}
           </span>
         </div>

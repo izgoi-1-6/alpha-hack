@@ -75,3 +75,65 @@ export function UnsavedFieldsDialog({
     </dialog>
   );
 }
+
+/**
+ * Asked when the open stage could not be saved on the way out of the questionnaire (no connection, a server failure,
+ * a change made elsewhere): the customer stays to save again, or leaves without those answers. Leaving is never
+ * refused outright, so logging out always works.
+ */
+export function UnsavedLeaveDialog({
+  message,
+  onStay,
+  onLeave,
+}: {
+  /** Why the save failed, as the stage shows it. */
+  message: string;
+  onStay: () => void;
+  onLeave: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const stay = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  useEffect(() => {
+    const element = dialog.current;
+    if (element && !element.open) element.showModal();
+    stay.current?.focus();
+    return () => element?.close();
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className="unsaved-dialog"
+      aria-labelledby={id + "-title"}
+      aria-describedby={id + "-text"}
+      onCancel={(event) => {
+        // Escape means "stay": nothing is dropped.
+        event.preventDefault();
+        onStay();
+      }}
+    >
+      <div className="unsaved-dialog-head">
+        <Icon name="info" />
+        <h2 id={id + "-title"}>Ответы шага не сохранены</h2>
+      </div>
+      <p>{keepAmountsTogether(message)}</p>
+      <p id={id + "-text"}>
+        Останьтесь, чтобы сохранить их ещё раз, или уйдите без них: ответы,
+        сохранённые раньше, останутся в черновике.
+      </p>
+      <div className="unsaved-dialog-actions">
+        <button
+          ref={stay}
+          type="button"
+          className="button primary"
+          onClick={onStay}
+        >
+          Остаться
+        </button>
+        <button type="button" className="button secondary" onClick={onLeave}>
+          Уйти без сохранения
+        </button>
+      </div>
+    </dialog>
+  );
+}

@@ -1,7 +1,7 @@
 import { useId, useRef, useState } from "react";
 import { DocumentType } from "../../api";
 import { Icon } from "../../components";
-import { CommandAttempts } from "../applications/commands";
+import { CommandAttempts, unknownOutcome } from "../applications/commands";
 import { keepAmountsTogether, rub } from "../applications/format";
 import { useCommand } from "../applications/useCommand";
 import { DocumentFile } from "../documents/DocumentFile";
@@ -135,7 +135,10 @@ function ReviewRow({
           <Icon name="info" />
           <span>
             {command.problem.kind === "network"
-              ? "Нет связи с сервером. Решение могло уже сохраниться: повторите — повтор с тем же ключом не запишет его дважды."
+              ? unknownOutcome(
+                  command.problem,
+                  "Решение могло уже сохраниться: повторите — повтор с тем же ключом не запишет его дважды.",
+                )
               : command.problem.kind === "version"
                 ? "Заявка изменилась после загрузки страницы: мы показали актуальную версию."
                 : command.problem.message}

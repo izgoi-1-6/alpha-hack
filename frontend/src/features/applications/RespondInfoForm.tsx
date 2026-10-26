@@ -9,7 +9,7 @@ import {
   InfoRequest,
 } from "../../api";
 import { Icon } from "../../components";
-import { CommandAttempts } from "./commands";
+import { CommandAttempts, unknownOutcome } from "./commands";
 import {
   answerAt,
   answerPaths,
@@ -209,7 +209,10 @@ export function RespondInfoForm({
           <Icon name="info" />
           <span>
             {command.problem.kind === "network"
-              ? "Нет связи с сервером. Ответ мог уже сохраниться: отправьте ещё раз — повтор не создаст второй ответ."
+              ? unknownOutcome(
+                  command.problem,
+                  "Ответ мог уже сохраниться: отправьте ещё раз — повтор не создаст второй ответ.",
+                )
               : command.problem.message}
           </span>
         </div>

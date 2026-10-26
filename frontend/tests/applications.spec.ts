@@ -17,6 +17,7 @@ import {
   lineCard,
   onboard,
   openRecommendations,
+  password,
   processingConsent,
   registerClient,
   revision,
@@ -257,7 +258,8 @@ test("unavailable BKI: lost submit and retry responses replay their keys; WAIT_E
   const id = await startDraft(page, termCard);
   await completeQuestionnaire(page);
 
-  // The real API commits each first command, but its response is lost on the way back.
+  // The real API commits each first command, but its response is lost on the way back: the submit's connection
+  // drops, the retry's answer is a gateway failure (502). Both are unknown outcomes, worded apart.
   const commands: Record<string, { key?: string; body: unknown }[]> = {
     submit: [],
     "retry-check": [],
@@ -273,8 +275,14 @@ test("unavailable BKI: lost submit and retry responses replay their keys; WAIT_E
         key: route.request().headers()["idempotency-key"],
         body: route.request().postDataJSON(),
       });
-      if (commands[action].length === 1) await route.abort();
-      else await route.fulfill({ response });
+      if (commands[action].length > 1) await route.fulfill({ response });
+      else if (action === "submit") await route.abort();
+      else
+        await route.fulfill({
+          status: 502,
+          contentType: "text/html",
+          body: "<html><body>Bad Gateway</body></html>",
+        });
     },
   );
   await acceptAndSubmit(page);
@@ -292,7 +300,10 @@ test("unavailable BKI: lost submit and retry responses replay their keys; WAIT_E
   );
 
   await page.getByRole("button", { name: "Повторить проверку" }).click();
-  await expect(page.getByRole("alert")).toContainText("Нет связи с сервером");
+  await expect(page.getByRole("alert")).toContainText(
+    "Сервер не смог выполнить запрос. Проверка могла уже выполниться",
+  );
+  await expect(page.getByRole("alert")).not.toContainText("Нет связи");
   await page.getByRole("button", { name: "Повторить проверку" }).click();
   await expect(
     page.getByRole("heading", {
@@ -521,6 +532,77 @@ test("a value that cannot be saved is never dropped silently: stay and fix, or l
   ).json();
   expect(application.answers.term_months).toBe(18);
   expect(application.answers.requested_amount_rub).toBe(2000000);
+});
+
+test("a save that fails on the way out offers to leave without it, so logout is never blocked; a leave during a save waits for it", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const email = await registerClient(page, "app-leave");
+  await onboard(page, "Сильный бизнес");
+  await openRecommendations(page);
+  const id = await startDraft(page, termCard);
+  const saves = /\/api\/v1\/applications\/[^/]+\/answers$/;
+  const leave = page.getByRole("dialog", { name: "Ответы шага не сохранены" });
+  const sidebar = (name: string) =>
+    page.locator(".sidebar").getByRole("button", { name });
+
+  // Every save is lost (the request is dropped): leaving asks instead of refusing silently.
+  await page.route(saves, (route) => route.abort());
+  await page.getByLabel("Фактический адрес").fill("г. Тверь, ул. Новая, 5");
+  await sidebar("Мои заявки").click();
+  await expect(leave).toContainText("Нет связи с сервером");
+  await expect(leave.getByRole("button", { name: "Остаться" })).toBeFocused();
+  // Staying keeps the questionnaire and the edit.
+  await leave.getByRole("button", { name: "Остаться" }).click();
+  await expect(leave).toHaveCount(0);
+  await expectStage(page, 1, "Компания");
+  await expect(page.getByLabel("Фактический адрес")).toHaveValue(
+    "г. Тверь, ул. Новая, 5",
+  );
+  // Logging out: the same question, and leaving without the answers logs out.
+  await page.getByRole("button", { name: "Выйти из аккаунта" }).click();
+  await leave.getByRole("button", { name: "Уйти без сохранения" }).click();
+  await expect(
+    page.getByRole("heading", { name: "С возвращением" }),
+  ).toBeVisible();
+  await page.unroute(saves);
+
+  // Signed in again: the draft holds only what was saved.
+  await page.getByLabel("Электронная почта").fill(email);
+  await page.getByLabel("Пароль", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Войти в кабинет" }).click();
+  await expect(
+    page.getByRole("heading", { name: "ООО «Сильный бизнес»" }),
+  ).toBeVisible();
+  const saved = async () =>
+    (await (await page.request.get(`/api/v1/applications/${id}`)).json())
+      .application.answers.actual_address ?? null;
+  expect(await saved()).toBeNull();
+
+  // A leave asked while a save is still running waits for it, then goes on.
+  await page.goto(`/?application=${id}`);
+  await expectStage(page, 1, "Компания");
+  let release!: () => void;
+  const held = new Promise<void>((done) => (release = done));
+  let started!: () => void;
+  const sent = new Promise<void>((done) => (started = done));
+  await page.route(saves, async (route) => {
+    started();
+    await held;
+    await route.continue();
+  });
+  await page.getByLabel("Фактический адрес").fill("г. Тверь, ул. Новая, 7");
+  await saveAndContinue(page);
+  await sent;
+  await sidebar("Мои компании").click();
+  await expect(leave).toHaveCount(0);
+  release();
+  await expect(
+    page.getByRole("heading", { name: "ООО «Сильный бизнес»" }),
+  ).toBeVisible();
+  await page.unroute(saves);
+  expect(await saved()).toBe("г. Тверь, ул. Новая, 7");
 });
 
 test("a save from an outdated tab gets the stale-version reply: the page reloads, says so and keeps the unsaved edit", async ({

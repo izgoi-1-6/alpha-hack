@@ -5,6 +5,7 @@ import {
   authorityDialog,
   confirmAuthority,
   loginClient,
+  onboard,
   password,
   registerClient,
   revision,
@@ -679,4 +680,52 @@ test("the ИНН field refuses exactly what the server refuses: a wrong check di
       valid ? "REGISTRY_NOT_FOUND" : "VALIDATION_ERROR",
     ]);
   }
+});
+
+test("a company retry refused for an outdated version is not sent again: the next one starts afresh on the version shown by then", async ({
+  page,
+}) => {
+  await registerClient(page, "retry-refused");
+  await onboard(page, "Сильный бизнес");
+  const sent: { key: string; version: number; status: number }[] = [];
+  page.on("response", (response) => {
+    if (
+      response.request().method() === "POST" &&
+      response.url().endsWith("/precheck/retry")
+    )
+      sent.push({
+        key: response.request().headers()["idempotency-key"],
+        version: response.request().postDataJSON().version,
+        status: response.status(),
+      });
+  });
+  // Another tab of the same client repeats the check first, so this tab shows an outdated company version.
+  const other = await page.context().newPage();
+  await other.goto(page.url());
+  await other.getByRole("button", { name: "Повторить проверку" }).click();
+  await expect(
+    other.getByRole("button", { name: "Повторить проверку" }),
+  ).toBeEnabled();
+  await other.close();
+  const retry = page.getByRole("button", { name: "Повторить проверку" });
+  await retry.click();
+  await expect(page.getByRole("alert")).toContainText("Компания уже обновлена");
+  // Coming back to the company loads its current version; the refused attempt stays refused, not resent.
+  await page.locator(".sidebar").getByRole("button", { name: "Мои заявки" }).click();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Мои заявки" }),
+  ).toBeVisible();
+  await page
+    .locator(".sidebar")
+    .getByRole("button", { name: "Мои компании" })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "ООО «Сильный бизнес»" }),
+  ).toBeVisible();
+  await retry.click();
+  await expect(retry).toBeEnabled();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(sent.map(({ status }) => status)).toEqual([409, 200]);
+  expect(sent[1].key).not.toBe(sent[0].key);
+  expect(sent[1].version).toBe(sent[0].version + 1);
 });

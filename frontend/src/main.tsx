@@ -20,7 +20,10 @@ import {
   LeaveGuard,
 } from "./features/applications/ApplicationPage";
 import { MyApplications } from "./features/applications/MyApplications";
-import { CommandAttempts } from "./features/applications/commands";
+import {
+  CommandAttempts,
+  outcomeUnknown,
+} from "./features/applications/commands";
 import { handoffIdOf } from "./features/documents/HandoffAction";
 import { HandoffPage } from "./features/documents/HandoffPage";
 import { NoAccess } from "./features/officer/NoAccess";
@@ -285,23 +288,28 @@ function App() {
     const scope = captureScope();
     const companyId = data.company.id;
     // A lost response may have committed. Keep both body revision and key with its
-    // original company across navigation so a later retry replays that command.
+    // original company across navigation so a later retry replays that command; an
+    // answer (a success, or a refusal that recorded nothing) releases them.
     const attempt = retryAttempts.current.get(companyId) ?? {
       key: crypto.randomUUID(),
       version: data.company.version,
     };
     retryAttempts.current.set(companyId, attempt);
-    setBusy(true);
-    setActionError("");
-    try {
-      const result = await api.retry(companyId, attempt.version, attempt.key);
+    const release = () => {
       if (
         scope.session === generation.current.session &&
         retryAttempts.current.get(companyId) === attempt
       )
         retryAttempts.current.delete(companyId);
+    };
+    setBusy(true);
+    setActionError("");
+    try {
+      const result = await api.retry(companyId, attempt.version, attempt.key);
+      release();
       if (isCurrent(scope)) setData(result);
     } catch (e) {
+      if (!outcomeUnknown(e)) release();
       if (!isCurrent(scope)) return;
       if (e instanceof ApiError && e.status === 401) changeAccount(null);
       else setActionError(message(e));

@@ -2,6 +2,7 @@ import { expect, Page } from "@playwright/test";
 import { test } from "./fixtures";
 import {
   artifacts,
+  decisionPanel,
   expectNoPageOverflow,
   expectTouchTargets,
   lineCard,
@@ -14,6 +15,7 @@ import {
   registerClient,
   settle,
   staffDetail,
+  statusPill,
   submitApplication,
   termCard,
 } from "./helpers";
@@ -26,9 +28,6 @@ const submitForReview = (
   outcome = "Заявка на рассмотрении у специалиста",
 ) => submitApplication(page, card, profile, outcome);
 
-const statusPill = (page: Page) => page.locator(".review-heading .status-pill");
-const decisionPanel = (page: Page) =>
-  page.getByRole("region", { name: "Решение по заявке" });
 
 test("the shell is role-aware: a client never sees officer destinations or data, an officer lands on the queue, and switching accounts leaves nothing stale", async ({
   page,
@@ -434,6 +433,39 @@ test("filters survive a reload; a non-computable limit is refused with the serve
   // The server's refusal reason replaces the preapproval control.
   await expect(decision).toContainText("Лимит не рассчитан");
   await expect(decision.getByRole("button", { name: "Одобрение" })).toHaveCount(0);
+
+  // Refusals the panel never invites (it offers only the server's allowed actions), each answered once by the route
+  // with the server's documented body: a state conflict reloads and shows the server's reason; a field problem stays
+  // beside the picker; nothing is decided meanwhile.
+  await decision.getByRole("button", { name: "Запрос сведений" }).click();
+  await decision.getByLabel("Фактический адрес").check();
+  await decision.getByLabel("Вопрос клиенту").fill("Уточните фактический адрес.");
+  const requestInfo = /\/officer\/applications\/[^/]+\/request-info$/;
+  const refuse = (status: number, error: Record<string, unknown>) =>
+    officer.route(
+      requestInfo,
+      (route) =>
+        route.fulfill({
+          status,
+          contentType: "application/json",
+          body: JSON.stringify({ error }),
+        }),
+      { times: 1 },
+    );
+  const lockedNeed =
+    "Цель, сумма и срок не меняются после отправки заявки: меньшую сумму можно одобрить предварительно, другая потребность — это новая заявка.";
+  for (const [status, error, shown] of [
+    [409, { code: "INFO_REQUEST_OPEN", message: "По заявке уже есть открытый запрос сведений." }, "уже есть открытый запрос"],
+    [409, { code: "ASSIGNMENT_REQUIRED", message: "Решение принимает специалист, который взял заявку в работу." }, "который взял заявку в работу"],
+    [422, { code: "NEED_FIELDS_LOCKED", message: lockedNeed, fields: { requested_fields: lockedNeed } }, "не меняются после отправки"],
+  ] as const) {
+    await refuse(status, error);
+    await decision.getByRole("button", { name: "Отправить запрос" }).click();
+    await expect(decision.getByRole("alert")).toContainText(shown);
+    await expect(statusPill(officer)).toHaveText("На рассмотрении");
+  }
+  await expect(decision.locator("#request-fields-error")).toContainText("не меняются после отправки");
+  expect((await staffDetail(officer, id)).decisions).toHaveLength(0);
 
   // Back to the remembered filters: the claimed case left «Не назначены» and is under «Мои» after a reload.
   await officer.getByRole("button", { name: "← Очередь заявок" }).click();

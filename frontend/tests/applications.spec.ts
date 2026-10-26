@@ -354,6 +354,47 @@ test("unavailable BKI: lost submit and retry responses replay their keys; WAIT_E
   ).toBeFocused();
 });
 
+test("an expired preliminary approval reads as closed: its own headline and next step, the packet read-only, a new choice offered (the status is injected on a real application)", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await registerClient(page, "app-expired");
+  await onboard(page, "Сильный бизнес");
+  await openRecommendations(page);
+  const id = await startDraft(page, termCard);
+  await completeQuestionnaire(page);
+  await acceptAndSubmit(page);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Заявка предварительно одобрена" }),
+  ).toBeVisible();
+  // Fourteen days cannot pass in a browser test: the application read answers with the server's own body, its status
+  // set to EXPIRED as lazy expiry would leave it (no actions).
+  await page.route(`**/api/v1/applications/${id}`, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.application.status = "EXPIRED";
+    body.application.allowed_actions = [];
+    await route.fulfill({ response, json: body });
+  });
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Срок предварительного одобрения истёк" }),
+  ).toBeVisible();
+  await expect(page.locator(".status-pill")).toHaveText("Срок истёк");
+  await expect(page.locator(".status-next")).toContainText("Срок предварительного одобрения (14 дней) истёк");
+  await expect(page.getByRole("button", { name: "Подобрать финансирование" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Отменить заявку" })).toHaveCount(0);
+  const documents = page.getByRole("region", { name: "Документы по заявке" });
+  await expect(documents).toContainText("Загрузка закрыта");
+  await expect(documents.getByRole("button", { name: /Загрузить файл|Отправить комплект/ })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Предварительно одобрено" })).toContainText("2 000 000 ₽");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectNoPageOverflow(page);
+  await expectTouchTargets(page);
+  await page.unroute(`**/api/v1/applications/${id}`);
+});
+
 test("My Applications lists every application with status and next step; cancel asks for confirmation", async ({
   page,
 }) => {

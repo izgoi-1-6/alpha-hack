@@ -1,4 +1,5 @@
-import { expect, Browser, Page, test } from "@playwright/test";
+import { expect, Browser, Locator, Page, test } from "@playwright/test";
+import { UploadFile } from "./files";
 
 // Shared browser-test steps. Every scenario registers a fresh synthetic client and onboards its own fixture company,
 // so no application is ever created on the seeded client@demo.local companies; officer@demo.local is the only seeded
@@ -38,6 +39,21 @@ export async function loginClient(page: Page) {
     .getByRole("button", { name: "Войти как клиент", exact: true })
     .click();
   await expect(page.getByLabel("Ваша компания", { exact: true })).toBeVisible();
+}
+
+/** Signs in from the login page with an e-mail and the synthetic password. */
+export async function signIn(page: Page, email: string) {
+  await page.getByLabel("Электронная почта").fill(email);
+  await page.getByLabel("Пароль", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Войти в кабинет" }).click();
+}
+
+/** Logs out from the sidebar (opening the phone menu first on a narrow screen). */
+export async function logOut(page: Page) {
+  if ((page.viewportSize()?.width ?? 1440) <= 760)
+    await page.getByRole("button", { name: "Открыть меню" }).click();
+  await page.getByRole("button", { name: "Выйти из аккаунта" }).click();
+  await expect(page.getByRole("heading", { name: "С возвращением" })).toBeVisible();
 }
 
 export const authorityDialog = (page: Page) =>
@@ -156,11 +172,15 @@ export async function fillFinanceStage(page: Page) {
     .check();
 }
 
-export async function fillObligationsStage(page: Page, debt = "160000") {
+export async function fillObligationsStage(
+  page: Page,
+  debt = "160000",
+  taxDebt = "0",
+) {
   await page
     .getByLabel("Ежемесячные платежи по действующим кредитам и лизингу, ₽")
     .fill(debt);
-  await page.getByLabel("Налоговая задолженность, ₽").fill("0");
+  await page.getByLabel("Налоговая задолженность, ₽").fill(taxDebt);
   await page
     .getByRole("group", { name: "Есть судебные разбирательства" })
     .getByLabel("Нет")
@@ -200,6 +220,8 @@ export type Profile = {
   term?: string | null;
   revenue?: [string, string];
   debt: string;
+  /** Tax arrears on stage 4 (default none): any amount sends the check to a specialist (R5). */
+  taxDebt?: string;
   /** Declares the pledge on stage 2 (the secured product needs one). */
   pledge?: { value: string; description: string };
 };
@@ -248,7 +270,7 @@ export async function submitApplication(
   await fillFinanceStage(page);
   await saveAndContinue(page);
   await expectStage(page, 4, "Обязательства");
-  await fillObligationsStage(page, profile.debt);
+  await fillObligationsStage(page, profile.debt, profile.taxDebt);
   await saveAndContinue(page);
   await expectStage(page, 5, "Руководитель и владельцы");
   await fillRepresentativeStage(page);
@@ -343,7 +365,10 @@ export async function expectNoDemoWording(page: Page) {
   expect(offending).toEqual([]);
 }
 
-/** Every visible control in the main area is at least 44px tall. */
+/**
+ * Every visible control in the main area is at least 44px tall. A stretched link (its `::after` absolutely covers the
+ * positioned card around it, as on «Мои заявки») is measured by that card, the area that takes the tap.
+ */
 export async function expectTouchTargets(page: Page) {
   const small = await page.evaluate(() =>
     [
@@ -352,10 +377,81 @@ export async function expectTouchTargets(page: Page) {
       ),
     ]
       .filter((el) => {
-        const box = el.getBoundingClientRect();
+        let box = el.getBoundingClientRect();
+        const after = getComputedStyle(el, "::after");
+        if (
+          el instanceof HTMLElement &&
+          el.offsetParent &&
+          after.content !== "none" &&
+          after.position === "absolute"
+        )
+          box = el.offsetParent.getBoundingClientRect();
         return box.width > 0 && box.height < 44;
       })
       .map((el) => `${el.tagName}.${el.className}: ${el.textContent?.trim()}`),
   );
   expect(small).toEqual([]);
+}
+
+/** The officer's review page: the status pill under the heading and the decision panel. */
+export const statusPill = (page: Page) =>
+  page.locator(".review-heading .status-pill");
+export const decisionPanel = (page: Page) =>
+  page.getByRole("region", { name: "Решение по заявке" });
+
+/** The customer's checklist, the officer's document review, and one requirement row in either. */
+export const documentsCard = (page: Page) =>
+  page.getByRole("region", { name: "Документы по заявке" });
+export const reviewDocuments = (page: Page) =>
+  page.getByRole("region", { name: "Документы клиента" });
+export const requirementRow = (scope: Page | Locator, type: string) =>
+  scope.locator(`[data-document-type="${type}"]`);
+
+/** Chooses a file through the row's own button, as a customer would. */
+export async function chooseDocument(
+  row: Locator,
+  file: UploadFile,
+  button = "Загрузить файл",
+) {
+  const chooser = row.page().waitForEvent("filechooser");
+  await row.getByRole("button", { name: button, exact: true }).click();
+  await (await chooser).setFiles(file);
+}
+
+/** Uploads a file to a requirement row and waits until the row shows it as its current file. */
+export async function uploadDocument(
+  row: Locator,
+  file: UploadFile,
+  button?: string,
+) {
+  await chooseDocument(row, file, button);
+  await expect(row.locator(".requirement-file")).toContainText(file.name);
+}
+
+/** The officer accepts or rejects a requirement's current file; a valuation is accepted with a verified value. */
+export async function reviewDocument(
+  officer: Page,
+  type: string,
+  decision: "Принять" | "Отклонить",
+  reason: string,
+  verifiedValue?: string,
+) {
+  const row = requirementRow(reviewDocuments(officer), type);
+  await row.getByLabel(decision, { exact: true }).check();
+  if (verifiedValue !== undefined)
+    await row.getByLabel("Проверенная стоимость залога, ₽").fill(verifiedValue);
+  await row
+    .getByLabel(
+      decision === "Принять" ? "Комментарий к проверке" : "Причина отклонения",
+    )
+    .fill(reason);
+  await row
+    .getByRole("button", {
+      name: decision === "Принять" ? "Принять документ" : "Отклонить документ",
+    })
+    .click();
+  // The status pill changes only once the review is stored and the page reloaded.
+  await expect(row.locator(".requirement-status")).toHaveText(
+    decision === "Принять" ? "Принят" : "Отклонён",
+  );
 }

@@ -2,6 +2,9 @@ import { expect, Locator, Page } from "@playwright/test";
 import { test } from "./fixtures";
 import {
   artifacts,
+  chooseDocument as choose,
+  decisionPanel,
+  documentsCard as documents,
   expectNoDemoWording,
   expectNoPageOverflow,
   expectTouchTargets,
@@ -9,11 +12,16 @@ import {
   onboard,
   openRecommendations,
   registerClient,
+  requirementRow as requirement,
+  reviewDocument as review,
+  reviewDocuments,
   securedCard,
   settle,
   staffDetail,
+  statusPill,
   submitApplication,
   termCard,
+  uploadDocument as upload,
 } from "./helpers";
 import {
   htmlAsPdf,
@@ -21,7 +29,6 @@ import {
   pdfFile,
   pngBytes,
   pngFile,
-  UploadFile,
 } from "./files";
 
 // The document phase against the real API: synthetic files generated here, fresh synthetic clients, and
@@ -29,28 +36,7 @@ import {
 // upload response (the real API commits first) and one 413, which the browser's own size check otherwise prevents.
 
 const preapproved = "Заявка предварительно одобрена";
-const documents = (page: Page) =>
-  page.getByRole("region", { name: "Документы по заявке" });
-const requirement = (scope: Page | Locator, type: string) =>
-  scope.locator(`[data-document-type="${type}"]`);
-const reviewDocuments = (page: Page) =>
-  page.getByRole("region", { name: "Документы клиента" });
-const decisionPanel = (page: Page) =>
-  page.getByRole("region", { name: "Решение по заявке" });
-const statusPill = (page: Page) => page.locator(".review-heading .status-pill");
 const uploads = /\/api\/v1\/applications\/[^/]+\/documents$/;
-
-/** Chooses a file through the row's own button, as a customer would. */
-async function choose(row: Locator, file: UploadFile, button = "Загрузить файл") {
-  const chooser = row.page().waitForEvent("filechooser");
-  await row.getByRole("button", { name: button, exact: true }).click();
-  await (await chooser).setFiles(file);
-}
-
-async function upload(row: Locator, file: UploadFile, button?: string) {
-  await choose(row, file, button);
-  await expect(row.locator(".requirement-file")).toContainText(file.name);
-}
 
 async function application(page: Page, id: string) {
   const response = await page.request.get(`/api/v1/applications/${id}`);
@@ -71,29 +57,6 @@ async function downloaded(page: Page, link: Locator) {
   const chunks: Buffer[] = [];
   for await (const chunk of await file.createReadStream()) chunks.push(chunk as Buffer);
   return { name: file.suggestedFilename(), bytes: Buffer.concat(chunks) };
-}
-
-async function review(
-  officer: Page,
-  type: string,
-  decision: "Принять" | "Отклонить",
-  reason: string,
-  verifiedValue?: string,
-) {
-  const row = requirement(reviewDocuments(officer), type);
-  await row.getByLabel(decision, { exact: true }).check();
-  if (verifiedValue !== undefined)
-    await row.getByLabel("Проверенная стоимость залога, ₽").fill(verifiedValue);
-  await row
-    .getByLabel(decision === "Принять" ? "Комментарий к проверке" : "Причина отклонения")
-    .fill(reason);
-  await row
-    .getByRole("button", { name: decision === "Принять" ? "Принять документ" : "Отклонить документ" })
-    .click();
-  // The status pill changes only once the review is stored and the page reloaded.
-  await expect(row.locator(".requirement-status")).toHaveText(
-    decision === "Принять" ? "Принят" : "Отклонён",
-  );
 }
 
 test("A09 journey: preapproval → sequential uploads with progress → unsafe file refused → officer rejects one → replacement → all accepted → final approval → the Alfa-Business hand-off page", async ({
@@ -388,7 +351,26 @@ test("secured product: four documents, the valuation is accepted only with a ver
   await expect(officer.getByRole("group", { name: "Допустимая итоговая сумма" })).toContainText("до 3 500 000 ₽");
   await amount.fill("4000000");
   await decision.getByLabel("Основание решения").fill("Одобряем в пределах проверенного залога.");
+  // A version conflict (answered once by the route: with one officer every real version change here would close the
+  // case) reloads the panel and keeps the typed amount and reason, since the approval is still offered.
+  await officer.route(
+    /\/officer\/applications\/[^/]+\/approve$/,
+    (route) =>
+      route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: { code: "VERSION_CONFLICT", message: "Заявка изменилась. Обновите данные и повторите действие." },
+        }),
+      }),
+    { times: 1 },
+  );
   await decision.getByRole("button", { name: "Одобрить окончательно" }).click();
+  await decision.getByRole("button", { name: "Да, одобрить" }).click();
+  await expect(decision.getByRole("alert")).toContainText("Введённые данные сохранены");
+  await expect(amount).toHaveValue("4000000");
+  await expect(decision.getByLabel("Основание решения")).toHaveValue("Одобряем в пределах проверенного залога.");
+  // The confirmation is still open with the kept values: the repeat reaches the real server, which refuses the amount.
   await decision.getByRole("button", { name: "Да, одобрить" }).click();
   await expect(decision.locator("#approve-amount-error")).toContainText("до 3 500 000 ₽");
   await expect(decision.getByRole("alert")).toContainText("от 500 000 ₽ до 3 500 000 ₽");

@@ -47,7 +47,7 @@ export function Recommendations({
   const [refresh, setRefresh] = useState(0);
   const requestRevision = useRef(0);
   const controller = useRef<AbortController | null>(null);
-  const amountInput = useRef<HTMLInputElement>(null);
+  const amountSlider = useRef<HTMLInputElement>(null);
   // While a new amount is calculated the grid keeps its last height, so the page does not collapse and jump.
   const grid = useRef<HTMLDivElement>(null);
   const gridHeight = useRef(0);
@@ -80,8 +80,20 @@ export function Recommendations({
     return () => read.abort();
   }, [catalogAttempt]);
 
-  /** A new amount (null: the typed text is unusable). Invalidates at once, before React runs effect cleanup. */
-  function update(amount: number | null) {
+  /**
+   * A new amount (null: the typed text is unusable). Invalidates at once, before React runs effect cleanup. The
+   * amount already shown (Home at the minimum, End at the maximum, the pressed preset) is not calculated again,
+   * unless `force` asks for a fresh snapshot of it or the last calculation failed.
+   */
+  function update(amount: number | null, force = false) {
+    if (
+      !force &&
+      amount !== null &&
+      valid &&
+      !error &&
+      amount === need?.requested_amount_rub
+    )
+      return;
     requestRevision.current += 1;
     controller.current?.abort();
     setSnapshot(null);
@@ -136,7 +148,9 @@ export function Recommendations({
   const fitting = items.filter((item) => item.status === "fits").length;
   const summary = !valid
     ? "Укажите сумму в пределах шкалы, чтобы увидеть продукты."
-    : pending || !snapshot
+    : error
+      ? `Не удалось рассчитать продукты для суммы ${need ? rub(need.requested_amount_rub) : ""}.`
+      : pending || !snapshot
       ? `Пересчитываем для суммы ${need ? rub(need.requested_amount_rub) : ""}…`
       : `${products(items.length)} для суммы ${rub(items[0]?.requested_amount_rub ?? need!.requested_amount_rub)} · подходят ${fitting} · сначала подходящие по сумме и условиям`;
 
@@ -192,8 +206,8 @@ export function Recommendations({
           <AmountSlider
             config={catalog.amount_slider}
             amount={need.requested_amount_rub}
-            onChange={update}
-            inputRef={amountInput}
+            onChange={(amount) => update(amount)}
+            sliderRef={amountSlider}
           >
             <div className="amount-turnover">
               <span>Среднемесячный оборот</span>
@@ -242,9 +256,9 @@ export function Recommendations({
                     item={item}
                     product={product}
                     onRecalculate={(amount) => {
-                      // The card is replaced by the new results: focus goes to the amount that changed.
+                      // The card is replaced by the new results: focus goes to the slider of the amount that changed.
                       update(amount);
-                      amountInput.current?.focus();
+                      amountSlider.current?.focus();
                     }}
                     start={{
                       pending: start.pending === item.product_id,
@@ -255,7 +269,7 @@ export function Recommendations({
                           : null,
                       onStart: () => void start.start(item.product_id),
                       // A fresh calculation saves a new snapshot under the current catalog and rules.
-                      onRefresh: () => update(need.requested_amount_rub),
+                      onRefresh: () => update(need.requested_amount_rub, true),
                     }}
                   />
                 );

@@ -36,15 +36,22 @@ export function ProductCard({
   const inactive = item.checks.some(
     (check) => check.code === "company_active" && check.result === "failed",
   );
-  const issues = item.checks.filter((check) => check.result !== "passed");
+  // A company that does not operate has no personal estimate («Не рассчитывается»): no line about it either.
+  const issues = item.checks.filter(
+    (check) =>
+      check.result !== "passed" &&
+      !(inactive && check.code === "amount_capacity"),
+  );
   const limit = item.indicative_limit_rub;
   // The amount is the one thing this screen changes: offer the product's bound when only the amount is outside it,
-  // or the personal estimate when the request is above it.
+  // or the personal estimate when the request is above it — never for a company that does not operate.
   const failed = issues.filter((check) => check.result === "failed");
   const onlyAmount =
     failed.length > 0 &&
     failed.every((check) => ["amount_min", "catalog_max"].includes(check.code));
-  const target = onlyAmount
+  const target = inactive
+    ? null
+    : onlyAmount
     ? failed[0].code === "amount_min"
       ? product.amount_min_rub
       : product.amount_max_rub

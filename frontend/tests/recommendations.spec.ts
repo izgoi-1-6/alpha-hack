@@ -246,8 +246,9 @@ test("product choice: one amount control from the catalog config, every catalog 
     .getByRole("button", { name: "Рассчитать на " + grouped(2400000, true) })
     .click();
   await expect(amountField(page)).toHaveValue(grouped(2400000));
-  // The pressed button is replaced by the new results: focus moves to the amount that changed.
-  await expect(amountField(page)).toBeFocused();
+  // The pressed button is replaced by the new results: focus moves to the slider of the amount that changed (not the
+  // text field, which would open a phone's keyboard).
+  await expect(slider(page)).toBeFocused();
   await expect(page.locator(termCard)).toContainText(
     "Соответствует потребности",
   );
@@ -391,6 +392,207 @@ test("amount slider: log scale from the config, exact snapping, keyboard, preset
   await page
     .locator(".amount-picker")
     .screenshot({ path: `${revision}/task-11-slider.png` });
+});
+
+/** The term loan's annuity, rounded half up, in exact integer arithmetic: A·p·(q+p)ⁿ / (q·((q+p)ⁿ − qⁿ)), q = 120 000. */
+function annuity(amount: number, bps: number, months: number) {
+  const [a, p, q] = [BigInt(amount), BigInt(bps), 120_000n];
+  const grown = (q + p) ** BigInt(months);
+  const numerator = a * p * grown;
+  const denominator = q * (grown - q ** BigInt(months));
+  return Number((2n * numerator + denominator) / (2n * denominator));
+}
+/** A month's interest on a fully used line, rounded up. */
+const lineInterest = (amount: number, bps: number) =>
+  Math.ceil((amount * bps) / 120_000);
+
+test("the default amount's cards: payments match an independent calculation and «Лучшее совпадение» marks only a fitting first card", async ({
+  page,
+}) => {
+  const { amount_slider: config } = await catalogOf(page);
+  const snapshot = await open(page);
+  // At the default 2 000 000 ₽ both 23.50% unsecured products are within the 2 400 000 ₽ estimate (3 × 800 000 ₽).
+  expect(config.default_rub).toBe(2000000);
+  expect(annuity(2000000, 2350, 36)).toBe(77942);
+  expect(lineInterest(2000000, 2350)).toBe(39167);
+  await expect(page.locator(`${termCard} .product-payment`)).toContainText(
+    grouped(annuity(2000000, 2350, 36), true),
+  );
+  await expect(page.locator(`${lineCard} .product-payment`)).toContainText(
+    grouped(lineInterest(2000000, 2350), true),
+  );
+
+  // The tag sits on the server's first card because it fits, and on no other card.
+  const tags = page.locator(".product-tag.best");
+  expect(snapshot.items[0]).toMatchObject({
+    product_id: "alfa_term_loan_unsecured",
+    status: "fits",
+  });
+  await expect(tags).toHaveCount(1);
+  await expect(tags).toHaveText("Лучшее совпадение");
+  await expect(page.locator(termCard).locator(".product-tag.best")).toHaveCount(1);
+  await expect(cards(page).first()).toHaveAttribute(
+    "data-product-id",
+    snapshot.items[0].product_id,
+  );
+  // 10 000 000 ₽ is above every personal estimate: the first card does not fit, so nothing is marked.
+  const result = calculated(page);
+  await amountField(page).fill("10000000");
+  const above = (await (await result).json()) as { items: Item[] };
+  expect(above.items[0].status).not.toBe("fits");
+  await expect(cards(page).first()).toHaveAttribute(
+    "data-product-id",
+    above.items[0].product_id,
+  );
+  await expect(tags).toHaveCount(0);
+});
+
+test("amount slider: the track follows a typed amount, a preset and a key; arrows step from an off-grid amount; modifier keys stay the browser's; an unchanged amount is not recalculated", async ({
+  page,
+}) => {
+  const { amount_slider: config } = await catalogOf(page);
+  await open(page);
+  const range = slider(page);
+  const field = amountField(page);
+  const steps = Number(await range.getAttribute("max"));
+  const position = (amount: number) =>
+    String(
+      Math.round(
+        (steps * Math.log(amount / config.min_rub)) /
+          Math.log(config.max_rub / config.min_rub),
+      ),
+    );
+  // Typed, preset and key amounts all move the track to their own position.
+  await field.fill("1234567");
+  await expect(range).toHaveValue(position(1234567));
+  await expect(range).toHaveAttribute("aria-valuetext", grouped(1234567, true));
+  // The arrows step from the typed amount to the grid's neighbours (100 000 ₽ steps in this band).
+  await range.focus();
+  await range.press("ArrowRight");
+  await expect(field).toHaveValue(grouped(1300000));
+  await expect(range).toHaveValue(position(1300000));
+  await field.fill("1234567");
+  await range.focus();
+  await range.press("ArrowLeft");
+  await expect(field).toHaveValue(grouped(1200000));
+  await expect(range).toHaveValue(position(1200000));
+  await page
+    .getByRole("group", { name: "Быстрый выбор суммы" })
+    .getByRole("button", { name: compact(30000000) })
+    .click();
+  await expect(field).toHaveValue(grouped(30000000));
+  await expect(range).toHaveValue(position(30000000));
+
+  // With Alt, Ctrl or Cmd held the arrows belong to the browser (history, word jumps): the amount stays.
+  await range.focus();
+  for (const keys of ["Alt+ArrowRight", "Control+ArrowRight", "Meta+ArrowRight"]) {
+    await range.press(keys);
+    await expect(field).toHaveValue(grouped(30000000));
+    await expect(range).toHaveValue(position(30000000));
+  }
+
+  // An amount that is already shown is not calculated again: Home at the minimum, End at the maximum, the same preset.
+  let posts = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/recommendations"))
+      posts += 1;
+  });
+  const settled = async (amount: number) => {
+    await expect(page.locator(".results-summary")).toContainText(
+      "для суммы " + grouped(amount, true),
+    );
+    await expect(page.locator(".results-summary")).not.toContainText(
+      "Пересчитываем",
+    );
+  };
+  await range.press("Home");
+  await settled(config.min_rub);
+  const afterHome = posts;
+  await range.press("Home");
+  await range.press("ArrowLeft");
+  await page.waitForTimeout(600);
+  expect(posts).toBe(afterHome);
+  await expect(cards(page).first()).toBeVisible();
+  await range.press("End");
+  await settled(config.max_rub);
+  const afterEnd = posts;
+  await range.press("End");
+  await page.waitForTimeout(600);
+  expect(posts).toBe(afterEnd);
+  const preset = page
+    .getByRole("group", { name: "Быстрый выбор суммы" })
+    .getByRole("button", { name: compact(3000000) });
+  await preset.click();
+  await settled(3000000);
+  const afterPreset = posts;
+  await preset.click();
+  await page.waitForTimeout(600);
+  expect(posts).toBe(afterPreset);
+  await expect(cards(page).first()).toBeVisible();
+
+  // Digits beyond any safe number are still an amount: the field names the maximum, not a typing mistake.
+  await field.fill("99999999999999999999");
+  await expect(page.getByRole("alert")).toContainText(
+    "Максимальная сумма — " + grouped(config.max_rub, true),
+  );
+  await expect(cards(page)).toHaveCount(0);
+});
+
+test("a failed calculation says so beside the error instead of «Пересчитываем…», and a retry recovers", async ({
+  page,
+}) => {
+  await open(page);
+  // One server failure, answered by the route; the retry reaches the real API.
+  await page.route(
+    `**/companies/${strong}/recommendations`,
+    (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: {
+            code: "INTERNAL_ERROR",
+            message: "Не удалось выполнить запрос. Повторите попытку.",
+          },
+        }),
+      }),
+    { times: 1 },
+  );
+  await amountField(page).fill("1500000");
+  await expect(page.getByRole("alert")).toContainText(
+    "Не удалось выполнить запрос",
+  );
+  const summary = page.locator(".results-summary");
+  await expect(summary).toContainText(
+    "Не удалось рассчитать продукты для суммы " + grouped(1500000, true),
+  );
+  await expect(summary).not.toContainText("Пересчитываем");
+  await page.getByRole("button", { name: "Повторить попытку" }).click();
+  await expect(page.locator(termCard)).toContainText(
+    "Расчёт на сумму " + grouped(1500000, true),
+  );
+  await expect(summary).toContainText("для суммы " + grouped(1500000, true));
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("a two-billion amount fits the field on a 390 px phone", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page);
+  const field = amountField(page);
+  await field.fill("2000000000");
+  await field.blur();
+  await expect(field).toHaveValue(grouped(2000000000));
+  // The whole number shows: nothing scrolls inside the field and the sign stays inside the card.
+  expect(
+    await field.evaluate(
+      (element: HTMLInputElement) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  const card = (await page.locator(".amount-picker").boundingBox())!;
+  const sign = (await page.locator(".amount-value span").boundingBox())!;
+  expect(sign.x + sign.width).toBeLessThanOrEqual(card.x + card.width);
+  await expect(cards(page).first()).toBeVisible();
+  await expectNoPageOverflow(page);
 });
 
 test("cards: two per row with aligned sections at 1366×768 and 1440, one column at 390 px, no horizontal overflow", async ({
@@ -548,6 +750,19 @@ test("inactive company gets read-only results with the failure reason and no app
   await expect(page.getByRole("button", { name: "Начать анкету" })).toHaveCount(
     0,
   );
+  // Above the turnover-based figure the server still computes one (2 400 000 ₽ for 800 000 ₽ a month), but a closed
+  // business gets neither an offer to recalculate at it nor a line about a smaller amount.
+  await amountField(page).fill("3000000");
+  await expect(page.locator(termCard)).toContainText(
+    "Деятельность компании прекращена",
+  );
+  await expect(page.locator(".results-summary")).toContainText(
+    "для суммы " + grouped(3000000, true),
+  );
+  await expect(page.getByRole("button", { name: /Рассчитать на/ })).toHaveCount(0);
+  await expect(
+    page.locator(".product-fit").filter({ hasText: "предварительной оценки" }),
+  ).toHaveCount(0);
 });
 
 test("unavailable registry shows unknown eligibility and recovers after the retry", async ({

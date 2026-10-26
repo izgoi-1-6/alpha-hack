@@ -36,10 +36,14 @@ export const compactRub = (amount: number) =>
 /** A typed amount: a whole number of rubles within the slider's bounds, or why it cannot be used. */
 function readTyped(config: AmountSliderConfig, text: string) {
   const parsed = parseInteger(text);
+  const maximum = `Максимальная сумма — ${rub(config.max_rub)}.`;
   if (parsed.error)
     return {
       amount: null,
-      error: "Введите сумму цифрами, например 2 500 000.",
+      // Digits too many for a safe number are still an amount, above the maximum: not a typing mistake.
+      error: /^\d+$/.test(text.replace(/[\s\u00a0]/g, ""))
+        ? maximum
+        : "Введите сумму цифрами, например 2 500 000.",
     };
   if (parsed.value === null) return { amount: null, error: "Укажите сумму." };
   if (parsed.value < config.min_rub)
@@ -47,11 +51,7 @@ function readTyped(config: AmountSliderConfig, text: string) {
       amount: null,
       error: `Минимальная сумма — ${rub(config.min_rub)}.`,
     };
-  if (parsed.value > config.max_rub)
-    return {
-      amount: null,
-      error: `Максимальная сумма — ${rub(config.max_rub)}.`,
-    };
+  if (parsed.value > config.max_rub) return { amount: null, error: maximum };
   return { amount: parsed.value, error: null };
 }
 
@@ -74,15 +74,16 @@ export function AmountSlider({
   config,
   amount,
   onChange,
-  inputRef,
+  sliderRef,
   children,
 }: {
   config: AmountSliderConfig;
   /** The amount the cards are for: the last usable one while the typed text is not. */
   amount: number;
   onChange: (amount: number | null) => void;
-  /** The typed field, for the page to move focus to after changing the amount itself. */
-  inputRef?: Ref<HTMLInputElement>;
+  /** The slider, for the page to move focus to after changing the amount itself (the text field would open a
+   * phone's keyboard). */
+  sliderRef?: Ref<HTMLInputElement>;
   /** Context shown beside the amount (the company's turnover). */
   children?: ReactNode;
 }) {
@@ -120,6 +121,8 @@ export function AmountSlider({
     onChange(typed.amount);
   }
   function key(event: KeyboardEvent<HTMLInputElement>) {
+    // With Alt, Ctrl or Cmd held the keys are the browser's (Back/Forward, word and line jumps).
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
     const next =
       event.key === "Home"
         ? config.min_rub
@@ -148,7 +151,6 @@ export function AmountSlider({
         </label>
         <div className={"amount-value" + (error ? " invalid" : "")}>
           <input
-            ref={inputRef}
             id="amount-input"
             inputMode="numeric"
             autoComplete="off"
@@ -172,6 +174,7 @@ export function AmountSlider({
       {children && <div className="amount-aside">{children}</div>}
       <div className="amount-track" data-tour="amount-slider">
         <input
+          ref={sliderRef}
           id="amount-slider"
           className="amount-range"
           type="range"

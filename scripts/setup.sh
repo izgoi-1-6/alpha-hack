@@ -7,4 +7,6 @@ backend/.venv/bin/pip install -r backend/requirements.lock
 npm ci --prefix frontend
 docker compose up -d --wait db
 backend/.venv/bin/alembic -c backend/alembic.ini upgrade head
-if [[ "${DEMO_MODE:-true}" == true ]]; then PYTHONPATH=backend backend/.venv/bin/python -m app.seed; fi
+# The seed runs where the app is in demo mode: DEMO_MODE read as app.config reads it (case-insensitive, unset is true).
+mode="$(printf '%s' "${DEMO_MODE-true}" | tr '[:upper:]' '[:lower:]')"
+if [[ "$mode" == true ]]; then PYTHONPATH=backend backend/.venv/bin/python -m app.seed; fi

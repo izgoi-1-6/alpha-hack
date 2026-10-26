@@ -353,7 +353,7 @@ def test_a09_document_correction_journey_ends_in_a_simulated_handoff(client, off
     assert statuses[-4:] == [('DOCS_UPLOADED', 'DOCUMENTS_SUBMITTED', 'client'), ('DOCS_REWORK', 'DOCUMENT_REJECTED', 'officer'),
                              ('DOCS_UPLOADED', 'DOCUMENTS_SUBMITTED', 'client'), ('APPROVED', 'FINAL_APPROVED', 'officer')]
     approved_note = history(client, application)[-1]['notification']['message']
-    assert '2 000 000' in approved_note and 'Деньги не перечисляются' in approved_note
+    assert '2\u00a0000\u00a0000\u00a0₽' in approved_note and 'Деньги не перечисляются' in approved_note
     # The rejected original stays as audit evidence: superseded, with its reason, downloadable by owner and officer.
     items = {item['id']: item for item in checklist(client, application)['items']}
     assert (items[original['id']]['status'], items[original['id']]['review_reason']) == ('SUPERSEDED', 'Отчёт без подписи руководителя.')

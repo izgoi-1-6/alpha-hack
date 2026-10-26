@@ -129,8 +129,9 @@ def test_term_loan_payment_is_the_exact_annuity_over_the_estimate_term_clamped_t
     for amount in (300_000, 333_333, 1_000_000, 1_234_567, 29_999_999, 30_000_000):
         item = one(TERM, amount=amount, payment_estimate_term_months=estimate)
         assert item['estimated_payment_rub'] == annuity_rub(amount, 2350, months), (amount, estimate)
-        money = f'{amount:,}'.replace(',', ' ')
-        assert item['payment_note'].startswith(f'Расчёт на сумму {money} ₽, срок {months} мес. ')
+        # Money in server texts keeps its digit groups and the sign together: non-breaking spaces (U+00A0).
+        money = f'{amount:,}'.replace(',', '\u00a0')
+        assert item['payment_note'].startswith(f'Расчёт на сумму {money}\u00a0₽, срок {months} мес. ')
 
 
 def test_revolving_payment_is_the_ceiling_of_full_utilization_interest():
@@ -257,7 +258,7 @@ def test_a_shortfall_within_range_suggests_the_supported_amount():
     item = one(precheck={'monthly_revenue_rub': 800_000}, amount=2_500_000)
     capacity = next(c for c in item['checks'] if c['code'] == 'amount_capacity')
     assert item['indicative_limit_rub'] == 2_400_000 and 'меньшей суммы' in capacity['text']
-    assert any('до 2 400 000 ₽' in text for text in item['alternatives'])
+    assert any('до 2\u00a0400\u00a0000\u00a0₽' in text for text in item['alternatives'])
 
 
 def test_an_eligibility_failure_points_to_other_products():
@@ -298,3 +299,15 @@ def test_badges_need_the_registry_and_an_allowed_main_okved():
     retail = evaluate(products, company={**COMPANY, 'okved': '47.11'})
     assert [item['product_id'] for item in retail if item['badges']] == ['psk_borderline']  # exempt from the 47 rule
     assert [item['product_id'] for item in evaluate(products, company={**COMPANY, 'okved': None}) if item['badges']] == ['psk_borderline']
+
+
+def test_money_in_server_texts_uses_non_breaking_spaces():
+    """A server text never wraps inside an amount: digit groups and the ruble sign are joined by U+00A0, wherever the
+    shared helper writes money (cards, scoring reasons, notifications, officer bounds)."""
+    from app.recommendations.service import rub
+    assert rub(500) == '500\u00a0₽'
+    assert rub(1_000_000) == '1\u00a0000\u00a0000\u00a0₽'
+    assert rub(2_000_000_000) == '2\u00a0000\u00a0000\u00a0000\u00a0₽'
+    item = one(precheck={'monthly_revenue_rub': 800_000}, amount=2_500_000)
+    for text in [item['payment_note'], *item['alternatives'], *(check['text'] for check in item['checks'])]:
+        assert ' ₽' not in text and not any(f'{d} {e}' in text for d in '0123456789' for e in '0123456789'), text

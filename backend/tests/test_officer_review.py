@@ -283,7 +283,7 @@ def test_medium_risk_manual_preapproval_records_the_officer_decision(client, off
     assert (last.from_status, last.to_status, last.actor_id, last.reason_code) == ('MANUAL_REVIEW', 'PREAPPROVED', officer.user['id'], 'R12')
     assert last.reason_text == decision.reason and last.application_version == result['version']
     note = rows(client, 'Notification', status_history_id=last.id)[0]
-    assert note.channel == 'demo_in_app' and '600 000' in note.message and '07.11.2026' in note.message
+    assert note.channel == 'demo_in_app' and '600\u00a0000\u00a0₽' in note.message and '07.11.2026' in note.message
     assert 'UTC' not in note.message and 'не окончательное' in note.message
     customer = read(client, application)
     assert customer['status'] == 'PREAPPROVED' and customer['preapproved_amount_rub'] == MEDIUM_LIMIT
@@ -393,7 +393,7 @@ def test_rule_labels_never_decide_and_a_company_now_inactive_is_a_mandatory_stop
 def test_an_automatic_preapproval_notice_gives_the_deadline_date_without_raw_utc(client):
     application = submitted(client, 'strong')
     message = history(client, application)[-1]['notification']['message']
-    assert '2 000 000' in message and '07.11.2026' in message and 'не окончательное' in message
+    assert '2\u00a0000\u00a0000\u00a0₽' in message and '07.11.2026' in message and 'не окончательное' in message
     assert 'UTC' not in message and '12:00' not in message
 
 

@@ -382,7 +382,7 @@ def test_low_risk_request_is_compared_with_the_scored_limit(client, requested, r
     assert (application['status'], evaluation['rule'], application['preapproved_amount_rub']) == ('PREAPPROVED', rule, amount)
     assert application['requested_amount_rub'] == requested and application['scored_limit_rub'] == 2_400_000
     if rule == 'R9':
-        assert any('2 400 000' in reason for reason in evaluation['reasons'])
+        assert any('2\u00a0400\u00a0000\u00a0₽' in reason for reason in evaluation['reasons'])
 
 
 @pytest.mark.parametrize('requested,rule', [(600_000, 'R10'), (600_001, 'R11')])
@@ -393,7 +393,7 @@ def test_medium_risk_goes_to_manual_review_with_the_possible_amount(client, requ
     assert (application['status'], evaluation['rule'], evaluation['score']) == ('MANUAL_REVIEW', rule, 65)
     assert application['scored_limit_rub'] == 600_000 and application['preapproved_amount_rub'] is None
     if rule == 'R11':
-        assert any('600 000' in reason for reason in evaluation['reasons'])
+        assert any('600\u00a0000\u00a0₽' in reason for reason in evaluation['reasons'])
 
 
 @pytest.mark.parametrize('revenue,rule,status', [(99_999, 'R7', 'REJECTED'), (100_000, 'R8', 'PREAPPROVED')])

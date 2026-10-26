@@ -150,7 +150,7 @@ def test_strong_company_at_two_million_literal_order_and_payments(client):
     assert [item['product_id'] for item in ranked if item['status'] == 'does_not_fit'] == [PSK_INVEST, PSK_BORDER]
     result = {item['product_id']: item for item in ranked}
     assert oracle.annuity_rub(2_000_000, 2350, 36) == 77_942 and result[TERM]['estimated_payment_rub'] == 77_942
-    assert result[TERM]['payment_note'].startswith('Расчёт на сумму 2 000 000 ₽, срок 36 мес. ')
+    assert result[TERM]['payment_note'].startswith('Расчёт на сумму 2\u00a0000\u00a0000\u00a0₽, срок 36 мес. ')
     assert result[TERM]['payment_label'] is None and 'комисси' in result[TERM]['payment_note'].lower()
     assert result[LINE]['estimated_payment_rub'] == 39_167  # ceil(2,000,000 × 23.5% / 12)
     assert 'основной долг' in result[LINE]['payment_note'].lower()
@@ -328,8 +328,8 @@ def test_payment_is_calculated_on_the_personal_limit_when_the_request_is_higher(
     term = items(recommend(client, company, 2_500_000))[TERM]
     assert term['status'] == 'does_not_fit' and term['can_apply'] is True and term['indicative_limit_rub'] == 2_400_000
     assert term['estimated_payment_rub'] == oracle.annuity_rub(2_400_000, 2350, 36)
-    assert 'Расчёт на сумму 2 400 000 ₽' in term['payment_note']
-    assert any('до 2 400 000 ₽' in text for text in term['alternatives'])
+    assert 'Расчёт на сумму 2\u00a0400\u00a0000\u00a0₽' in term['payment_note']
+    assert any('до 2\u00a0400\u00a0000\u00a0₽' in text for text in term['alternatives'])
 
 
 def test_turnover_below_the_product_minimum_is_explained_and_can_still_draft(client):

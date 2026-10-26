@@ -25,7 +25,9 @@ GUARANTOR_NOTE = 'Доля учредителя не означает согла
 
 
 def rub(value: int) -> str:
-    return f'{value:,}'.replace(',', ' ') + ' ₽'
+    """Money in server texts: digit groups and the ruble sign joined by non-breaking spaces (U+00A0), so an amount
+    never wraps across lines wherever the text is shown."""
+    return f'{value:,}'.replace(',', '\u00a0') + '\u00a0₽'
 
 
 def percent(bps: int) -> str:

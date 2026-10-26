@@ -354,7 +354,7 @@ def test_history_records_each_transition_with_its_simulated_notification(client)
     assert [item['reason_code'] for item in items] == ['CREATED', 'SUBMITTED', 'R8']
     assert all(item['created_at'].endswith('Z') and item['reason_text'] for item in items)
     assert all(item['notification']['channel'] == 'demo_in_app' and item['notification']['message'] for item in items)
-    assert '2 000 000' in items[2]['notification']['message'] and '07.11.2026' in items[2]['notification']['message']
+    assert '2\u00a0000\u00a0000\u00a0₽' in items[2]['notification']['message'] and '07.11.2026' in items[2]['notification']['message']
     saved = rows(client, 'Notification', application_id=application['id'])
     assert len(saved) == 3 and {row.channel for row in saved} == {'demo_in_app'}
 

@@ -3,9 +3,10 @@ import { test as base } from "@playwright/test";
 /**
  * Runs in every page before the app: every account's walkthrough flag (`credit-route.tour.v1.<userId>`) reads as
  * done, so the walkthrough never opens by itself. The other storage keys are untouched (a key is coerced to a string,
- * as `getItem` itself does).
+ * as `getItem` itself does). Exported for contexts made with `browser.newContext()`, which do not get it:
+ * `await context.addInitScript(walkthroughDone)`.
  */
-function walkthroughDone() {
+export function walkthroughDone() {
   const read = Storage.prototype.getItem;
   Storage.prototype.getItem = function (this: Storage, key: string) {
     return String(key).startsWith("credit-route.tour.v1.")
@@ -21,7 +22,7 @@ function walkthroughDone() {
  *
  * Only that fixture context gets it: a context made with `browser.newContext()` starts without it, so a client there
  * meets the walkthrough. That is right for the officer's context (`officerPage`: officers never see it); a journey that
- * opens a client in a context of its own must add `walkthroughDone` to it, or expect the walkthrough.
+ * opens a client in a context of its own must add the exported `walkthroughDone` to it, or expect the walkthrough.
  */
 export const test = base.extend<{ tour: boolean }>({
   tour: [false, { option: true }],

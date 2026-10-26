@@ -62,6 +62,8 @@ test("the shell is role-aware: a client never sees officer destinations or data,
   await page.getByRole("button", { name: "Выйти из аккаунта" }).click();
   await loginOfficer(page);
   await expect(nav.getByRole("button")).toHaveText(["Очередь заявок"]);
+  // The queue is the officer's current page: its navigation item is marked, and only there.
+  await expect(nav.getByRole("button", { name: "Очередь заявок" })).toHaveClass(/\bactive\b/);
   await expect(page.locator(".account-email")).toHaveText("officer@demo.local");
   await expect(page.locator("main")).not.toContainText("Мои компании");
   await expect(page.locator("main")).not.toContainText(email);
@@ -70,7 +72,9 @@ test("the shell is role-aware: a client never sees officer destinations or data,
   await expect(
     page.getByRole("heading", { level: 1, name: "Нет доступа" }),
   ).toBeVisible();
+  await expect(nav.getByRole("button", { name: "Очередь заявок" })).not.toHaveClass(/\bactive\b/);
   await page.getByRole("button", { name: "Перейти к очереди заявок" }).click();
+  await expect(nav.getByRole("button", { name: "Очередь заявок" })).toHaveClass(/\bactive\b/);
   await expect(
     page.getByRole("heading", { level: 1, name: "Очередь заявок" }),
   ).toBeVisible();

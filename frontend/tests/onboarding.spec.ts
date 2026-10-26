@@ -535,3 +535,75 @@ test("adding a company needs the representative's Госуслуги confirmatio
     verifications.every((verification) => verification.inn === "9900000017"),
   ).toBe(true);
 });
+
+test("a refused add is cleared by choosing another company or a new confirmation; a lost Госуслуги answer is repeated with its key", async ({
+  page,
+}) => {
+  await registerClient(page, "gosuslugi-retry");
+  await page
+    .locator(".sidebar")
+    .getByRole("button", { name: "Добавить компанию" })
+    .click();
+  // The first check gets no answer (the request is dropped by the route): the dialog says so and offers a retry.
+  const keys: string[] = [];
+  await page.route("**/identity/gosuslugi/verify", async (route) => {
+    keys.push(route.request().headers()["idempotency-key"]);
+    if (keys.length === 1) await route.abort();
+    else await route.continue();
+  });
+  await page.getByRole("button").filter({ hasText: "Сильный бизнес" }).click();
+  await page
+    .getByRole("button", { name: "Подтвердить через Госуслуги" })
+    .click();
+  const dialog = authorityDialog(page);
+  await expect(dialog.getByRole("alert")).toContainText("Нет связи с сервером");
+  const retry = dialog.getByRole("button", { name: "Повторить" });
+  await expect(retry).toBeFocused();
+  await expect(dialog.getByRole("button", { name: "Подтвердить" })).toHaveCount(0);
+  await retry.click();
+  await expect(dialog).toContainText("Соколов Андрей Викторович");
+  await expect(dialog.getByRole("button", { name: "Подтвердить" })).toBeFocused();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  // The repeat is the same check: the same key, so a check the server did record is replayed, not made twice.
+  expect(keys).toHaveLength(2);
+  expect(keys[1]).toBe(keys[0]);
+  await dialog.getByRole("button", { name: "Подтвердить" }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.unroute("**/identity/gosuslugi/verify");
+  for (const checkbox of await page
+    .locator("#onboarding-consents")
+    .getByRole("checkbox")
+    .all())
+    await checkbox.check();
+  await page.getByRole("button", { name: "Добавить и проверить" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Что удалось узнать" }),
+  ).toBeVisible();
+
+  // Adding the same company again is refused; the refusal goes once the client moves on.
+  const refusal = page.getByText("Компания уже добавлена. Выберите её в списке.");
+  const addAgain = async () => {
+    await page.getByRole("button").filter({ hasText: "Сильный бизнес" }).click();
+    await confirmAuthority(page);
+    for (const checkbox of await page
+      .locator("#onboarding-consents")
+      .getByRole("checkbox")
+      .all())
+      await checkbox.check();
+    await page.getByRole("button", { name: "Добавить и проверить" }).click();
+    await expect(refusal).toBeVisible();
+  };
+  await page
+    .locator(".sidebar")
+    .getByRole("button", { name: "Добавить компанию" })
+    .click();
+  await addAgain();
+  await page.getByRole("button").filter({ hasText: "Средний риск" }).click();
+  await expect(refusal).toHaveCount(0);
+  await addAgain();
+  // A new confirmation (for the same company) clears it too.
+  await page.getByRole("button", { name: "Подтвердить заново" }).click();
+  await authorityDialog(page).getByRole("button", { name: "Подтвердить" }).click();
+  await expect(authorityDialog(page)).toHaveCount(0);
+  await expect(refusal).toHaveCount(0);
+});

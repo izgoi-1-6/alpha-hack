@@ -31,6 +31,7 @@ export function Onboarding({
   onCancel,
   onUnauthorized,
   error,
+  onClearError,
 }: {
   fixtures: Fixture[];
   consents: ConsentDocument[];
@@ -38,7 +39,9 @@ export function Onboarding({
   onSubmit: (inn: string, verificationId: string) => void;
   onCancel: () => void;
   onUnauthorized: () => void;
+  /** The last refused add (e.g. a company already added); it goes once the client chooses or confirms again. */
   error: string;
+  onClearError: () => void;
 }) {
   const [inn, setInn] = useState(""),
     [accepted, setAccepted] = useState<Record<string, boolean>>({}),
@@ -70,6 +73,7 @@ export function Onboarding({
   function choose(next: string) {
     setInn(next);
     if (next !== verification?.inn) setVerification(null);
+    if (error) onClearError();
   }
 
   return (
@@ -292,6 +296,7 @@ export function Onboarding({
           onConfirm={(next) => {
             setVerification(next);
             setChecking(false);
+            if (error) onClearError();
           }}
           onClose={() => setChecking(false)}
           onUnauthorized={onUnauthorized}

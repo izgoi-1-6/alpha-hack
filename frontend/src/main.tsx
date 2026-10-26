@@ -74,8 +74,12 @@ function App() {
   const inApplications = applicationList || !!applicationId || !!handoffId;
   const queueView = url.searchParams.get("view") === "queue";
   const officer = user?.role === "CREDIT_OFFICER";
-  if (officer && queueView)
-    lastQueue.current = readQueueFilters(url.searchParams);
+  // The officer's pages: the queue (also the bare address) and a review opened from it; every other address is refused.
+  const officerHome = officer && !handoffId && (queueView || !url.search || !!applicationId);
+  useEffect(() => {
+    if (officer && queueView)
+      lastQueue.current = readQueueFilters(url.searchParams);
+  }, [url, officer]);
   const captureScope = () => ({ ...generation.current });
   const isCurrent = (scope: { session: number; view: number }) =>
     scope.session === generation.current.session &&
@@ -328,7 +332,7 @@ function App() {
         <nav>
           {officer && (
             <button
-              className="active"
+              className={officerHome ? "active" : ""}
               onClick={() => navigate(undefined, "queue")}
             >
               <Icon name="file" />
@@ -534,6 +538,7 @@ function App() {
               onCancel={() => navigate()}
               onUnauthorized={() => changeAccount(null)}
               error={actionError}
+              onClearError={() => setActionError("")}
             />
           ) : (
             <>

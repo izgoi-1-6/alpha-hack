@@ -129,10 +129,14 @@ function Walkthrough({
     ownFocus.current = false;
   };
 
+  /** The left edge of the workspace column the walkthrough is mounted in (clear of the sidebar). */
+  const columnLeft = (box: HTMLDivElement) =>
+    box.parentElement?.getBoundingClientRect().left ?? 0;
+
   /** The popover's sides and size beside the anchors, within the workspace column it is mounted in. */
   function layout(step: number, box: HTMLDivElement) {
     const view = document.documentElement;
-    const column = box.parentElement?.getBoundingClientRect().left ?? 0;
+    const column = columnLeft(box);
     return {
       target: boxAround(anchors.current, PAD),
       size: { width: box.offsetWidth, height: box.offsetHeight },
@@ -143,7 +147,6 @@ function Walkthrough({
         height: view.clientHeight,
       },
       sides: TOUR_STEPS[step].sides ?? SIDES,
-      column,
     };
   }
 
@@ -156,7 +159,13 @@ function Walkthrough({
     const light = spotlight.current;
     const box = popover.current;
     if (!light || !box || !anchors.current.length) return true;
-    const { target, size, area, sides, column } = layout(step, box);
+    if (sheet) {
+      // Measured where the sheet sits: a popover's inline top and left from the previous layout would stretch it
+      // for one frame (and clamp the spotlight with that wrong height).
+      box.style.top = "";
+      box.style.left = `${columnLeft(box)}px`;
+    }
+    const { target, size, area, sides } = layout(step, box);
     const width = area.left + area.width;
     // The hole stays within the band the step may use, so the shadow around it dims all of the viewport even while
     // the anchors are scrolled far away; the ring shows only around a visible hole.
@@ -177,8 +186,6 @@ function Walkthrough({
       height > 2 && holeWidth > 2 ? "2px" : "0px",
     );
     if (sheet) {
-      box.style.top = "";
-      box.style.left = `${column}px`;
       // The page can scroll its end out from under the sheet.
       if (spacer.current) spacer.current.style.height = `${size.height}px`;
       return true;

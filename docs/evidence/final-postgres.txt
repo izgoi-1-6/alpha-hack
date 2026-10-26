@@ -1,0 +1,51 @@
+$ TEST_DATABASE_URL=postgresql+psycopg://credit_route:***@localhost:5432/credit_route_test backend/.venv/bin/pytest -c backend/pytest.ini backend/tests   # 2026-10-26T10:41:27Z, HEAD bbffa22 (final fix wave)
+============================= test session starts ==============================
+platform darwin -- Python 3.12.0, pytest-8.4.2, pluggy-1.7.0
+rootdir: /Users/ren1kron/Developer/hakatons/alpha-hack/.worktrees/credit-route-mvp/backend
+configfile: pytest.ini
+plugins: anyio-4.15.1
+collected 1167 items
+
+backend/tests/test_application_products.py ............................. [  2%]
+.................................                                        [  5%]
+backend/tests/test_applications.py ..................................... [  8%]
+.........................                                                [ 10%]
+backend/tests/test_applications_policy.py .............................. [ 13%]
+......                                                                   [ 13%]
+backend/tests/test_applications_scoring.py ............................. [ 16%]
+...............................................................          [ 21%]
+backend/tests/test_authority.py .......................................  [ 24%]
+backend/tests/test_document_files.py ................................... [ 27%]
+.................................................................        [ 33%]
+backend/tests/test_documents.py ............................             [ 35%]
+backend/tests/test_final_decision.py ................................... [ 38%]
+.......                                                                  [ 39%]
+backend/tests/test_identity_company.py ................................  [ 42%]
+backend/tests/test_information_requests.py ............................. [ 44%]
+.............................                                            [ 47%]
+backend/tests/test_officer_review.py ................................... [ 50%]
+.......................                                                  [ 52%]
+backend/tests/test_product_families.py ................................. [ 55%]
+.......                                                                  [ 55%]
+backend/tests/test_products_config.py .................................. [ 58%]
+........................................................................ [ 64%]
+........................................................................ [ 70%]
+.................                                                        [ 72%]
+backend/tests/test_recommendation_policy.py ............................ [ 74%]
+............................                                             [ 77%]
+backend/tests/test_recommendations.py .................................. [ 80%]
+........................................................................ [ 86%]
+...................................................................      [ 91%]
+backend/tests/test_reset_script.py .........................             [ 94%]
+backend/tests/test_source_owned.py ...................................   [ 97%]
+backend/tests/test_start_scripts.py ...........................          [ 99%]
+backend/tests/test_wording.py .......                                    [100%]
+
+=============================== warnings summary ===============================
+backend/.venv/lib/python3.12/site-packages/starlette/testclient.py:37
+  /Users/ren1kron/Developer/hakatons/alpha-hack/.worktrees/credit-route-mvp/backend/.venv/lib/python3.12/site-packages/starlette/testclient.py:37: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = typing.Callable[[], typing.ContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================= 1167 passed, 1 warning in 361.57s (0:06:01) ==================
+exit=0

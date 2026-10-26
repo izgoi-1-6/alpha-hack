@@ -12,7 +12,7 @@
   - an interactive client walkthrough;
   - no «демо»/«имитация» wording in the app;
   - seven end-to-end browser journeys, a verified Docker stack, a guarded reset script and hand-over docs.
-- Next: one final whole-branch review, then hand-over to the user. No push, merge or deployment is authorized.
+- The final whole-branch review approved the branch with minor fixes, and the final fix wave landed them. Next: hand-over to the user. No push, merge or deployment is authorized.
 
 **Where to look.**
 - Run, present and reset the app: [docs/demo.md](../demo.md).

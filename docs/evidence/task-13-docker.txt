@@ -1,0 +1,246 @@
+# Task 13 Docker Compose check — 2026-10-26T04:50:08Z, HEAD 77ded11, Docker Compose version v2.32.4-desktop.1
+
+$ docker inspect credit-route-db-1 --format "{{.Id}} created={{.Created}} started={{.State.StartedAt}} health={{.State.Health.Status}}"
+9f8ec0e025f460e10204da0b8bfc5c146d4fd8aeb0be2e9759158841ad0eb1c4 created=2026-10-24T19:28:36.368296671Z started=2026-10-24T19:28:36.596576879Z health=healthy
+
+$ docker compose config --hash db   # equals the running container label: compose will not recreate it
+db 44b55c2cc759b3b9d1709e652558067dbf09b5328e3f0bb769ede34d8e90f0f1
+label config-hash=44b55c2cc759b3b9d1709e652558067dbf09b5328e3f0bb769ede34d8e90f0f1
+
+$ ps -p 41141,96229 -o pid,command   # the local API and Vite before the check
+  PID COMMAND
+41141 /Library/Frameworks/Python.framework/Versions/3.12/Resources/Python.app/Contents/MacOS/Python backend/.venv/bin/uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+96229 node /Users/ren1kron/Developer/hakatons/alpha-hack/.worktrees/credit-route-mvp/frontend/node_modules/.bin/vite --host 127.0.0.1 --host 127.0.0.1 --port 5173 --strictPort
+
+$ kill 41141 96229   # stop the local API and Vite: compose uses ports 8000 and 5173
+exit=0
+$ lsof -nP -iTCP:8000 -iTCP:5173 -sTCP:LISTEN
+exit=1 (1 = nothing listening)
+
+$ docker compose up --build -d
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [api internal] load build definition from Dockerfile
+#1 DONE 0.0s
+
+#2 [api internal] load metadata for docker.io/library/python:3.12.11-alpine
+#2 DONE 0.0s
+
+#3 [api internal] load .dockerignore
+#3 DONE 0.0s
+
+#4 [api internal] load build context
+#4 DONE 0.0s
+
+#5 [api 1/6] FROM docker.io/library/python:3.12.11-alpine@sha256:efcdfa6a6b2fd2afb9c7dfa9a5b288a6f68338b5cfdebe6b637d986067d85757
+#5 DONE 3.5s
+
+#6 [api 3/6] COPY backend/requirements.lock .
+#6 CACHED
+
+#7 [api 2/6] WORKDIR /app/backend
+#7 CACHED
+
+#8 [api 4/6] RUN pip install --no-cache-dir -r requirements.lock
+#8 CACHED
+
+#9 [api 5/6] COPY backend .
+#9 DONE 0.0s
+
+#10 [api 6/6] COPY data /app/data
+#10 DONE 0.0s
+
+#11 [api] exporting to image
+#11 exporting layers 0.1s done
+#11 exporting manifest sha256:9c86f5c9853ec76f80a8116b4b03b7655d2ad4ca4c2976fcea6081230871d2c2 done
+#11 exporting config sha256:19250a3eb7ba0e3c2062e68d0ebe9b456cd93476226bde478e120292c849bb98 done
+#11 exporting attestation manifest sha256:b55511a792364d00106458fe4a973dd5500b58eac4d073d69cad6de67222cf73 done
+#11 exporting manifest list sha256:1e12be2105a0da48a4ba8de3f3e009e79d347e4b23378b4b0ed31f51915494b0 done
+#11 naming to docker.io/library/credit-route-api:latest done
+#11 unpacking to docker.io/library/credit-route-api:latest 0.0s done
+#11 DONE 0.1s
+
+#12 [api] resolving provenance for metadata file
+#12 DONE 0.0s
+
+#13 [web internal] load build definition from Dockerfile
+#13 DONE 0.0s
+
+#14 [web internal] load metadata for docker.io/library/nginx:1.27-alpine
+#14 DONE 0.0s
+
+#15 [web internal] load metadata for docker.io/library/node:24.8.0-alpine
+#15 DONE 0.0s
+
+#16 [web internal] load .dockerignore
+#16 DONE 0.0s
+
+#17 [web internal] load build context
+#17 DONE 0.0s
+
+#18 [web stage-1 1/3] FROM docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+#18 DONE 2.2s
+
+#19 [web build 1/6] FROM docker.io/library/node:24.8.0-alpine@sha256:3e843c608bb5232f39ecb2b25e41214b958b0795914707374c8acc28487dea17
+#19 DONE 2.2s
+
+#17 [web internal] load build context
+#17 DONE 0.0s
+
+#20 [web build 2/6] WORKDIR /app
+#20 CACHED
+
+#21 [web build 3/6] COPY frontend/package*.json ./
+#21 CACHED
+
+#18 [web stage-1 1/3] FROM docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+#18 CACHED
+
+#22 [web build 4/6] RUN npm ci --ignore-scripts
+#22 CACHED
+
+#23 [web stage-1 2/3] COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+#23 DONE 0.0s
+
+#24 [web build 5/6] COPY frontend .
+#24 DONE 0.0s
+
+#25 [web build 6/6] RUN npm run build
+#25 0.650 
+#25 0.650 > credit-route@0.1.0 build
+#25 0.650 > tsc --noEmit && vite build
+#25 0.650 
+#25 4.608 vite v7.3.7 building client environment for production...
+#25 4.658 transforming...
+#25 5.440 ✓ 91 modules transformed.
+#25 5.572 rendering chunks...
+#25 5.578 computing gzip size...
+#25 5.593 dist/index.html                   0.47 kB │ gzip:   0.36 kB
+#25 5.593 dist/assets/index--kpaTz-R.css   62.18 kB │ gzip:  12.44 kB
+#25 5.593 dist/assets/index-lPn7oi0L.js   354.11 kB │ gzip: 105.00 kB
+#25 5.593 ✓ built in 965ms
+#25 DONE 5.6s
+
+#26 [web stage-1 3/3] COPY --from=build /app/dist /usr/share/nginx/html
+#26 DONE 0.0s
+
+#27 [web] exporting to image
+#27 exporting layers 0.0s done
+#27 exporting manifest sha256:c21def67112c3dedf3b74c37103d635a259dfb07c1d298ad58c9955c43245897 done
+#27 exporting config sha256:087613c7926ee4edf699e38d7038b6f192b7ebc6fb715126cadf550ba346f07f done
+#27 exporting attestation manifest sha256:a66a071b6167fdc4d0c1761043dc8101a2dfdb2c0e0e7e7a52ab123a556583b3 done
+#27 exporting manifest list sha256:7aa5eb450a2643e5535fc0a5d5dd8951e33c14ab1fbf5d8dcbbc14469f958761 done
+#27 naming to docker.io/library/credit-route-web:latest
+#27 naming to docker.io/library/credit-route-web:latest done
+#27 unpacking to docker.io/library/credit-route-web:latest 0.0s done
+#27 DONE 0.1s
+
+#28 [web] resolving provenance for metadata file
+#28 DONE 0.0s
+ api  Built
+ web  Built
+ Volume "credit-route_credit_route_documents"  Creating
+ Volume "credit-route_credit_route_documents"  Created
+ Container credit-route-db-1  Running
+ Container credit-route-api-1  Creating
+ Container credit-route-api-1  Created
+ Container credit-route-web-1  Creating
+ Container credit-route-web-1  Created
+ Container credit-route-db-1  Waiting
+ Container credit-route-db-1  Healthy
+ Container credit-route-api-1  Starting
+ Container credit-route-api-1  Started
+ Container credit-route-web-1  Starting
+ Container credit-route-web-1  Started
+exit= after 14 s
+
+$ docker compose ps
+NAME                 IMAGE                  STATUS                  PORTS
+credit-route-api-1   credit-route-api       Up 11 seconds           127.0.0.1:8000->8000/tcp
+credit-route-db-1    postgres:17.6-alpine   Up 33 hours (healthy)   127.0.0.1:5432->5432/tcp
+credit-route-web-1   credit-route-web       Up 11 seconds           127.0.0.1:5173->80/tcp
+
+$ curl -s http://localhost:5173/api/v1/health   # through nginx
+{"status":"ok","demo_mode":true}
+
+$ curl -s -o /dev/null -w "%{http_code} %{content_type}
+" http://localhost:5173/   # the production build
+200 text/html
+
+$ docker compose logs --no-color api   # migrations, seed, Uvicorn
+api-1  | Synthetic demo seed ready (idempotent).
+api-1  | INFO:     Started server process [1]
+api-1  | INFO:     Waiting for application startup.
+api-1  | INFO:     Application startup complete.
+api-1  | INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+api-1  | INFO:     172.22.0.4:58836 - "GET /api/v1/health HTTP/1.0" 200 OK
+api-1  | INFO:     172.22.0.4:58850 - "GET /api/v1/health HTTP/1.0" 200 OK
+
+$ node .superpowers/sdd/2026-10-25-catalog-ux-revision/scripts/task13_docker_smoke.cjs   # Chrome against http://localhost:5173 (nginx)
+PASS health through nginx — {"status":"ok","demo_mode":true}
+PASS login: officer and seeded client quick logins — queue and company switcher shown; HttpOnly session cookie
+PASS onboarding with Госуслуги (fresh synthetic client) — docker-1792990255999@example.test: Соколов Андрей Викторович confirmed, ООО «Сильный бизнес» added
+PASS questionnaire submitted: preliminary approval — application 9fee27fe-5103-4d20-be26-a2f80102ae5f
+PASS upload and download through nginx — 503 bytes uploaded, downloaded byte-identical (Выписка (docker).pdf); packet sent
+PASS officer final approval — claimed, both documents accepted, approved 2 000 000 ₽
+PASS hand-off path /alfa-business/{id} loaded directly through nginx — nginx serves the SPA at the path; the page shows the final amount and no money moving
+APPLICATION 9fee27fe-5103-4d20-be26-a2f80102ae5f
+exit=0
+
+$ docker compose exec -T db psql -U credit_route -d credit_route -Atc "SELECT document_type, revision, status, size_bytes, storage_key FROM documents WHERE application_id = '9fee27fe-5103-4d20-be26-a2f80102ae5f' ORDER BY document_type"
+BANK_STATEMENT|1|ACCEPTED|503|c78f1c39de3e69c1d8889c88f091b0b2
+FINANCIAL_REPORT|1|ACCEPTED|479|c344ca26b02c26094418279843036ed9
+
+$ docker compose exec -T api sh -c "ls -l /app/var/documents"   # the named volume credit_route_documents
+total 8
+-rw-------    1 root     root           479 Oct 26 04:50 c344ca26b02c26094418279843036ed9
+-rw-------    1 root     root           503 Oct 26 04:50 c78f1c39de3e69c1d8889c88f091b0b2
+$ docker compose exec -T api sh -c 'test -f /app/var/documents/c78f1c39de3e69c1d8889c88f091b0b2 && stat -c "%s bytes %A" /app/var/documents/c78f1c39de3e69c1d8889c88f091b0b2'; test -f var/documents/c78f1c39de3e69c1d8889c88f091b0b2 (host)
+503 bytes -rw-------
+not in the host's var/documents: stored only in the volume
+$ docker compose exec -T api sh -c 'test -f /app/var/documents/c344ca26b02c26094418279843036ed9 && stat -c "%s bytes %A" /app/var/documents/c344ca26b02c26094418279843036ed9'; test -f var/documents/c344ca26b02c26094418279843036ed9 (host)
+479 bytes -rw-------
+not in the host's var/documents: stored only in the volume
+
+$ docker volume inspect credit-route_credit_route_documents --format "{{.Name}} {{.Mountpoint}}"
+credit-route_credit_route_documents /var/lib/docker/volumes/credit-route_credit_route_documents/_data
+
+$ docker compose exec -T db psql -U credit_route -d credit_route -Atc "SELECT status, final_amount_rub FROM applications WHERE id = '9fee27fe-5103-4d20-be26-a2f80102ae5f'"
+APPROVED|2000000
+
+$ curl -sI http://localhost:5173/ | grep -i "x-content-type\|referrer\|server"
+Server: nginx/1.27.5
+X-Content-Type-Options: nosniff
+Referrer-Policy: same-origin
+
+$ docker compose stop api web
+ Container credit-route-web-1  Stopping
+ Container credit-route-web-1  Stopped
+ Container credit-route-api-1  Stopping
+ Container credit-route-api-1  Stopped
+exit=0
+
+$ docker compose ps -a
+NAME                 STATUS                              PORTS
+credit-route-api-1   Exited (0) Less than a second ago   
+credit-route-db-1    Up 33 hours (healthy)               127.0.0.1:5432->5432/tcp
+credit-route-web-1   Exited (0) Less than a second ago   
+
+$ docker inspect credit-route-db-1 --format "{{.Id}} created={{.Created}} started={{.State.StartedAt}} health={{.State.Health.Status}}"   # unchanged
+9f8ec0e025f460e10204da0b8bfc5c146d4fd8aeb0be2e9759158841ad0eb1c4 created=2026-10-24T19:28:36.368296671Z started=2026-10-24T19:28:36.596576879Z health=healthy
+
+$ docker volume ls --filter name=credit-route
+DRIVER    VOLUME NAME
+local     credit-route_credit_route_data
+local     credit-route_credit_route_documents
+
+# Restored the local API and Vite with the controller's commands (after the reset in task-13-reset.txt) — 2026-10-26T04:52:34Z
+$ nohup backend/.venv/bin/uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 > .superpowers/sdd/2026-10-25-catalog-ux-revision/api.log 2>&1 &
+$ nohup npm run dev --prefix frontend -- --host 127.0.0.1 --port 5173 --strictPort > .superpowers/sdd/2026-10-25-catalog-ux-revision/vite.log 2>&1 &
+$ lsof -nP -iTCP:8000 -iTCP:5173 -sTCP:LISTEN
+COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+Python  12922 ren1kron    6u  IPv4 0xac1e53dfd8224aae      0t0  TCP 127.0.0.1:8000 (LISTEN)
+node    12953 ren1kron   16u  IPv4 0xb41fffe11b21af45      0t0  TCP 127.0.0.1:5173 (LISTEN)
+$ curl -s http://127.0.0.1:8000/api/v1/health; curl -s http://localhost:5173/api/v1/health
+{"status":"ok","demo_mode":true}
+{"status":"ok","demo_mode":true}

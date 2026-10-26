@@ -1,0 +1,55 @@
+# Task 13 reset of the development database — 2026-10-26T04:51:59Z, HEAD 77ded11; the local API is stopped (after the Docker check)
+
+$ lsof -nP -iTCP:8000 -sTCP:LISTEN   # nothing serves the database
+exit=1 (1 = nothing listening)
+
+$ docker exec credit-route-db-1 psql -U credit_route -d credit_route -c '<counts>'   # before
+ users | companies | applications | documents | snapshots 
+-------+-----------+--------------+-----------+-----------
+   840 |       612 |          494 |       162 |       909
+(1 row)
+
+$ DEMO_MODE=false scripts/reset-demo.sh --yes
+Refusing to reset: DEMO_MODE is "false". The reset runs only with DEMO_MODE=true.
+exit=1
+
+$ DATABASE_URL=postgresql+psycopg://credit_route:secret@db.example.com:5432/credit_route scripts/reset-demo.sh --yes
+Refusing to reset: the database host "db.example.com" is not local (localhost, 127.0.0.1 or db).
+Pass --force-remote only for a disposable database.
+exit=1
+
+$ echo yes | scripts/reset-demo.sh --dry-run   # the question, answered yes; the dry run then changes nothing
+This deletes every user, company, application, consent and document record in
+  postgresql+psycopg://credit_route:***@localhost:5432/credit_route
+and recreates the seeded accounts and companies. Uploaded files are kept.
+Type yes to continue: Dry run for postgresql+psycopg://credit_route:***@localhost:5432/credit_route: nothing is changed. The reset would run:
+  1/3 backend/.venv/bin/alembic -c backend/alembic.ini downgrade base
+  2/3 backend/.venv/bin/alembic -c backend/alembic.ini upgrade head
+  3/3 PYTHONPATH=backend backend/.venv/bin/python -m app.seed
+exit=0
+
+$ echo no | scripts/reset-demo.sh   # the question, answered no
+This deletes every user, company, application, consent and document record in
+  postgresql+psycopg://credit_route:***@localhost:5432/credit_route
+and recreates the seeded accounts and companies. Uploaded files are kept.
+Type yes to continue: Cancelled: nothing was changed.
+exit=1
+
+$ scripts/reset-demo.sh --yes   # the real run
+Resetting postgresql+psycopg://credit_route:***@localhost:5432/credit_route
+1/3 Removing every table (alembic downgrade base)
+2/3 Creating the schema (alembic upgrade head)
+3/3 Loading the synthetic seed
+Done: 3 accounts and 10 companies. Start the API again if you stopped it.
+exit=0
+
+$ docker exec credit-route-db-1 psql -U credit_route -d credit_route -c '<counts>'   # after
+ users | companies | applications | documents | snapshots 
+-------+-----------+--------------+-----------+-----------
+     3 |        10 |            0 |         0 |         0
+(1 row)
+
+client@demo.local|CLIENT
+officer@demo.local|CREDIT_OFFICER
+other@demo.local|CLIENT
+c4d5e6f7a8b9

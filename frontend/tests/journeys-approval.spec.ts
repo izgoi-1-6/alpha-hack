@@ -158,16 +158,17 @@ test.describe("a brand-new client with the walkthrough on", () => {
     await expect(
       page.getByRole("group", { name: "Предварительно одобрено" }),
     ).toContainText("2 000 000 ₽");
-    // The server's notice keeps the amount on one line (U+00A0 inside the number and before the sign).
-    const timeline = page.getByRole("list", { name: "История заявки" });
-    expect(await timeline.innerText()).toContain("на 2 000 000 ₽");
-    expect(
-      (await history(page, id)).map((item) => [item.to_status, item.reason_code]),
-    ).toEqual([
+    const items = await history(page, id);
+    expect(items.map((item) => [item.to_status, item.reason_code])).toEqual([
       ["DRAFT", "CREATED"],
       ["CHECKING", "SUBMITTED"],
       ["PREAPPROVED", "R8"],
     ]);
+    // The server writes the amount of its notice with U+00A0 between the digit groups and before the sign, so it
+    // never wraps. Read from the API: the timeline joins ASCII-spaced amounts too, so it cannot tell.
+    expect(items.at(-1)!.notification!.message).toContain(
+      "на 2\u00a0000\u00a0000\u00a0₽",
+    );
 
     // Documents: the two base documents, then the packet goes to the officer.
     const card = documentsCard(page);

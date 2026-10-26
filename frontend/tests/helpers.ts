@@ -291,6 +291,8 @@ export async function history(page: Page, id: string) {
     to_status: string;
     reason_code: string;
     reason_text: string;
+    /** The in-app notice the server wrote for the change, as it stored it. */
+    notification: { event_code: string; message: string } | null;
   }[];
 }
 

@@ -107,6 +107,8 @@
 
 ### Task 7: Measured comparison, end-to-end evidence and demo handoff
 
+> **Superseded by [`2026-10-25-catalog-ux-revision.md`](2026-10-25-catalog-ux-revision.md).** The comparison and analytics work is dropped by user decision (that plan's line 15); the end-to-end evidence, start-up tooling and hand-over docs became its Task 13.
+
 **Files:** analytics module/tests and frontend evidence/comparison feature, `frontend/e2e/`, Playwright config, demo reset/start tooling, `docs/demo.md`, `docs/evidence.md`, README and final context summary.
 
 **Interfaces:** validated first-party event endpoint and officer-only aggregate summary; identical fixture/product data for baseline versus guided modes; explicit experiment mode/cohort and event timestamps. Business impact calculation is a separate transparent scenario model.

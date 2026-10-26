@@ -91,7 +91,7 @@ A broken edit prints every problem with its path and exits 1, and the API refuse
 ./scripts/run-api.sh               # start the API again
 ```
 
-It refuses unless `DEMO_MODE` is true (as the app reads it), and it refuses a `DATABASE_URL` whose host is not `localhost`, `127.0.0.1` or `db` unless `--force-remote` is given. Values in the environment win over `.env`. With the Docker stack, run it from the host after `docker compose stop api` (the database port is published on 127.0.0.1:5432), then `docker compose start api`. There is no reset endpoint: `DEMO_MODE=false` also makes the seed refuse and hides the fixture list.
+It refuses unless `DEMO_MODE` is true (as the app reads it), and it refuses a `DATABASE_URL` whose host is not `localhost`, `127.0.0.1` or `db`, or whose query sets a host (`host=`, `hostaddr=`), unless `--force-remote` is given. Values in the environment win over `.env`. With the Docker stack, run it from the host after `docker compose stop api` (the database port is published on 127.0.0.1:5432), then `docker compose start api`. There is no reset endpoint: `DEMO_MODE=false` also makes the seed refuse and hides the fixture list.
 
 ## 6. A short presentation script (about 12 minutes)
 

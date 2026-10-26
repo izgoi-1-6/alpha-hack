@@ -342,3 +342,29 @@ The last revision task: browser journeys against the real app, a verified Compos
   - `Tour.position` clears the popover's inline top and sets its left before measuring the sheet.
   - CSS: no text under 12 px, login tabs and the source-retry button at 44 px, muted greys at 4.5:1 or more, and a shadow on the phone sidebar only while it is open.
 - **Backend**: `recommendations.service.rub()` joins digit groups and the ruble sign with U+00A0, which reaches every server text that formats money (cards, scoring reasons, notifications, officer bounds). The frontend's `keepAmountsTogether` stays for texts stored before the change.
+
+## Final fix wave — the final review's minor findings
+
+No backend contract change; the server's generic 422 handler is unchanged.
+
+- **Frontend:**
+  - `features/companies/inn.ts`: `innProblem(inn)` applies the server's `InnInput` rule to a complete number (10 or 12 digits, not one digit repeated, the check digits) and returns the field message, or null. `Onboarding` shows it as `#inn-error` with `aria-invalid`, lists «исправить ИНН» under «Осталось», and keeps «Подтвердить через Госуслуги» disabled.
+  - `GosuslugiDialog` offers «Повторить» only for `kind === "network"` (no answer or a 5xx; the key is kept). After a refusal only «Отмена» remains, and it takes focus.
+  - `main.tsx`: a company retry answered with a 4xx releases its stored key and version (`commands.outcomeUnknown`). The breadcrumb's «/» is `aria-hidden`, and the sidebar note joins «ИП и ООО» with U+00A0.
+  - `Auth`: the login heading keeps a space before its first line break, which phones hide.
+  - `documentFormat.ts`: file sizes use U+00A0 before the unit.
+  - CSS: `--red-action` `#dc2f28` behind white text (`.primary`, the current stage number); every focus ring `3px solid var(--red)`; the sidebar logout 44 × 44; `.text-button` at least 44 px tall.
+- **Tests:**
+  - `tests/shell.spec.ts`: the login heading at 390 px, the sidebar note, white on red and the hover, the focus rings (rendered on the login page and the dark sidebar, and every `:focus` rule of the loaded stylesheets), the current stage number, the breadcrumb, and the 44 px logout and error-notice retries.
+  - `expectTouchTargets` also measures `.sidebar button` and `.notice.error button`, and exempts a stretched link only inside `.application-row`.
+  - `history()` returns each row's `notification`. Journey 1 checks the server's own notice for «2 000 000 ₽» with U+00A0.
+  - `onboarding.spec.ts`:
+    - the field check and the browser/server parity on seven ИНН;
+    - no «Повторить» after `REGISTRY_NOT_FOUND`, still one after a lost answer and after a 500, with one key;
+    - a company retry refused by a version conflict from another tab, then sent afresh.
+  - `documents.spec.ts` checks a size's U+00A0.
+  - `backend/tests/test_reset_script.py` adds the query-host cases, and `backend/tests/test_start_scripts.py` runs `setup.sh` and the API image's start command on stand-in tools.
+- **Tooling:**
+  - `scripts/reset-demo.sh` refuses a `host=` or `hostaddr=` query parameter, or a %-encoded parameter name, unless `--force-remote`.
+  - `scripts/setup.sh` and `backend/Dockerfile` read `DEMO_MODE` as `app.config` does.
+  - `frontend/tsconfig.json` no longer names the absent `playwright.config.ts`.

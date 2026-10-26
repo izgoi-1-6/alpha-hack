@@ -38,7 +38,7 @@
   border-radius: 8px;
 }
 .authority-confirmed-text:focus-visible {
-  outline: 3px solid #e5322b66;
+  outline: 3px solid var(--red);
   outline-offset: 4px;
 }
 .authority-check {

@@ -35,7 +35,7 @@
   animation: tour-in 0.18s ease-out;
 }
 .tour-popover:focus-visible {
-  outline: 3px solid #e5322b66;
+  outline: 3px solid var(--red);
   outline-offset: 3px;
 }
 @keyframes tour-in {

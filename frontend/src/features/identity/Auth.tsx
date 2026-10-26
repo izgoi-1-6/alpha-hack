@@ -49,7 +49,7 @@ export function Auth({ onAuth }: { onAuth: (u: User) => void }) {
         <div className="story-content">
           <div className="eyebrow">Для предпринимателей и компаний</div>
           <h1>
-            У вашего бизнеса
+            У вашего бизнеса{" "}
             <br />
             есть планы.
             <br />

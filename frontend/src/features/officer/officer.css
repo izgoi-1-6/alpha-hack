@@ -25,7 +25,7 @@
 .officer-page textarea:focus-visible,
 .officer-page a:focus-visible,
 .table-scroll:focus-visible {
-  outline: 3px solid #e5322b66;
+  outline: 3px solid var(--red);
   outline-offset: 3px;
 }
 .officer-page input[aria-invalid="true"],
@@ -40,7 +40,7 @@
 }
 .officer-page .panel-title h2:focus-visible,
 .review-heading h1:focus-visible {
-  outline: 3px solid #e5322b66;
+  outline: 3px solid var(--red);
   outline-offset: 4px;
   border-radius: 4px;
 }

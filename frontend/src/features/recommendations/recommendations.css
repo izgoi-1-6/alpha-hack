@@ -62,7 +62,7 @@
 }
 .amount-value:focus-within {
   border-color: var(--red);
-  outline: 3px solid #e5322b40;
+  outline: 3px solid var(--red);
   outline-offset: 2px;
 }
 .amount-value.invalid {
@@ -171,7 +171,7 @@
   box-shadow: 0 2px 6px #1c1a1d33;
 }
 .amount-picker .amount-range:focus-visible {
-  outline: 3px solid #e5322b66;
+  outline: 3px solid var(--red);
   outline-offset: 4px;
 }
 .amount-range:focus-visible::-webkit-slider-thumb {

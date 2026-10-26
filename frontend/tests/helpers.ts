@@ -368,26 +368,27 @@ export async function expectNoDemoWording(page: Page) {
 }
 
 /**
- * Every visible control in the main area is at least 44px tall. A stretched link (its `::after` absolutely covers the
- * positioned card around it, as on «Мои заявки») is measured by that card, the area that takes the tap.
+ * Every visible control of the main area, of the sidebar (the phone menu's too, open or not) and of any error notice
+ * (a failed page's or start's «Повторить попытку») is at least 44px tall. The stretched link of a «Мои заявки» row
+ * (its `::after` absolutely covers the `.application-row` card) is measured by that card, the area that takes the tap.
  */
 export async function expectTouchTargets(page: Page) {
   const small = await page.evaluate(() =>
     [
       ...document.querySelectorAll(
-        "main button, main a, main select, main .choice, main .check-row",
+        "main button, main a, main select, main .choice, main .check-row, .sidebar button, .notice.error button",
       ),
     ]
       .filter((el) => {
-        let box = el.getBoundingClientRect();
+        const row = el instanceof HTMLElement ? el.offsetParent : null;
         const after = getComputedStyle(el, "::after");
-        if (
-          el instanceof HTMLElement &&
-          el.offsetParent &&
+        const box = (
+          row?.matches(".application-row") &&
           after.content !== "none" &&
           after.position === "absolute"
-        )
-          box = el.offsetParent.getBoundingClientRect();
+            ? row
+            : el
+        ).getBoundingClientRect();
         return box.width > 0 && box.height < 44;
       })
       .map((el) => `${el.tagName}.${el.className}: ${el.textContent?.trim()}`),

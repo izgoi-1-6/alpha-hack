@@ -153,7 +153,7 @@
   color: #216e42;
 }
 .stepper .current .step-mark {
-  background: var(--red);
+  background: var(--red-action);
   color: white;
 }
 .step-title {
@@ -184,7 +184,7 @@
   outline: none;
 }
 .stage-card h2:focus-visible {
-  outline: 3px solid #e5322b66;
+  outline: 3px solid var(--red);
   outline-offset: 4px;
   border-radius: 4px;
 }
@@ -299,7 +299,7 @@
   resize: vertical;
 }
 .application-page textarea:focus-visible {
-  outline: 3px solid #e5322b66;
+  outline: 3px solid var(--red);
   outline-offset: 3px;
 }
 .application-page input[aria-invalid="true"],
@@ -344,7 +344,7 @@
   background: #fff6f5;
 }
 .choice:focus-within {
-  outline: 3px solid #e5322b66;
+  outline: 3px solid var(--red);
   outline-offset: 2px;
 }
 .choice input[type="radio"],
@@ -629,7 +629,7 @@
   outline: none;
 }
 .status-heading h1:focus-visible {
-  outline: 3px solid #e5322b66;
+  outline: 3px solid var(--red);
   outline-offset: 4px;
   border-radius: 4px;
 }
@@ -891,7 +891,7 @@
   border-color: #cfc6c8;
 }
 .application-row:focus-within {
-  outline: 3px solid #e5322b66;
+  outline: 3px solid var(--red);
   outline-offset: 2px;
 }
 .application-row h2 {

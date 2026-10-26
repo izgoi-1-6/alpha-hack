@@ -87,7 +87,7 @@
   outline: none;
 }
 .requirement-title h3:focus-visible {
-  outline: 3px solid #e5322b66;
+  outline: 3px solid var(--red);
   outline-offset: 3px;
   border-radius: 4px;
 }
@@ -149,7 +149,7 @@
   text-underline-offset: 3px;
 }
 .download-link:focus-visible {
-  outline: 3px solid #e5322b66;
+  outline: 3px solid var(--red);
   outline-offset: 2px;
   border-radius: 6px;
 }

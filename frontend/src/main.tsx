@@ -371,7 +371,7 @@ function App() {
           )}
         </nav>
         <div className="sidebar-note">
-          <span className="small-red-dot" /> Финансирование для ИП и ООО
+          <span className="small-red-dot" /> Финансирование для ИП&nbsp;и&nbsp;ООО
           <p>
             Сведения о компании — из реестра и открытых источников, кредитная
             история — только с согласия клиента.
@@ -408,7 +408,7 @@ function App() {
             <Icon name="menu" />
           </button>
           <span className="breadcrumbs">
-            Бизнес <span>/</span>{" "}
+            Бизнес <span aria-hidden="true">/</span>{" "}
             {handoffId
               ? "Альфа-Бизнес"
               : officer

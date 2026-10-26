@@ -17,7 +17,7 @@ export function Stepper({
 }) {
   const completed = stages.filter((entry) => entry.complete).length;
   return (
-    <div className="wizard-progress">
+    <div className="wizard-progress" data-tour="questionnaire">
       <div className="progress-line">
         <div
           className="progress-bar"

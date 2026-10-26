@@ -61,6 +61,12 @@ export function Icon({
         <path d="M12 11v6M12 7h.01" />
       </>
     ),
+    help: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01" />
+      </>
+    ),
     download: <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />,
     upload: <path d="M12 16V5M7 10l5-5 5 5M5 20h14" />,
   };

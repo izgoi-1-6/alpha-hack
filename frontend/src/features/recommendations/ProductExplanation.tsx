@@ -6,7 +6,7 @@ import { Product } from "../../api";
  */
 export function ProductExplanation({ product }: { product: Product }) {
   return (
-    <div className="product-explanation">
+    <div className="product-explanation" data-tour="product-explanation">
       <section className="product-section">
         <h4>Что это</h4>
         <p className="product-summary">{product.display.summary}</p>

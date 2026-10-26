@@ -128,6 +128,7 @@ export function Onboarding({
               id="gosuslugi-step"
               className="authority-step"
               aria-labelledby="authority-title"
+              data-tour="gosuslugi"
             >
               <div className="section-number consent-title">
                 02 <span id="authority-title">Полномочия представителя</span>
@@ -184,7 +185,11 @@ export function Onboarding({
               )}
             </section>
 
-            <section id="onboarding-consents" aria-labelledby="consents-title">
+            <section
+              id="onboarding-consents"
+              aria-labelledby="consents-title"
+              data-tour="consents"
+            >
               <div className="section-number consent-title">
                 03 <span id="consents-title">Разрешения на проверку</span>
               </div>
@@ -244,7 +249,11 @@ export function Onboarding({
             </div>
           </form>
         </section>
-        <aside className="card fixture-panel" aria-labelledby="fixtures-title">
+        <aside
+          className="card fixture-panel"
+          aria-labelledby="fixtures-title"
+          data-tour="choose-company"
+        >
           <div className="panel-title">
             <h2 id="fixtures-title">Выберите компанию</h2>
           </div>

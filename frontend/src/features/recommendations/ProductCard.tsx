@@ -59,7 +59,7 @@ export function ProductCard({
       data-product-id={item.product_id}
       aria-labelledby={"product-title-" + item.product_id}
     >
-      <header className="product-head">
+      <header className="product-head" data-tour="product-head">
         <div className="product-top">
           <span className={"status product-status " + status.tone}>
             {status.label}
@@ -140,6 +140,7 @@ export function ProductCard({
           <div className="application-start">
             <button
               className="button primary product-start"
+              data-tour="start-application"
               onClick={start.onStart}
               disabled={start.busy}
               aria-describedby={"product-title-" + item.product_id}

@@ -140,7 +140,7 @@ export function AmountSlider({
       className="card amount-picker"
       aria-labelledby="amount-heading"
     >
-      <div className="amount-main">
+      <div className="amount-main" data-tour="amount-field">
         <div className="eyebrow">Ваша задача</div>
         <h2 id="amount-heading">Какая сумма нужна бизнесу?</h2>
         <label className="amount-label" htmlFor="amount-input">
@@ -170,7 +170,7 @@ export function AmountSlider({
         )}
       </div>
       {children && <div className="amount-aside">{children}</div>}
-      <div className="amount-track">
+      <div className="amount-track" data-tour="amount-slider">
         <input
           id="amount-slider"
           className="amount-range"

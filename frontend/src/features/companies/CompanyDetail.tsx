@@ -65,7 +65,7 @@ export function CompanyDetail({
           </div>
         </div>
       )}
-      <div className="recommendation-entry card">
+      <div className="recommendation-entry card" data-tour="find-financing">
         <div>
           <h2>От задачи — к подходящему продукту</h2>
           <p>

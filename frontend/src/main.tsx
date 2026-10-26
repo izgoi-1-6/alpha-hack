@@ -31,6 +31,8 @@ import {
 } from "./features/officer/OfficerQueue";
 import { QueueFilters } from "./features/officer/officerApi";
 import { ReviewPage } from "./features/officer/ReviewPage";
+import { Tour } from "./features/tour/Tour";
+import { useTour } from "./features/tour/useTour";
 import "./styles.css";
 function App() {
   const [user, setUser] = useState<User | null>(null),
@@ -60,6 +62,8 @@ function App() {
   const shownUrl = useRef(window.location.href);
   // The officer's last queue filters, so the way back from a review returns to the same list.
   const lastQueue = useRef<QueueFilters>({});
+  // The client walkthrough: opens by itself on a first visit, again from «Как это работает».
+  const tour = useTour(user);
   const onboard = url.searchParams.get("view") === "onboard";
   const selectedId = url.searchParams.get("company");
   const recommending = url.searchParams.get("view") === "recommendations";
@@ -414,6 +418,17 @@ function App() {
                     : "Мои компании"}
           </span>
           <div className="topbar-right">
+            {tour.enabled && (
+              <button
+                ref={tour.trigger}
+                type="button"
+                className="button secondary tour-trigger"
+                onClick={() => tour.restart()}
+              >
+                <Icon name="help" size={18} />
+                <span>Как это работает</span>
+              </button>
+            )}
             <span className="account-email">{user.email}</span>
           </div>
         </header>
@@ -590,6 +605,7 @@ function App() {
                     </p>
                     <button
                       className="button primary"
+                      data-tour="add-company"
                       onClick={() => navigate(undefined, "onboard")}
                     >
                       Добавить компанию
@@ -620,6 +636,7 @@ function App() {
             <span>Только синтетические данные</span>
           </footer>
         </main>
+        <Tour tour={tour} route={url.href} onEmptyPage={() => navigate()} />
       </div>
     </div>
   );

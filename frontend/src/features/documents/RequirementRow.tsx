@@ -1,11 +1,11 @@
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   Application,
   ApplicationDocument,
   DocumentChecklist,
 } from "../../api";
 import { Icon } from "../../components";
-import { CommandAttempts } from "../applications/commands";
+import { CommandAttempts, unknownOutcome } from "../applications/commands";
 import { keepAmountsTogether, rub } from "../applications/format";
 import { useCommand } from "../applications/useCommand";
 import { DocumentFile } from "./DocumentFile";
@@ -68,8 +68,17 @@ function UploadState({
   );
 }
 
-/** What the officer decided about the current file: the reason of a rejection, or the note of an acceptance. */
-function ReviewNote({ document }: { document: ApplicationDocument }) {
+/**
+ * What the officer decided about the current file: the reason of a rejection, or the note of an acceptance. The
+ * request to upload a corrected file appears only while the row can still take one.
+ */
+function ReviewNote({
+  document,
+  canUpload,
+}: {
+  document: ApplicationDocument;
+  canUpload: boolean;
+}) {
   if (document.status !== "REJECTED" && document.status !== "ACCEPTED") return null;
   const rejected = document.status === "REJECTED";
   return (
@@ -82,7 +91,7 @@ function ReviewNote({ document }: { document: ApplicationDocument }) {
       {document.verified_value_rub !== null && (
         <p>Проверенная стоимость залога: {rub(document.verified_value_rub)}</p>
       )}
-      {rejected && <p>Загрузите исправленный файл вместо этого.</p>}
+      {rejected && canUpload && <p>Загрузите исправленный файл вместо этого.</p>}
     </div>
   );
 }
@@ -100,6 +109,8 @@ export function RequirementRow({
   canUpload,
   canDelete,
   locked,
+  commandBusy,
+  onCommand,
   onChoose,
   onRetry,
   onDismiss,
@@ -116,8 +127,12 @@ export function RequirementRow({
   done?: string;
   canUpload: boolean;
   canDelete: boolean;
-  /** Another upload or command is running: the version is about to change. */
+  /** An upload or a command is running: the version is about to change. */
   locked: boolean;
+  /** A command (a deletion here or on another row, or the completion) is running: an upload must wait for it. */
+  commandBusy: boolean;
+  /** Reports this row's deletion running, for the checklist's shared lock. */
+  onCommand: (running: boolean) => void;
   onChoose: (file: File) => void;
   onRetry: () => void;
   onDismiss: () => void;
@@ -130,6 +145,26 @@ export function RequirementRow({
   const [confirming, setConfirming] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const id = useId();
+  // Focus follows the confirmation, as in CancelAction: into it on opening, back to «Удалить файл» on «Оставить».
+  const trigger = useRef<HTMLButtonElement>(null);
+  const keep = useRef<HTMLButtonElement>(null);
+  const uploadButton = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef(false);
+  useEffect(() => {
+    if (confirming) keep.current?.focus();
+    else if (restoreFocus.current) {
+      restoreFocus.current = false;
+      trigger.current?.focus();
+    }
+  }, [confirming]);
+  // After a deletion focus goes to the upload that replaces the file, once the shared lock has let it go.
+  const focusUpload = useRef(false);
+  useEffect(() => {
+    if (focusUpload.current && !commandBusy && !command.busy) {
+      focusUpload.current = false;
+      uploadButton.current?.focus();
+    }
+  });
   const type = requirement.document_type;
   const current = requirement.current_document;
   const status = current ? documentStatus(current.status, application.status) : null;
@@ -138,18 +173,28 @@ export function RequirementRow({
   async function remove() {
     if (!current) return;
     const body = { version: application.version };
-    const result = await command.run(
-      "delete",
-      `delete-document:${current.id}`,
-      body,
-      (key) => documentsApi.remove(application.id, current.id, body, key),
-    );
-    if (!result) return;
-    setConfirming(false);
-    if (result.ok) {
-      announce(`Файл «${current.original_name}» удалён.`);
-      await reload();
-    } else if (["version", "status"].includes(result.problem.kind)) await reload();
+    onCommand(true);
+    try {
+      const result = await command.run(
+        "delete",
+        `delete-document:${current.id}`,
+        body,
+        (key) => documentsApi.remove(application.id, current.id, body, key),
+      );
+      if (!result) return;
+      if (result.ok) {
+        setConfirming(false);
+        announce(`Файл «${current.original_name}» удалён.`);
+        await reload();
+        focusUpload.current = true;
+        return;
+      }
+      restoreFocus.current = true;
+      setConfirming(false);
+      if (["version", "status"].includes(result.problem.kind)) await reload();
+    } finally {
+      onCommand(false);
+    }
   }
 
   return (
@@ -170,7 +215,7 @@ export function RequirementRow({
         </span>
       </div>
       {current && <DocumentFile document={current} className="requirement-file" />}
-      {current && <ReviewNote document={current} />}
+      {current && <ReviewNote document={current} canUpload={canUpload} />}
       {job && <UploadState job={job} onRetry={onRetry} onDismiss={onDismiss} />}
       {done && !job && (
         <p className="upload-done">
@@ -183,7 +228,10 @@ export function RequirementRow({
           <Icon name="info" />
           <span>
             {command.problem.kind === "network"
-              ? "Нет связи с сервером. Файл мог уже удалиться: повторите — повтор не удалит другой файл."
+              ? unknownOutcome(
+                  command.problem,
+                  "Файл мог уже удалиться: повторите — повтор не удалит другой файл.",
+                )
               : command.problem.message}
           </span>
         </div>
@@ -197,10 +245,14 @@ export function RequirementRow({
           </p>
           <div className="form-actions">
             <button
+              ref={keep}
               type="button"
               className="button secondary"
               disabled={!!command.busy}
-              onClick={() => setConfirming(false)}
+              onClick={() => {
+                restoreFocus.current = true;
+                setConfirming(false);
+              }}
             >
               Оставить
             </button>
@@ -219,9 +271,10 @@ export function RequirementRow({
           <div className="requirement-actions">
             {canUpload && (
               <button
+                ref={uploadButton}
                 type="button"
                 className="button secondary"
-                disabled={sending || !!command.busy}
+                disabled={sending || commandBusy || !!command.busy}
                 onClick={() => input.current?.click()}
               >
                 <Icon name="upload" size={18} />
@@ -230,6 +283,7 @@ export function RequirementRow({
             )}
             {canDelete && (
               <button
+                ref={trigger}
                 type="button"
                 className="button secondary"
                 disabled={sending || locked || !!command.busy}

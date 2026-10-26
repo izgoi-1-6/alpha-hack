@@ -516,3 +516,69 @@ test("packet edits: browser checks, server refusals on the row, a lost upload re
   await page.goto(`/alfa-business/${id}`);
   await expect(page.getByRole("heading", { level: 1, name: "Переход пока недоступен" })).toBeVisible();
 });
+
+test("one lock for uploads and deletions; a lost upload repeated after the page learnt a newer version is still the same upload; the delete confirmation keeps keyboard focus", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await registerClient(page, "docs-lock");
+  await onboard(page, "Сильный бизнес");
+  await openRecommendations(page);
+  const id = await submitApplication(page, termCard, { amount: "2000000", debt: "160000" }, preapproved);
+  const card = documents(page);
+  const statement = requirement(card, "BANK_STATEMENT");
+  const report = requirement(card, "FINANCIAL_REPORT");
+
+  // The statement's answer is lost after the real API stored it; the report then meets the version that upload made.
+  const sent: { key: string; version: string }[] = [];
+  await page.route(uploads, async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const version = /name="version"\r\n\r\n(\d+)/.exec(route.request().postData() ?? "")?.[1] ?? "";
+    sent.push({ key: route.request().headers()["idempotency-key"], version });
+    const response = await route.fetch();
+    if (sent.length === 1) await route.abort();
+    else await route.fulfill({ response });
+  });
+  const first = pdfFile("Выписка.pdf", { text: "Synthetic statement" });
+  await choose(statement, first);
+  await expect(statement.getByRole("alert")).toContainText("Нет связи с сервером");
+  await choose(report, pngFile("Отчёт.png"));
+  await expect(report.getByRole("alert")).toContainText("Заявка изменилась");
+  // The repeat is the same upload — its key and its version — so the server replays it instead of storing a copy.
+  await statement.getByRole("button", { name: "Повторить загрузку" }).click();
+  await expect(statement.locator(".requirement-file")).toContainText(first.name);
+  expect(sent).toHaveLength(3);
+  expect(sent[2]).toEqual(sent[0]);
+  const stored = (await checklist(page, id)).items.filter(
+    (item: { document_type: string }) => item.document_type === "BANK_STATEMENT",
+  );
+  expect(stored).toHaveLength(1);
+  await report.getByRole("button", { name: "Повторить загрузку" }).click();
+  await expect(report.locator(".requirement-file")).toContainText("Отчёт.png");
+  await page.unroute(uploads);
+
+  // The delete confirmation takes focus and gives it back to «Удалить файл» when the client keeps the file.
+  await report.getByRole("button", { name: "Удалить файл" }).click();
+  await expect(report.getByRole("button", { name: "Оставить" })).toBeFocused();
+  await report.getByRole("button", { name: "Оставить" }).click();
+  await expect(report.getByRole("button", { name: "Удалить файл" })).toBeFocused();
+
+  // While one row deletes, nothing else may change the version: the other row cannot start an upload.
+  let release!: () => void;
+  const held = new Promise<void>((done) => (release = done));
+  await page.route(/\/documents\/[^/]+$/, async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    await held;
+    await route.continue();
+  });
+  await statement.getByRole("button", { name: "Удалить файл" }).click();
+  await statement.getByRole("button", { name: "Да, удалить" }).click();
+  await expect(report.getByRole("button", { name: "Заменить файл" })).toBeDisabled();
+  await expect(report.getByRole("button", { name: "Удалить файл" })).toBeDisabled();
+  release();
+  await expect(statement).toContainText("Не загружен");
+  // Focus goes to the upload that replaces the deleted file.
+  await expect(statement.getByRole("button", { name: "Загрузить файл" })).toBeFocused();
+  await expect(report.getByRole("button", { name: "Заменить файл" })).toBeEnabled();
+  await page.unroute(/\/documents\/[^/]+$/);
+});

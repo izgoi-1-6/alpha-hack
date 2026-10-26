@@ -51,7 +51,10 @@ function upload(
           resolve(data as { document: ApplicationDocument; application: Application });
         else reject(responseError(xhr.status, data));
       };
+      // No answer arrived (a dropped connection, an aborted or timed-out request): the outcome is unknown.
       xhr.onerror = () => reject(networkError());
+      xhr.onabort = () => reject(networkError());
+      xhr.ontimeout = () => reject(networkError());
       const form = new FormData();
       form.append("document_type", fields.documentType);
       form.append("version", String(fields.version));

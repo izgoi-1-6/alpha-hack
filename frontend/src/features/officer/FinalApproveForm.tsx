@@ -29,9 +29,16 @@ export function FinalApproveForm({
   const [amount, setAmount] = useBoundAmount(finalApproval.amount_max_rub);
   const [reason, setReason] = useState("");
   const [confirming, setConfirming] = useState(false);
+  // Focus follows the confirmation, as in CancelAction: into it on opening, back to the action on «Вернуться».
   const back = useRef<HTMLButtonElement>(null);
+  const action = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef(false);
   useEffect(() => {
     if (confirming) back.current?.focus();
+    else if (restoreFocus.current) {
+      restoreFocus.current = false;
+      action.current?.focus();
+    }
   }, [confirming]);
   const parsed = parseInteger(amount);
   const amountError = parsed.error ?? fields.amount_rub;
@@ -101,7 +108,12 @@ export function FinalApproveForm({
         маршруте» договор не подписывается и деньги не перечисляются.
       </p>
       {!confirming ? (
-        <button type="submit" className="button primary" disabled={busy || !ready}>
+        <button
+          ref={action}
+          type="submit"
+          className="button primary"
+          disabled={busy || !ready}
+        >
           Одобрить окончательно
         </button>
       ) : (
@@ -117,7 +129,10 @@ export function FinalApproveForm({
               type="button"
               className="button secondary"
               disabled={busy}
-              onClick={() => setConfirming(false)}
+              onClick={() => {
+                restoreFocus.current = true;
+                setConfirming(false);
+              }}
             >
               Вернуться
             </button>

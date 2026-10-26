@@ -5,6 +5,7 @@ import {
   commandKey,
   commandProblem,
   settleCommand,
+  unknownOutcome,
 } from "../applications/commands";
 import { documentsApi } from "./documentsApi";
 import { documentTitle, fileProblem } from "./documentFormat";
@@ -43,7 +44,9 @@ export function useDocumentUploads({
   const [done, setDone] = useState<Partial<Record<DocumentType, string>>>({});
   const version = useRef(application.version);
   const queue = useRef<DocumentType[]>([]);
-  const files = useRef(new Map<DocumentType, File>());
+  // The chosen file per requirement; `version` pins the version of an upload whose outcome is unknown, so its repeat
+  // is the same command (same key) even after the page has learnt a newer version meanwhile.
+  const files = useRef(new Map<DocumentType, { file: File; version?: number }>());
   const running = useRef(false);
   const alive = useRef(true);
   useEffect(() => {
@@ -73,14 +76,14 @@ export function useDocumentUploads({
       update(type, { file, phase: "failed", progress: 0, message: problem });
       return;
     }
-    files.current.set(type, file);
+    files.current.set(type, { file });
     update(type, { file, phase: "queued", progress: 0 });
     queue.current.push(type);
     void drain();
   }
 
   function retry(type: DocumentType) {
-    const file = files.current.get(type);
+    const file = files.current.get(type)?.file;
     if (!file || queue.current.includes(type)) return;
     update(type, { file, phase: "queued", progress: 0 });
     queue.current.unshift(type);
@@ -105,9 +108,10 @@ export function useDocumentUploads({
 
   /** Sends one queued file; false stops the queue (the outcome of this upload is unknown). */
   async function send(type: DocumentType): Promise<boolean> {
-    const file = files.current.get(type);
-    if (!file) return true;
-    const sent = { documentType: type, version: version.current, file };
+    const chosen = files.current.get(type);
+    if (!chosen) return true;
+    const file = chosen.file;
+    const sent = { documentType: type, version: chosen.version ?? version.current, file };
     const scope = `upload:${application.id}:${type}`;
     // The body identity: the same file for the same requirement on the same version.
     const key = commandKey(attempts, scope, {
@@ -140,18 +144,24 @@ export function useDocumentUploads({
         return false;
       }
       if (problem.kind === "network") {
+        // The server may have stored it: the repeat sends the same version, so it is replayed, never stored twice.
+        files.current.set(type, { file, version: sent.version });
         update(type, {
           file,
           phase: "failed",
           progress: 0,
           retry: true,
-          message:
-            "Нет связи с сервером. Файл мог уже сохраниться: нажмите «Повторить загрузку» — повтор не создаст второй документ.",
+          message: unknownOutcome(
+            problem,
+            "Файл мог уже сохраниться: нажмите «Повторить загрузку» — повтор не создаст второй документ.",
+          ),
         });
         return false;
       }
       const conflict = problem.kind === "version";
-      if (!conflict) files.current.delete(type);
+      // A refused upload stored nothing: a repeat after a version conflict is a new upload on the current version.
+      if (conflict) files.current.set(type, { file });
+      else files.current.delete(type);
       update(type, {
         file,
         phase: "failed",

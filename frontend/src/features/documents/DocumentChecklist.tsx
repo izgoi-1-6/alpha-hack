@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Application, DocumentChecklist as Checklist } from "../../api";
 import { Icon } from "../../components";
-import { CommandAttempts } from "../applications/commands";
+import { CommandAttempts, unknownOutcome } from "../applications/commands";
 import { useCommand } from "../applications/useCommand";
 import { documentTitle, formatMoment } from "./documentFormat";
 import { documentsApi } from "./documentsApi";
@@ -46,6 +47,9 @@ export function DocumentChecklist({
 }) {
   const uploads = useDocumentUploads({ application, attempts, reload, announce, onUnauthorized });
   const command = useCommand(attempts, onUnauthorized);
+  // Rows' deletions in flight: like the completion, each changes the version, so nothing else may start meanwhile.
+  const [deleting, setDeleting] = useState(0);
+  const commandBusy = !!command.busy || deleting > 0;
   const actions = application.allowed_actions;
   const status = application.status;
   const editable = EDITABLE.includes(status);
@@ -127,7 +131,9 @@ export function DocumentChecklist({
                 actions.includes("delete_document") &&
                 (current?.status === "UPLOADED" || current?.status === "REJECTED")
               }
-              locked={uploads.busy || !!command.busy}
+              locked={uploads.busy || commandBusy}
+              commandBusy={commandBusy}
+              onCommand={(running) => setDeleting((n) => n + (running ? 1 : -1))}
               onChoose={(file) => uploads.choose(type, file)}
               onRetry={() => uploads.retry(type)}
               onDismiss={() => uploads.dismiss(type)}
@@ -150,7 +156,7 @@ export function DocumentChecklist({
               <button
                 type="button"
                 className="button primary"
-                disabled={uploads.busy || !!command.busy}
+                disabled={uploads.busy || commandBusy}
                 onClick={() => void complete()}
               >
                 {command.busy ? "Отправляем…" : "Отправить комплект"}
@@ -166,7 +172,10 @@ export function DocumentChecklist({
               <Icon name="info" />
               <span>
                 {command.problem.kind === "network"
-                  ? "Нет связи с сервером. Комплект мог уже отправиться: повторите — повтор не отправит его дважды."
+                  ? unknownOutcome(
+                      command.problem,
+                      "Комплект мог уже отправиться: повторите — повтор не отправит его дважды.",
+                    )
                   : command.problem.message}
               </span>
             </div>

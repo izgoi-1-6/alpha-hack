@@ -195,9 +195,8 @@ export function RequestInfoForm({
       >
         <legend>Какие сведения запросить</legend>
         <p className="field-note" id="request-fields-note">
-          Цель, сумма, срок и порядок использования зафиксированы при отправке и
-          не запрашиваются. Клиент ответит в форме на странице заявки, и заявка
-          вернётся к вам.
+          Цель, сумма и срок зафиксированы при отправке и не запрашиваются.
+          Клиент ответит в форме на странице заявки, и заявка вернётся к вам.
         </p>
         {groups.map((group) => (
           <div className="request-group" key={group.title}>
@@ -254,9 +253,16 @@ export function RejectForm({
 }) {
   const [reason, setReason] = useState("");
   const [confirming, setConfirming] = useState(false);
+  // Focus follows the confirmation, as in CancelAction: into it on opening, back to the action on «Вернуться».
   const back = useRef<HTMLButtonElement>(null);
+  const action = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef(false);
   useEffect(() => {
     if (confirming) back.current?.focus();
+    else if (restoreFocus.current) {
+      restoreFocus.current = false;
+      action.current?.focus();
+    }
   }, [confirming]);
   // The phase follows the state, as the server records it: review → preliminary, document stage → final.
   const preliminary = status === "MANUAL_REVIEW";
@@ -284,6 +290,7 @@ export function RejectForm({
       />
       {!confirming ? (
         <button
+          ref={action}
           type="submit"
           className="button danger"
           disabled={busy || !reason.trim()}
@@ -307,7 +314,10 @@ export function RejectForm({
               type="button"
               className="button secondary"
               disabled={busy}
-              onClick={() => setConfirming(false)}
+              onClick={() => {
+                restoreFocus.current = true;
+                setConfirming(false);
+              }}
             >
               Вернуться
             </button>

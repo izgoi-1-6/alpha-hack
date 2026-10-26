@@ -6,7 +6,7 @@
 # Usage: scripts/reset-demo.sh [--yes] [--dry-run] [--force-remote]
 #   --yes           confirm without the question (otherwise type "yes" when asked)
 #   --dry-run       make every check, then print the steps instead of running them
-#   --force-remote  allow a DATABASE_URL whose host is not localhost, 127.0.0.1 or db
+#   --force-remote  allow a database host other than localhost, 127.0.0.1 or db, or one set in the URL's query
 #
 # Guards: DEMO_MODE must be true as the app reads it (unset counts as true, as in the app and setup.sh); the
 # database host must be local unless --force-remote; the reset must be confirmed. The environment wins over .env,
@@ -54,7 +54,9 @@ if [[ "$mode" != true ]]; then
   exit 1
 fi
 
-# 2. Only a local database, unless forced: the host of DATABASE_URL (the app's default when unset).
+# 2. Only a local database, unless forced: the host of DATABASE_URL (the app's default when unset). libpq also takes a
+# host from the query (host=, hostaddr=), and that one wins, so any such parameter counts as not local; so does a
+# %-encoded parameter name, which SQLAlchemy decodes before libpq reads it.
 url="${DATABASE_URL-postgresql+psycopg://credit_route:credit_route_local@localhost:5432/credit_route}"
 authority="${url#*://}"
 authority="${authority%%/*}"
@@ -65,6 +67,10 @@ if [[ "$authority" == \[* ]]; then
 else
   host="${authority%%:*}"
 fi
+query=""
+if [[ "$url" == *\?* ]]; then query="${url#*\?}"; fi
+query_host='(^|&)(host|hostaddr|[^&=]*%[^&=]*)='
+if [[ "$query" =~ $query_host ]]; then host="${BASH_REMATCH[2]}= in the query"; fi
 shown="$(printf '%s' "$url" | sed -E 's#(://[^:/@]*):[^@/]*@#\1:***@#')"
 case "$host" in
   localhost | 127.0.0.1 | db) ;;

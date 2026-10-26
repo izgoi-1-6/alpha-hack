@@ -1,8 +1,9 @@
 """The guards of scripts/reset-demo.sh, run with --dry-run so that no database is touched.
 
 The script refuses unless DEMO_MODE is true (compared as app.config does: case-insensitive, unset counts as true),
-refuses a DATABASE_URL whose host is not localhost, 127.0.0.1 or db unless --force-remote, and needs an explicit
-confirmation (a typed "yes", or --yes). A dry run makes every check and prints the steps instead of running them."""
+refuses a DATABASE_URL whose host is not localhost, 127.0.0.1 or db, or whose query names a host, unless
+--force-remote, and needs an explicit confirmation (a typed "yes", or --yes). A dry run makes every check and prints
+the steps instead of running them."""
 import os
 import shutil
 import subprocess
@@ -65,6 +66,11 @@ def test_local_hosts_are_accepted(host):
     'postgresql+psycopg://credit_route:secret@10.0.0.7/credit_route',
     'postgresql://user@localhost.example.org/credit_route',
     'postgresql+psycopg://credit_route:secret@[2001:db8::1]:5432/credit_route',
+    # libpq also takes the host from the query, and that one wins over the local address before it.
+    'postgresql+psycopg://reset_test:secret@localhost:1/reset_test?host=remote.example',
+    'postgresql+psycopg://reset_test:secret@127.0.0.1:1/reset_test?sslmode=disable&hostaddr=10.0.0.7',
+    # SQLAlchemy decodes a %-encoded parameter name before libpq reads it: this is host=remote.example.
+    'postgresql+psycopg://reset_test:secret@db:1/reset_test?h%6Fst=remote.example',
 ])
 def test_a_remote_host_is_refused_unless_forced(url):
     refused = run('--yes', '--dry-run', DEMO_MODE='true', DATABASE_URL=url)
@@ -74,6 +80,12 @@ def test_a_remote_host_is_refused_unless_forced(url):
     forced = run('--yes', '--dry-run', '--force-remote', DEMO_MODE='true', DATABASE_URL=url)
     assert planned(forced)
     assert 'Warning' in forced.stderr
+
+
+def test_other_query_parameters_of_a_local_url_are_accepted():
+    # Only a host named in the query is refused: connection options pass, even one whose value is "host".
+    assert planned(run('--yes', '--dry-run', DEMO_MODE='true',
+                       DATABASE_URL=f'{LOCAL}?sslmode=disable&application_name=host'))
 
 
 def test_without_yes_only_a_typed_yes_confirms():

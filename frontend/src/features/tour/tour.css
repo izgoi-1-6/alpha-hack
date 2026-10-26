@@ -1,7 +1,8 @@
-/* The client walkthrough: a spotlight over the highlighted controls and a popover beside them, a bottom sheet on
-   phones. Both sit above the sticky top bar (z-index 40) and the sidebar (30). The spotlight takes no pointer events,
-   so the page and the highlighted controls stay usable under it. Selectors that restyle shared classes (.button)
-   carry a feature class: this sheet loads before styles.css. */
+/* The client walkthrough: a spotlight over the highlighted controls and a popover beside them, or a bottom sheet on
+   phones and wherever no side has room. Both sit above the sticky top bar (z-index 40) and the sidebar (30). The
+   spotlight takes no pointer events, so the page and the highlighted controls stay usable under it. The dialog is
+   capped by the screen's height: its head and buttons stay in view and only the text scrolls. Selectors that restyle
+   shared classes (.button) carry a feature class: this sheet loads before styles.css. */
 .tour-spotlight {
   position: fixed;
   z-index: 50;
@@ -18,7 +19,11 @@
   z-index: 51;
   top: 0;
   left: 0;
+  display: flex;
+  flex-direction: column;
   width: min(360px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
   padding: 18px 20px 16px;
   background: #fff;
   border: 1px solid var(--border);
@@ -39,6 +44,12 @@
     transform: translateY(6px);
   }
 }
+.tour-progress,
+.tour-count,
+.tour-heading,
+.tour-actions {
+  flex-shrink: 0;
+}
 .tour-progress {
   height: 3px;
   margin-bottom: 14px;
@@ -57,11 +68,37 @@
   font-weight: 600;
   color: #b82b25;
 }
-.tour-popover h2 {
+.tour-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin-bottom: 8px;
+}
+.tour-heading h2 {
+  flex: 1;
+  min-width: 0;
   font-size: 17px;
   line-height: 1.35;
   letter-spacing: -0.2px;
+}
+/* «Подробнее» shows only in a compact sheet (below). */
+.tour-more {
+  display: none;
+  flex-shrink: 0;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 10px 6px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: #a5221c;
+  font-size: 13px;
+  font-weight: 600;
+}
+.tour-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 .tour-text {
   font-size: 14px;
@@ -112,14 +149,15 @@
   color: #1c1a1d;
 }
 
-/* Phones: a sheet along the bottom edge; the spacer lets the page scroll its end out from under it. */
+/* The sheet: along the bottom edge of the workspace column (its left edge is set with the layout); the spacer lets
+   the page scroll its end out from under it. */
 .tour-popover.sheet {
   top: auto;
   right: 0;
   bottom: 0;
-  width: 100%;
+  width: auto;
   max-height: 60vh;
-  overflow-y: auto;
+  max-height: 60dvh;
   padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
   border-width: 1px 0 0;
   border-radius: 16px 16px 0 0;
@@ -134,6 +172,43 @@
 }
 .tour-popover.sheet .tour-actions .button {
   flex: 1;
+}
+/* Short screens: a compact sheet keeps the step's text behind «Подробнее», so the step's top part stays in view. */
+@media (max-height: 840px) {
+  .tour-popover.sheet .tour-heading {
+    align-items: center;
+    min-height: 44px;
+  }
+  .tour-popover.sheet .tour-more {
+    display: inline-flex;
+  }
+  .tour-popover.sheet:not(.expanded) .tour-text {
+    display: none;
+  }
+  .tour-popover.sheet:not(.expanded) .tour-action {
+    margin-top: 0;
+  }
+}
+/* Very short screens (a phone on its side, a low window): the instruction waits behind «Подробнее» too, and the
+   step count stands in for the progress bar. */
+@media (max-height: 480px) {
+  .tour-popover.sheet {
+    padding-top: 10px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+  .tour-popover.sheet .tour-progress,
+  .tour-popover.sheet:not(.expanded) .tour-action {
+    display: none;
+  }
+  .tour-popover.sheet .tour-count {
+    margin-bottom: 0;
+  }
+  .tour-popover.sheet .tour-heading {
+    margin-bottom: 4px;
+  }
+  .tour-popover.sheet .tour-actions {
+    margin-top: 6px;
+  }
 }
 @keyframes tour-sheet-in {
   from {

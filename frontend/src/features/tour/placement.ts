@@ -59,25 +59,66 @@ export function placePopover(
 }
 
 /**
- * How far to scroll the page so the highlighted box sits in the free band of the viewport (between `free.top` and
- * `free.bottom`, keeping `margin`): nothing when it is already there and `stay` allows; otherwise the box and `below`
- * (the room the popover needs under it) centred when both fit, the box alone centred when it fits, else its top at
- * the band's top.
+ * How far to scroll the page so the highlighted box (`target`, which includes `pad` on every side) sits in the free
+ * band of the viewport, keeping `margin` from its edges: nothing when it is already there and `stay` allows;
+ * otherwise the box and `below` (the room a popover needs under it) centred when both fit, the box alone centred when
+ * it fits, the box without its padding centred in the band without margins when that fits, else the box's top at the
+ * band's top — only its top part can be shown.
  */
 export function scrollOffset(
   target: Box,
   free: { top: number; bottom: number },
   below: number,
   margin: number,
+  pad: number,
   stay: boolean,
 ): number {
   const top = free.top + margin;
   const room = free.bottom - margin - top;
   if (stay && target.top >= top && target.top + target.height <= top + room)
     return 0;
-  const block = target.height + below;
-  if (block <= room) return target.top - (top + (room - block) / 2);
+  if (target.height + below <= room)
+    return target.top - (top + (room - target.height - below) / 2);
   if (target.height <= room)
     return target.top - (top + (room - target.height) / 2);
-  return target.top - top;
+  const band = free.bottom - free.top;
+  const bare = target.height - 2 * pad;
+  if (bare <= band) return target.top + pad - (free.top + (band - bare) / 2);
+  return target.top - free.top;
+}
+
+/**
+ * The scroll after which the popover has a side with room beside the highlighted box, within the page's scroll range
+ * (`up` and `down` from where it is): none when the box is in view with such a side already, else the box and the
+ * popover under it centred, else the box alone. Null when no reachable position leaves room: the sheet takes over.
+ */
+export function popoverScroll(
+  target: Box,
+  popover: Size,
+  area: Box,
+  sides: Side[],
+  gap: number,
+  margin: number,
+  pad: number,
+  range: { up: number; down: number },
+): number | null {
+  const free = { top: area.top, bottom: area.top + area.height };
+  const below = gap + popover.height;
+  for (const wanted of [
+    scrollOffset(target, free, below, margin, pad, true),
+    scrollOffset(target, free, below, margin, pad, false),
+    scrollOffset(target, free, 0, margin, pad, false),
+  ]) {
+    const offset = clamp(wanted, -range.up, range.down);
+    const moved = { ...target, top: target.top - offset };
+    // In view after the scroll: all of the box, or the top of a box taller than the viewport.
+    const shown =
+      moved.top >= free.top - 1 &&
+      (moved.top + moved.height <= free.bottom + 1 ||
+        (moved.height > free.bottom - free.top &&
+          moved.top <= free.top + margin + 1));
+    if (shown && placePopover(moved, popover, area, sides, gap, margin).fits)
+      return offset;
+  }
+  return null;
 }

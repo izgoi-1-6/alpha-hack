@@ -1,4 +1,4 @@
-import { KeyboardEvent, RefObject, useId } from "react";
+import { KeyboardEvent, RefObject, useId, useState } from "react";
 import { Icon } from "../../components";
 import { TourStep } from "./steps";
 
@@ -6,7 +6,8 @@ import { TourStep } from "./steps";
  * The walkthrough's non-modal dialog: «Шаг N из M» with a slim progress bar, the step's title and text, what the
  * client does to go on when the next step is on another page, and the buttons — «Пропустить», «Назад» and «Далее»
  * where they apply, «Готово» on the last step. Its position is set by the walkthrough; `sheet` docks it to the
- * bottom edge on phones.
+ * bottom edge. The head and the buttons always stay in view: when the dialog is capped by the screen's height only
+ * the text scrolls, and a sheet on a short screen keeps the text behind «Подробнее».
  */
 export function TourPopover({
   step,
@@ -35,11 +36,14 @@ export function TourPopover({
   onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
 }) {
   const id = useId();
+  const [expanded, setExpanded] = useState(false);
   const last = number === total;
   return (
     <div
       ref={popoverRef}
-      className={"tour-popover" + (sheet ? " sheet" : "")}
+      className={
+        "tour-popover" + (sheet ? " sheet" : "") + (expanded ? " expanded" : "")
+      }
       role="dialog"
       aria-modal="false"
       aria-labelledby={`${id}-count ${id}-title`}
@@ -53,16 +57,29 @@ export function TourPopover({
       <p id={`${id}-count`} className="tour-count">
         Шаг {number} из {total}
       </p>
-      <h2 id={`${id}-title`}>{step.title}</h2>
-      <p id={`${id}-text`} className="tour-text">
-        {step.text}
-      </p>
-      {step.action && (
-        <p id={`${id}-action`} className="tour-action">
-          <Icon size={18} />
-          <span>{step.action}</span>
+      <div className="tour-heading">
+        <h2 id={`${id}-title`}>{step.title}</h2>
+        <button
+          type="button"
+          className="tour-more"
+          aria-expanded={expanded}
+          aria-controls={`${id}-text`}
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? "Свернуть" : "Подробнее"}
+        </button>
+      </div>
+      <div className="tour-body">
+        <p id={`${id}-text`} className="tour-text">
+          {step.text}
         </p>
-      )}
+        {step.action && (
+          <p id={`${id}-action`} className="tour-action">
+            <Icon size={18} />
+            <span>{step.action}</span>
+          </p>
+        )}
+      </div>
       <div className="tour-actions">
         {!last && (
           <button type="button" className="tour-skip" onClick={onStop}>

@@ -17,6 +17,13 @@
 .authority-pending .button {
   font-size: 14px;
 }
+/* A complete ИНН the server would refuse: its message sits between the field and the hint. */
+.onboarding-form input[aria-invalid="true"] {
+  border-color: #c4413b;
+}
+.inn-error {
+  margin: -8px 0 16px;
+}
 .authority-confirmed {
   display: flex;
   flex-wrap: wrap;

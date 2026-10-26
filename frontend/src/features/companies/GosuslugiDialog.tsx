@@ -11,8 +11,9 @@ const minutesBetween = (from: string, to: string) =>
 /**
  * The Госуслуги confirmation of the representative for one ИНН. Opening it asks the check for the person and the
  * role; the customer sees them with the company and confirms, or closes the dialog (Escape, «Отмена») without a
- * confirmation — an unconfirmed check simply expires. A lost response is repeated with the same key. Neutral styling:
- * no logo, colours or marks of the real service.
+ * confirmation — an unconfirmed check simply expires. A lost response or a server failure is repeated with the same
+ * key; a refusal (4xx) is final for this ИНН, so it gets no repeat. Neutral styling: no logo, colours or marks of the
+ * real service.
  */
 export function GosuslugiDialog({
   inn,
@@ -38,6 +39,8 @@ export function GosuslugiDialog({
   const command = useCommand(attempts.current, onUnauthorized);
   const [verification, setVerification] =
     useState<AuthorityVerification | null>(null);
+  // Only an unknown outcome (no answer, a server failure) can turn out differently on a repeat.
+  const retryable = command.problem?.kind === "network";
 
   async function check() {
     const body = { inn };
@@ -55,15 +58,10 @@ export function GosuslugiDialog({
     void check();
     return () => element?.close();
   }, []);
-  // Focus follows the state: «Отмена» while checking, «Подтвердить» once the person is known, «Повторить» after a
-  // failure.
+  // Focus follows the state: «Отмена» while checking or after a refusal, «Подтвердить» once the person is known,
+  // «Повторить» after an unknown outcome.
   useEffect(() => {
-    (verification
-      ? confirm
-      : command.problem
-        ? retry
-        : cancel
-    ).current?.focus();
+    (verification ? confirm : retryable ? retry : cancel).current?.focus();
   }, [verification, command.problem]);
 
   return (
@@ -141,7 +139,7 @@ export function GosuslugiDialog({
             Подтвердить
           </button>
         )}
-        {command.problem && (
+        {retryable && (
           <button
             ref={retry}
             type="button"

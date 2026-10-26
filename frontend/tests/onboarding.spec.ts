@@ -513,10 +513,22 @@ test("adding a company needs the representative's Госуслуги confirmatio
   await page.getByRole("button").filter({ hasText: "Сильный бизнес" }).click();
   await expect(add).toBeDisabled();
 
-  // An ИНН outside the registry: the dialog explains the refusal and closes on Escape.
-  await page.getByLabel("ИНН компании или ИП").fill("9912345672");
+  // A mistyped ИНН is caught in the field, before Госуслуги is asked: its check digit does not match.
+  const innField = page.getByLabel("ИНН компании или ИП");
+  await innField.fill("9912345673");
+  await expect(innField).toHaveAttribute("aria-invalid", "true");
+  await expect(innField).toHaveAccessibleDescription(
+    /Неверная контрольная сумма ИНН/,
+  );
+  await expect(trigger).toBeDisabled();
+  // A well-formed ИНН outside the registry: the dialog explains the refusal and offers no repeat, which could only be
+  // refused again; Escape closes it.
+  await innField.fill("9912345672");
+  await expect(innField).not.toHaveAttribute("aria-invalid");
   await trigger.click();
   await expect(dialog.getByRole("alert")).toContainText("не найден");
+  await expect(dialog.getByRole("button", { name: "Повторить" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Отмена" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
 
@@ -544,11 +556,22 @@ test("a refused add is cleared by choosing another company or a new confirmation
     .locator(".sidebar")
     .getByRole("button", { name: "Добавить компанию" })
     .click();
-  // The first check gets no answer (the request is dropped by the route): the dialog says so and offers a retry.
+  // The first check gets no answer (the request is dropped by the route), the second a server failure: each time the
+  // dialog says so and offers a retry.
   const keys: string[] = [];
   await page.route("**/identity/gosuslugi/verify", async (route) => {
     keys.push(route.request().headers()["idempotency-key"]);
     if (keys.length === 1) await route.abort();
+    else if (keys.length === 2)
+      await route.fulfill({
+        status: 500,
+        json: {
+          error: {
+            code: "INTERNAL_ERROR",
+            message: "Не удалось выполнить запрос. Повторите попытку.",
+          },
+        },
+      });
     else await route.continue();
   });
   await page.getByRole("button").filter({ hasText: "Сильный бизнес" }).click();
@@ -561,12 +584,17 @@ test("a refused add is cleared by choosing another company or a new confirmation
   await expect(retry).toBeFocused();
   await expect(dialog.getByRole("button", { name: "Подтвердить" })).toHaveCount(0);
   await retry.click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Не удалось выполнить запрос",
+  );
+  await expect(retry).toBeFocused();
+  await retry.click();
   await expect(dialog).toContainText("Соколов Андрей Викторович");
   await expect(dialog.getByRole("button", { name: "Подтвердить" })).toBeFocused();
   await expect(dialog.getByRole("alert")).toHaveCount(0);
-  // The repeat is the same check: the same key, so a check the server did record is replayed, not made twice.
-  expect(keys).toHaveLength(2);
-  expect(keys[1]).toBe(keys[0]);
+  // Each repeat is the same check: the same key, so a check the server did record is replayed, not made twice.
+  expect(keys).toHaveLength(3);
+  expect(new Set(keys).size).toBe(1);
   await dialog.getByRole("button", { name: "Подтвердить" }).click();
   await expect(dialog).toHaveCount(0);
   await page.unroute("**/identity/gosuslugi/verify");
@@ -606,4 +634,49 @@ test("a refused add is cleared by choosing another company or a new confirmation
   await authorityDialog(page).getByRole("button", { name: "Подтвердить" }).click();
   await expect(authorityDialog(page)).toHaveCount(0);
   await expect(refusal).toHaveCount(0);
+});
+
+test("the ИНН field refuses exactly what the server refuses: a wrong check digit or one repeated digit, for ООО and ИП", async ({
+  page,
+}) => {
+  await registerClient(page, "inn-rule");
+  await page
+    .locator(".sidebar")
+    .getByRole("button", { name: "Добавить компанию" })
+    .click();
+  const field = page.getByLabel("ИНН компании или ИП");
+  const trigger = page.getByRole("button", {
+    name: "Подтвердить через Госуслуги",
+  });
+  const origin = new URL(page.url()).origin;
+  // Hand-checked against the standard check digits; none is a listed company, so the server confirms none of them.
+  const cases: [string, boolean][] = [
+    ["9912345672", true],
+    ["9912345673", false], // the tenth digit should be 2
+    ["0000000000", false], // the check digit holds, but one digit repeated is no ИНН
+    ["991234567818", true],
+    ["991234567808", false], // the eleventh digit should be 1
+    ["991234567819", false], // the twelfth digit should be 8
+    ["000000000000", false],
+  ];
+  for (const [inn, valid] of cases) {
+    await field.fill(inn);
+    if (valid) {
+      await expect(trigger, inn).toBeEnabled();
+      await expect(field, inn).not.toHaveAttribute("aria-invalid");
+    } else {
+      await expect(trigger, inn).toBeDisabled();
+      await expect(field, inn).toHaveAttribute("aria-invalid", "true");
+    }
+    // The server's own verdict on the same number: a field error, or a number it merely does not know.
+    const answer = await page.request.post("/api/v1/identity/gosuslugi/verify", {
+      data: { inn },
+      headers: { Origin: origin, "Idempotency-Key": crypto.randomUUID() },
+    });
+    expect([inn, answer.status(), (await answer.json()).error.code]).toEqual([
+      inn,
+      422,
+      valid ? "REGISTRY_NOT_FOUND" : "VALIDATION_ERROR",
+    ]);
+  }
 });

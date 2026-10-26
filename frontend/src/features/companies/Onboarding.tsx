@@ -3,6 +3,7 @@ import { AuthorityVerification, Fixture, ConsentDocument } from "../../api";
 import { Icon, ErrorNotice } from "../../components";
 import { formatTime } from "../applications/format";
 import { GosuslugiDialog } from "./GosuslugiDialog";
+import { innProblem } from "./inn";
 import "./onboarding.css";
 
 /** «Сильный бизнес» for «ООО «Сильный бизнес»»: the type chip beside it already says ИП or ООО. */
@@ -54,10 +55,14 @@ export function Onboarding({
   const selected = fixtures.find((f) => f.inn === inn);
   const verified = verification?.inn === inn ? verification : null;
   const innComplete = /^(\d{10}|\d{12})$/.test(inn);
+  // A complete number is checked as the server checks it, before Госуслуги is asked.
+  const innError = innProblem(inn);
+  const innReady = innComplete && !innError;
   const consented =
     consents.length === 2 && consents.every((c) => accepted[c.code]);
   const remaining = [
-    !innComplete && "выбрать компанию или ввести ИНН",
+    !innReady &&
+      (innError ? "исправить ИНН" : "выбрать компанию или ввести ИНН"),
     !verified && "подтвердить полномочия через Госуслуги",
     !consented && "отметить оба разрешения",
   ].filter(Boolean);
@@ -108,9 +113,15 @@ export function Onboarding({
                 onChange={(e) => choose(e.target.value)}
                 required
                 placeholder="10 или 12 цифр"
-                aria-describedby="inn-hint"
+                aria-invalid={innError ? true : undefined}
+                aria-describedby={innError ? "inn-error inn-hint" : "inn-hint"}
               />
             </label>
+            {innError && (
+              <p id="inn-error" className="field-error inn-error">
+                {innError}
+              </p>
+            )}
             <p id="inn-hint" className="field-hint">
               10 цифр для ООО, 12 — для ИП. Доступны компании из списка.
             </p>
@@ -179,7 +190,7 @@ export function Onboarding({
                     ref={trigger}
                     className="button secondary"
                     type="button"
-                    disabled={busy || !innComplete}
+                    disabled={busy || !innReady}
                     onClick={() => setChecking(true)}
                   >
                     <Icon name="shield" size={18} />

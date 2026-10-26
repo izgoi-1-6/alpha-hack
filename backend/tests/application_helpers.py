@@ -198,6 +198,21 @@ def set_company(client, company_id: str, **values) -> None:
         db.execute(update(Company).where(Company.id == company_id).values(**values))
 
 
+def scored(client, application: dict) -> dict:
+    """The customer's application with the scoring the bank keeps and the client never sees, read from the persisted
+    rows: the application's `scored_limit_rub` and the latest evaluation as staff read it (rule, outcome, score, risk,
+    scored limit, the stored reasons)."""
+    from app.applications.models import Application, Evaluation
+    with client.app.state.test_factory() as db:
+        limit = db.get(Application, application['id']).scored_limit_rub
+        row = db.scalar(select(Evaluation).where(Evaluation.application_id == application['id'])
+                        .order_by(Evaluation.sequence.desc()).limit(1))
+        evaluation = None if row is None else {'id': row.id, 'rule': row.rule, 'outcome': row.outcome, 'score': row.score,
+                                               'risk': row.risk, 'scored_limit_rub': row.scored_limit_rub,
+                                               'reasons': list(row.reasons)}
+    return {**application, 'scored_limit_rub': limit, 'latest_evaluation': evaluation}
+
+
 def rows(client, model_name: str, **where) -> list:
     """Persisted application-module rows (imported lazily so a missing module fails per test, not at collection)."""
     from app.applications import models

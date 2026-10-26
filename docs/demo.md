@@ -112,7 +112,7 @@ Use two browser windows: a normal one for the client, a private one for the offi
    - debt payments 160 000 ₽, no tax arrears, no proceedings;
    - the representative comes from Госуслуги; confirm the owners;
    - give both consents and click «Отправить заявку».
-8. «Заявка предварительно одобрена»: 100 points, scored limit 2 400 000 ₽, preliminary approval 2 000 000 ₽. Stress that it is not a final decision. Upload any small synthetic PDF as the bank statement and a PNG or JPEG as the financial report, then click «Отправить комплект».
+8. «Заявка предварительно одобрена»: preliminary approval 2 000 000 ₽. Stress that it is not a final decision, and that the client never sees the scoring: the 100 points and the 2 400 000 ₽ scored limit are shown to the officer only. Upload any small synthetic PDF as the bank statement and a PNG or JPEG as the financial report, then click «Отправить комплект».
 
 **The officer (about 4 minutes).**
 

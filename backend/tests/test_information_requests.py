@@ -2,13 +2,14 @@
 the re-check from the revised answers with the stored BKI evidence (no new BKI request), the return to the same
 officer, trusted-source refusals, the customer's view of officer actions and terminal audit rows.
 
-Scores and limits come from application_oracle and the spec's literal numbers, not from the code under test.
+Scores and limits come from application_oracle and the spec's literal numbers, not from the code under test. The
+customer's responses carry no scoring, so the re-check's scoring is read from the persisted rows (`scored`).
 """
 import json
 import pytest
 import application_oracle as oracle
-from application_helpers import (FIXED_NOW, LINE, TERM, bki_calls, cancel, clock, draft, history, read, rows, set_company,
-                                 submitted)
+from application_helpers import (FIXED_NOW, LINE, TERM, bki_calls, cancel, clock, draft, history, read, rows, scored,
+                                 set_company, submitted)
 from officer_helpers import (claim, claimed, decisions, detail, ok, officer, preapprove, refused, request_info, respond,
                              second_officer, staff_url)
 from test_identity_company import client, register
@@ -199,7 +200,7 @@ def test_the_owner_answers_on_the_same_application_and_returns_to_the_same_offic
 
 def test_a_response_is_rescored_without_an_automatic_low_risk_shortcut(client, officer, bki_calls):
     application = asked(client, officer, 'medium', ['monthly_debt_payment_rub'], requested_amount_rub=700_000)
-    answered = ok(respond(client, application, {'monthly_debt_payment_rub': 120_000}))
+    answered = scored(client, ok(respond(client, application, {'monthly_debt_payment_rub': 120_000})))
     total = oracle.score(18, 600_000, 600_000, 120_000, 'clean')
     limit = oracle.scored_limit(LINE, oracle.risk(total), 600_000)
     assert (total, oracle.risk(total), limit) == (80, 'low', 1_800_000)
@@ -213,13 +214,13 @@ def test_a_response_is_rescored_without_an_automatic_low_risk_shortcut(client, o
 
 
 def test_null_finance_becomes_preapprovable_once_the_answers_make_the_limit_computable(client, officer, bki_calls):
-    application = submitted(client, 'missing_turnover', answers={'monthly_revenue_rub': 0, 'previous_monthly_revenue_rub': 0})
+    application = scored(client, submitted(client, 'missing_turnover', answers={'monthly_revenue_rub': 0, 'previous_monthly_revenue_rub': 0}))
     assert (application['status'], application['latest_evaluation']['rule'], application['scored_limit_rub']) == ('MANUAL_REVIEW', 'R5', None)
     application = claimed(officer, application)
     refused(preapprove(officer, application, 1_000_000), 409, 'LIMIT_NOT_COMPUTABLE')
     application = ok(request_info(officer, application, ['monthly_revenue_rub', 'previous_monthly_revenue_rub'],
                                   reason='Укажите выручку: нулевые значения не позволяют рассчитать лимит.'))
-    answered = ok(respond(client, application, {'monthly_revenue_rub': 800_000, 'previous_monthly_revenue_rub': 680_000}))
+    answered = scored(client, ok(respond(client, application, {'monthly_revenue_rub': 800_000, 'previous_monthly_revenue_rub': 680_000})))
     total = oracle.score(48, 800_000, 680_000, 160_000, 'clean')
     limit = oracle.scored_limit(TERM, oracle.risk(total), 800_000)
     evaluation = answered['latest_evaluation']
@@ -240,7 +241,8 @@ def test_conflict_flags_are_retained_after_the_client_aligns_an_override(client,
     assert first.input_snapshot['review_flags'] == ['finance_override']
     assert second.input_snapshot['finance']['previous_monthly_revenue_rub']['origin'] == 'source'
     assert second.input_snapshot['review_flags'] == ['finance_override'] and second.rule == 'R5'
-    assert (answered['status'], answered['latest_evaluation']['score']) == ('MANUAL_REVIEW', oracle.score(48, 800_000, 680_000, 160_000, 'clean'))
+    assert (answered['status'], scored(client, answered)['latest_evaluation']['score']) == \
+           ('MANUAL_REVIEW', oracle.score(48, 800_000, 680_000, 160_000, 'clean'))
 
 
 def test_collateral_details_are_answered_by_their_own_paths(client, officer):
@@ -251,7 +253,7 @@ def test_collateral_details_are_answered_by_their_own_paths(client, officer):
     answered = ok(respond(client, application, {'collateral': {'encumbered': False}}))
     assert answered['answers']['collateral'] == {**application['answers']['collateral'], 'encumbered': False}  # merged by key
     assert answered['answers']['collateral']['declared_value_rub'] == 8_000_000
-    evaluation = answered['latest_evaluation']  # secured low risk: min(150m, 3 x 1.5m, 70% of 8m) = 4.5m; 4m requested
+    evaluation = scored(client, answered)['latest_evaluation']  # secured low risk: min(150m, 3 x 1.5m, 70% of 8m) = 4.5m; 4m requested
     assert (evaluation['rule'], evaluation['outcome'], evaluation['scored_limit_rub']) == ('R8', 'MANUAL_REVIEW', 4_500_000)
 
 
@@ -289,7 +291,7 @@ def test_a_response_never_rewrites_the_requested_amount(client, officer):
     assert set(error['fields']) == {'requested_amount_rub'}
     answered = ok(respond(client, application, {'seasonal': True}))
     assert (answered['requested_amount_rub'], answered['answers']['requested_amount_rub']) == (700_000, 700_000)
-    assert answered['latest_evaluation']['rule'] == 'R11'  # still compared with the original 700,000 (limit 600,000)
+    assert scored(client, answered)['latest_evaluation']['rule'] == 'R11'  # still compared with the original 700,000 (limit 600,000)
     (_, latest) = evaluations(client, application)
     assert latest.input_snapshot['answers']['requested_amount_rub'] == 700_000
     staff = detail(officer, answered)['application']
@@ -372,7 +374,7 @@ def test_a_response_to_a_system_request_is_queued_unassigned(client, officer, bk
     assert row.assignee_id is None  # a system request has no officer: the case waits in the queue
     queued = officer.get('/api/v1/officer/applications', params={'assignee': 'unassigned', 'status': 'MANUAL_REVIEW'}).json()
     assert [item['id'] for item in queued['items']] == [application['id']]
-    evaluation = answered['latest_evaluation']
+    evaluation = scored(client, answered)['latest_evaluation']
     assert (evaluation['rule'], evaluation['outcome'], evaluation['score']) == ('R5', 'MANUAL_REVIEW', None)  # no BKI evidence yet
     staff = detail(officer, answered)['application']
     assert staff['allowed_actions'] == ['claim']
@@ -420,7 +422,7 @@ def test_a_response_rechecked_into_a_mandatory_stop_keeps_the_declaration_flag(c
     else:
         stored_overdue_of_thirty_days(client, application)
     answered = ok(respond(client, application, {'seasonal': True}))
-    assert (answered['status'], answered['latest_evaluation']['rule']) == ('MANUAL_REVIEW', 'R2')
+    assert (answered['status'], scored(client, answered)['latest_evaluation']['rule']) == ('MANUAL_REVIEW', 'R2')
     assert evaluations(client, application)[1].input_snapshot['review_flags'] == ['declared_finance']
     assert detail(officer, answered)['application']['preapproval']['blocked_by']['code'] == 'MANDATORY_STOP'
 

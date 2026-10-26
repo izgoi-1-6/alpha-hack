@@ -29,7 +29,7 @@ PREAPPROVAL_TTL = timedelta(days=14)
 # Default simulated in-app message per resulting status; a move may pass a more specific one.
 NOTIFICATIONS = {
     'DRAFT': 'Черновик заявки создан. Заполните анкету и отправьте её на проверку.',
-    'CHECKING': 'Заявка проверяется: источники данных и скоринг.',
+    'CHECKING': 'Заявка проверяется по данным источников.',
     'WAIT_EXTERNAL': 'Источник данных временно недоступен. Повторите проверку в заявке.',
     'NEED_INFO': 'Для продолжения нужны дополнительные сведения. Откройте заявку.',
     'MANUAL_REVIEW': 'Заявка передана кредитному специалисту на рассмотрение.',

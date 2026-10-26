@@ -152,9 +152,11 @@ test.describe("a brand-new client with the walkthrough on", () => {
         name: "Заявка предварительно одобрена",
       }),
     ).toBeVisible();
-    // Low risk, 100 points, scored limit 3 × 800 000 ₽: R8 for the 2 000 000 ₽ asked.
-    await expect(page.locator(".status-result")).toContainText("100 баллов");
-    await expect(page.locator(".status-result")).toContainText("2 400 000 ₽");
+    // Low risk, 100 points, scored limit 3 × 800 000 ₽: R8 for the 2 000 000 ₽ asked. The client sees none of it.
+    await expect(page.locator(".status-result")).toContainText(
+      "Заявка предварительно одобрена. Это не окончательное решение.",
+    );
+    await expect(page.locator(".status-result")).not.toContainText(/балл|риск|скоринг|лимит/i);
     await expect(
       page.getByRole("group", { name: "Предварительно одобрено" }),
     ).toContainText("2 000 000 ₽");
@@ -162,7 +164,7 @@ test.describe("a brand-new client with the walkthrough on", () => {
     expect(items.map((item) => [item.to_status, item.reason_code])).toEqual([
       ["DRAFT", "CREATED"],
       ["CHECKING", "SUBMITTED"],
-      ["PREAPPROVED", "R8"],
+      ["PREAPPROVED", "CHECK_RESULT"],
     ]);
     // The server writes the amount of its notice with U+00A0 between the digit groups and before the sign, so it
     // never wraps. Read from the API: the timeline joins ASCII-spaced amounts too, so it cannot tell.
@@ -294,9 +296,10 @@ test("journey 7 — a manufacturer in a border region applies for the border-ter
     { purpose: "Инвестиции", term: "36", debt: "2000000" },
     "Заявка предварительно одобрена",
   );
-  await expect(page.locator(".status-result")).toContainText("100 баллов");
   // The scored limit is the program maximum (30 000 000 ₽, below 3 × turnover); the 20 000 000 ₽ asked is approved.
-  await expect(page.locator(".status-result")).toContainText("30 000 000 ₽");
+  // The client reads only the outcome; the officer below sees the score and the limit.
+  await expect(page.locator(".status-result")).toContainText("Заявка предварительно одобрена.");
+  await expect(page.locator(".status-result")).not.toContainText(/балл|риск|скоринг|лимит|30 000 000/i);
   await expect(
     page.getByRole("group", { name: "Предварительно одобрено" }),
   ).toContainText("20 000 000 ₽");

@@ -4,13 +4,14 @@ final bounds per product, the documents of the pinned list, R7 against effective
 universal limit, factoring and the medium-risk cap on gov programs.
 
 Every expected score, limit, rule, amount and document comes from application_oracle (exact fractions, its own reading
-of the data files) and is cross-checked with a literal number where the acceptance document states one.
+of the data files) and is cross-checked with a literal number where the acceptance document states one. The customer's
+responses carry no scoring, so it is read from the persisted rows (`scored`).
 """
 from datetime import date
 import pytest
 import application_oracle as oracle
 from application_helpers import (FIXED_DATE, LINE, SECURED, TERM, bki_calls, clock, declared_collateral, need_of, onboard,
-                                 rows, set_turnover, submitted)
+                                 rows, scored, set_turnover, submitted)
 from document_helpers import accept_all, checklist, completed, storage, upload_all
 from officer_helpers import claimed, detail, officer, ok, preapprove, refused
 from recommendation_oracle import FIXTURES, PRODUCTS
@@ -63,7 +64,7 @@ def test_one_submission_per_product_family(client, bki_calls, storage, family):
     fixture_id, product_id, changes = FAMILIES[family]
     need = need_of(fixture_id, product_id, **changes)
     want = expected(fixture_id, product_id, need)
-    application = submitted(client, fixture_id, product=product_id, **changes)
+    application = scored(client, submitted(client, fixture_id, product=product_id, **changes))
     evaluation = application['latest_evaluation']
     assert (evaluation['score'], evaluation['risk'], evaluation['rule'], application['status']) == \
            (want['score'], want['risk'], want['rule'], want['status'])
@@ -157,7 +158,7 @@ def test_the_universal_limit_lends_its_unsecured_cap_plus_the_pledge(client, dec
     collateral = None if declared is None else declared_collateral(declared)
     changes = {'purpose': 'working_capital', 'requested_amount_rub': requested, 'collateral': collateral}
     assert oracle.scored_limit(UNIVERSAL, 'low', 12_000_000, declared, secured=declared is not None) == limit
-    application = submitted(client, MANUFACTURER, product=UNIVERSAL, **changes)
+    application = scored(client, submitted(client, MANUFACTURER, product=UNIVERSAL, **changes))
     assert (application['latest_evaluation']['rule'], application['scored_limit_rub']) == (rule, limit)
     assert application['preapproved_amount_rub'] == min(requested, limit)
     assert application['product']['secured'] is (declared is not None)
@@ -167,7 +168,7 @@ def test_the_universal_limit_lends_its_unsecured_cap_plus_the_pledge(client, dec
 def test_factoring_capacity_is_bounded_by_turnover(client, requested, rule, amount):
     """Ruling: factoring has no catalog maximum (2b fallback); its limit is the turnover limit, 3 x 800k."""
     assert oracle.scored_limit(FACTORING, 'low', 800_000) == 2_400_000
-    application = submitted(client, 'strong', product=FACTORING, requested_amount_rub=requested)
+    application = scored(client, submitted(client, 'strong', product=FACTORING, requested_amount_rub=requested))
     assert (application['latest_evaluation']['rule'], application['preapproved_amount_rub']) == (rule, amount)
     assert application['scored_limit_rub'] == 2_400_000
 
@@ -180,8 +181,8 @@ def test_the_medium_risk_cap_applies_to_gov_programs(client, product_id, request
     """Ruling: medium risk is min(max, 1m, R) for every product, so a 25m-minimum program needs low risk."""
     limit = oracle.scored_limit(product_id, 'medium', 600_000)
     assert limit == 600_000 and oracle.outcome(product_id, 65, limit, requested)[:2] == (rule, status)
-    application = submitted(client, 'medium', product=product_id, requested_amount_rub=requested,
-                            purpose=PRODUCTS[product_id]['purposes'][0])
+    application = scored(client, submitted(client, 'medium', product=product_id, requested_amount_rub=requested,
+                                           purpose=PRODUCTS[product_id]['purposes'][0]))
     evaluation = application['latest_evaluation']
     assert (evaluation['score'], evaluation['risk'], evaluation['rule'], application['status']) == (65, 'medium', rule, status)
     assert application['scored_limit_rub'] == 600_000
@@ -199,6 +200,6 @@ def test_r7_compares_the_scored_limit_with_the_effective_minimum(client, product
     company = onboard(client, MANUFACTURER)
     set_turnover(client, company, revenue, revenue)
     answers = {} if debt is None else {'monthly_debt_payment_rub': debt}
-    application = submitted(client, MANUFACTURER, product=product_id, company=company, answers=answers, **changes)
+    application = scored(client, submitted(client, MANUFACTURER, product=product_id, company=company, answers=answers, **changes))
     assert (application['latest_evaluation']['rule'], application['scored_limit_rub']) == (rule, want['limit'])
     assert application['status'] == ('REJECTED' if rule == 'R7' else 'PREAPPROVED')

@@ -3,7 +3,8 @@ evidence detail, claims (one assignee), request-info, preapprove within the R12 
 rejections, idempotent replays (one OfficerDecision), stale versions, lazy expiry and PostgreSQL races.
 
 Amounts and bounds are the spec's literal numbers and application_oracle's exact arithmetic, never the code under
-test. Information responses from the customer are covered in test_information_requests.py.
+test. Information responses from the customer are covered in test_information_requests.py. The customer's responses
+carry no scoring; where a test checks it before a staff read, it reads the persisted rows (`scored`).
 """
 from datetime import datetime, timezone
 import json
@@ -16,8 +17,8 @@ from sqlalchemy import func, select
 from app.main import app
 from app.models import Company, IdempotencyRecord
 import application_oracle as oracle
-from application_helpers import (TERM, bki_calls, cancel, clock, draft, history, onboard, read, retry, rows, set_company,
-                                 set_turnover, submitted)
+from application_helpers import (TERM, bki_calls, cancel, clock, draft, history, onboard, read, retry, rows, scored,
+                                 set_company, set_turnover, submitted)
 from officer_helpers import (OFFICER_EMAIL, REASON, claim, claimed, decisions, detail, login, ok, officer, preapprove,
                              refused, reject, request_info, second_officer, set_status, staff_command, staff_url)
 from test_identity_company import ORIGIN, client
@@ -39,7 +40,7 @@ def queue(session, **params) -> list[str]:
 def medium_review(client, requested: int = 700_000) -> dict:
     """The medium fixture in MANUAL_REVIEW; 700,000 is above its 600,000 scored limit (R11)."""
     application = submitted(client, 'medium', requested_amount_rub=requested)
-    assert (application['status'], application['scored_limit_rub']) == ('MANUAL_REVIEW', MEDIUM_LIMIT)
+    assert (application['status'], scored(client, application)['scored_limit_rub']) == ('MANUAL_REVIEW', MEDIUM_LIMIT)
     return application
 
 
@@ -345,13 +346,13 @@ def test_a_noncomputable_limit_cannot_be_preapproved(client, officer):
 def test_mandatory_stops_refuse_preapproval_even_in_manual_review(client, officer, case):
     """R5 precedes R6/R7, so a reviewed application can carry an R6/R7 condition: the computed values decide."""
     if case == 'score_below_50':
-        application = submitted(client, 'high_risk', answers={'tax_debt_rub': 1})
+        application = scored(client, submitted(client, 'high_risk', answers={'tax_debt_rub': 1}))
         assert application['latest_evaluation']['score'] == oracle.score(4, 300_000, 375_000, 180_000, 'minor_closed') == 10
     else:
         company = onboard(client, 'strong')
         set_turnover(client, company, 99_999, 99_999)  # low risk; 3 x 99,999 = 299,997 < 300,000
-        application = submitted(client, 'strong', company=company, requested_amount_rub=PRODUCT_MIN,
-                                answers={'monthly_debt_payment_rub': 0, 'tax_debt_rub': 1})
+        application = scored(client, submitted(client, 'strong', company=company, requested_amount_rub=PRODUCT_MIN,
+                                               answers={'monthly_debt_payment_rub': 0, 'tax_debt_rub': 1}))
         assert application['scored_limit_rub'] == oracle.scored_limit(TERM, 'low', 99_999) == 299_997
     assert (application['status'], application['latest_evaluation']['rule']) == ('MANUAL_REVIEW', 'R5')
     application = claimed(officer, application)
@@ -398,7 +399,7 @@ def test_an_automatic_preapproval_notice_gives_the_deadline_date_without_raw_utc
 
 
 def test_trusted_source_recovery_with_an_r8_label_is_reviewed_and_preapprovable(client, officer, bki_calls):
-    application = ok(retry(client, submitted(client, 'bki_missing')))
+    application = scored(client, ok(retry(client, submitted(client, 'bki_missing'))))
     evaluation = application['latest_evaluation']
     assert (application['status'], evaluation['rule'], evaluation['score'], evaluation['scored_limit_rub']) == ('MANUAL_REVIEW', 'R8', 100, 2_400_000)
     assert queue(officer, status='MANUAL_REVIEW') == [application['id']]

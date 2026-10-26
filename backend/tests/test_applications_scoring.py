@@ -3,6 +3,8 @@ source recovery.
 
 Scores, limits and rules come from application_oracle (exact fractions and calendar stepping, no application code)
 and the literal numbers of docs/test-scenarios/acceptance.md; fixture labels are only cross-checked against the oracle.
+The customer's responses carry no scoring (test_hidden_scoring.py), so the scoring is read from the persisted rows
+(`scored`).
 """
 from datetime import date
 from uuid import uuid4
@@ -13,14 +15,14 @@ from app.main import app
 from app.models import Company, Consent, IdempotencyRecord
 import application_oracle as oracle
 from application_helpers import (CONSENTS, FIXED_DATE, FIXED_NOW, LINE, SECURED, TERM, bki_calls, clock, complete,
-                                 declared_collateral, draft, history, onboard, patch_answers, read, retry, rows,
+                                 declared_collateral, draft, history, onboard, patch_answers, read, retry, rows, scored,
                                  set_company, set_turnover, submit, submitted)
 from app.recommendations.catalog import CONFIG
 from recommendation_oracle import FIXTURES, PRODUCTS
 from test_identity_company import ORIGIN, client
 
 pytestmark = pytest.mark.usefixtures('clock')
-PUBLIC_EVALUATION = {'id', 'rule', 'outcome', 'score', 'risk', 'scored_limit_rub', 'reasons', 'created_at'}
+PUBLIC_EVALUATION = {'id', 'outcome', 'reasons', 'created_at'}  # what the customer reads of the latest check
 
 
 def evaluations(client, application):
@@ -160,8 +162,10 @@ def test_fixture_submission_outcomes_match_the_independent_oracle(client, bki_ca
     assert (total, band, status, amount) == (label['score'], label['risk'], label['status'], label['preapproved_amount_rub'])
     assert limit == SPEC_LIMITS[fixture_id]
     application = submitted(client, fixture_id)
+    assert set(application['latest_evaluation']) == PUBLIC_EVALUATION and application['latest_evaluation']['reasons']
+    assert 'scored_limit_rub' not in application
+    application = scored(client, application)
     evaluation = application['latest_evaluation']
-    assert set(evaluation) == PUBLIC_EVALUATION and evaluation['reasons']
     assert (evaluation['score'], evaluation['risk'], evaluation['rule'], evaluation['outcome']) == (total, band, rule, status)
     assert application['status'] == status and application['scored_limit_rub'] == evaluation['scored_limit_rub'] == limit
     assert application['preapproved_amount_rub'] == amount and application['requested_amount_rub'] == requested
@@ -178,7 +182,7 @@ def test_known_inactive_company_is_rejected_through_checking_without_bki(client,
     set_company(client, application['company_id'], registry_status='inactive')  # the status changed after creation
     response = submit(client, application)
     assert response.status_code == 200, response.text
-    result = response.json()['application']
+    result = scored(client, response.json()['application'])
     assert result['status'] == 'REJECTED' and result['scored_limit_rub'] is None
     evaluation = result['latest_evaluation']
     assert (evaluation['rule'], evaluation['outcome'], evaluation['score'], evaluation['risk']) == ('R2', 'REJECTED', None, None)
@@ -191,13 +195,13 @@ def test_inactive_fixture_draft_is_rejected_even_with_missing_answers(client, bk
     assert 'submit' not in application['allowed_actions']
     response = submit(client, application)  # known inactive overrides the missing finance answers
     assert response.status_code == 200 and response.json()['application']['status'] == 'REJECTED'
-    assert response.json()['application']['latest_evaluation']['rule'] == 'R2' and bki_calls == []
+    assert scored(client, response.json()['application'])['latest_evaluation']['rule'] == 'R2' and bki_calls == []
 
 
 @pytest.mark.parametrize('overdue,status,rule', [(29, 'PREAPPROVED', 'R8'), (30, 'REJECTED', 'R2')])
 def test_current_bki_overdue_of_thirty_days_is_a_stop_factor(client, bki_calls, monkeypatch, overdue, status, rule):
     use_bki(monkeypatch, current_overdue_days=overdue)
-    application = submitted(client, 'strong')
+    application = scored(client, submitted(client, 'strong'))
     evaluation = application['latest_evaluation']
     assert (application['status'], evaluation['rule']) == (status, rule) and len(bki_calls) == 1
     if rule == 'R2':
@@ -205,14 +209,14 @@ def test_current_bki_overdue_of_thirty_days_is_a_stop_factor(client, bki_calls, 
 
 
 def test_unavailable_registry_waits_without_bki_and_one_retry_recovers_to_preapproval(client, bki_calls):
-    application = submitted(client, 'registry_unavailable')
+    application = scored(client, submitted(client, 'registry_unavailable'))
     assert (application['status'], application['latest_evaluation']['rule']) == ('WAIT_EXTERNAL', 'R4')
     assert application['allowed_actions'] == ['retry_check', 'cancel'] and bki_calls == []
     company_url = f"/api/v1/companies/{application['company_id']}"
     assert client.get(company_url).json()['company']['version'] == 1
     response = retry(client, application, key='registry-retry')
     assert response.status_code == 200, response.text
-    result = response.json()['application']
+    result = scored(client, response.json()['application'])
     assert (result['status'], result['latest_evaluation']['rule'], result['preapproved_amount_rub']) == ('PREAPPROVED', 'R8', 1_000_000)
     assert len(bki_calls) == 1  # one recovery lookup through the precheck path, then exactly one BKI request
     source = client.get(company_url).json()
@@ -226,12 +230,12 @@ def test_unavailable_registry_waits_without_bki_and_one_retry_recovers_to_preapp
 
 
 def test_unavailable_bki_waits_and_one_retry_call_recovers_to_preapproval(client, bki_calls):
-    application = submitted(client, 'bki_unavailable')
+    application = scored(client, submitted(client, 'bki_unavailable'))
     assert (application['status'], application['latest_evaluation']['rule']) == ('WAIT_EXTERNAL', 'R4')
     assert [call['attempt'] for call in bki_calls] == [1]
     response = retry(client, application)
     assert response.status_code == 200, response.text
-    result = response.json()['application']
+    result = scored(client, response.json()['application'])
     assert (result['status'], result['latest_evaluation']['rule'], result['preapproved_amount_rub']) == ('PREAPPROVED', 'R8', 1_000_000)
     assert result['latest_evaluation']['score'] == oracle.score(48, 800_000, 680_000, 160_000, 'clean') == 100
     assert [call['attempt'] for call in bki_calls] == [1, 2]
@@ -241,7 +245,7 @@ def test_unavailable_bki_waits_and_one_retry_call_recovers_to_preapproval(client
 
 
 def test_missing_bki_category_needs_a_trusted_source_retry_that_survives_a_restart(client, bki_calls):
-    application = submitted(client, 'bki_missing')
+    application = scored(client, submitted(client, 'bki_missing'))
     assert application['status'] == 'NEED_INFO'
     assert (application['latest_evaluation']['rule'], application['latest_evaluation']['score']) == ('R3', None)
     request = application['open_info_request']
@@ -257,7 +261,7 @@ def test_missing_bki_category_needs_a_trusted_source_retry_that_survives_a_resta
         response = retry(restarted, application, key='trusted-retry')
         replay = retry(restarted, application, key='trusted-retry')
     assert response.status_code == 200, response.text
-    result = response.json()['application']
+    result = scored(client, response.json()['application'])
     evaluation = result['latest_evaluation']
     assert result['id'] == application['id'] and result['status'] == 'MANUAL_REVIEW'
     assert (evaluation['score'], evaluation['scored_limit_rub'], evaluation['outcome']) == (100, 2_400_000, 'MANUAL_REVIEW')
@@ -281,11 +285,11 @@ def test_an_unavailable_bki_during_trusted_source_recovery_keeps_the_request_and
     recovery = companies.SOURCES[inn]['recovery']
     application = submitted(client, 'bki_missing')
     use_bki(monkeypatch, 'bki_missing', recovery={'retry_bki_source_status': 'unavailable'})
-    waiting = retry(client, application).json()['application']
+    waiting = scored(client, retry(client, application).json()['application'])
     assert (waiting['status'], waiting['latest_evaluation']['rule']) == ('WAIT_EXTERNAL', 'R4')
     assert waiting['open_info_request']['kind'] == 'trusted_source' and waiting['allowed_actions'] == ['retry_check', 'cancel']
     use_bki(monkeypatch, 'bki_missing', recovery=recovery)
-    reviewed = retry(client, waiting).json()['application']  # the request is still open: recovery returns to review
+    reviewed = scored(client, retry(client, waiting).json()['application'])  # the request is still open: recovery returns to review
     assert (reviewed['status'], reviewed['latest_evaluation']['score'], reviewed['open_info_request']) == ('MANUAL_REVIEW', 100, None)
     assert [call['attempt'] for call in bki_calls] == [1, 2, 3]
     assert [item['to_status'] for item in history(client, application)][-5:] == ['NEED_INFO', 'CHECKING', 'WAIT_EXTERNAL', 'CHECKING', 'MANUAL_REVIEW']
@@ -296,7 +300,7 @@ def test_an_unavailable_bki_during_trusted_source_recovery_keeps_the_request_and
 def test_a_category_missing_again_keeps_the_same_trusted_source_request(client, bki_calls, monkeypatch):
     application = submitted(client, 'bki_missing')
     use_bki(monkeypatch, 'bki_missing', recovery={'retry_bki_source_status': 'missing'})
-    again = retry(client, application).json()['application']
+    again = scored(client, retry(client, application).json()['application'])
     assert (again['status'], again['latest_evaluation']['rule']) == ('NEED_INFO', 'R3')
     assert again['open_info_request']['id'] == application['open_info_request']['id']
     assert len(rows(client, 'InfoRequest', application_id=application['id'])) == 1 and len(bki_calls) == 2
@@ -308,9 +312,9 @@ def test_an_unavailable_turnover_source_waits_and_the_retry_recovers_it(client, 
     company = onboard(client, 'strong')
     with client.app.state.test_factory.begin() as db:
         db.execute(update(Precheck).where(Precheck.company_id == company).values(turnover_source_status='unavailable'))
-    application = submitted(client, 'strong', company=company)
+    application = scored(client, submitted(client, 'strong', company=company))
     assert (application['status'], application['latest_evaluation']['rule'], bki_calls) == ('WAIT_EXTERNAL', 'R4', [])
-    result = retry(client, application).json()['application']
+    result = scored(client, retry(client, application).json()['application'])
     assert (result['status'], result['latest_evaluation']['rule']) == ('PREAPPROVED', 'R8') and len(bki_calls) == 1
     source = client.get(f'/api/v1/companies/{company}').json()
     assert source['precheck']['turnover_source_status'] == 'available' and source['company']['version'] == 2
@@ -327,7 +331,7 @@ def test_declared_turnover_goes_to_manual_review_and_keeps_its_source_tag(client
     assert finance_fields(client, application)['monthly_revenue_rub']['origin'] == 'declared'
     response = submit(client, application)
     assert response.status_code == 200, response.text
-    result = response.json()['application']
+    result = scored(client, response.json()['application'])
     evaluation = result['latest_evaluation']
     assert (result['status'], evaluation['rule']) == ('MANUAL_REVIEW', 'R5')
     assert evaluation['score'] == oracle.score(48, 800_000, 680_000, 160_000, 'clean') and evaluation['risk'] == 'low'
@@ -339,7 +343,7 @@ def test_declared_turnover_goes_to_manual_review_and_keeps_its_source_tag(client
 def test_overriding_a_known_source_value_routes_manual_review_and_keeps_the_original(client, bki_calls):
     application = complete(client, draft(client, 'strong'), previous_monthly_revenue_rub=800_000)
     assert finance_fields(client, application)['previous_monthly_revenue_rub']['origin'] == 'override'
-    result = submit(client, application).json()['application']
+    result = scored(client, submit(client, application).json()['application'])
     assert (result['status'], result['latest_evaluation']['rule']) == ('MANUAL_REVIEW', 'R5')
     # Scoring keeps the trusted source value (growth from 680k), not the client's 800k.
     trusted = oracle.score(48, 800_000, 680_000, 160_000, 'clean')
@@ -357,7 +361,7 @@ def test_overriding_a_known_source_value_routes_manual_review_and_keeps_the_orig
     ('secured_investment', {'collateral': {'owner_confirmed': False}}, 'залог'),
 ])
 def test_tax_legal_and_collateral_concerns_route_manual_review(client, bki_calls, fixture_id, answers, phrase):
-    application = submitted(client, fixture_id, answers=answers)
+    application = scored(client, submitted(client, fixture_id, answers=answers))
     evaluation = application['latest_evaluation']
     assert (application['status'], evaluation['rule'], evaluation['score']) == ('MANUAL_REVIEW', 'R5', 100)
     assert any(phrase in reason.lower() for reason in evaluation['reasons']) and len(bki_calls) == 1
@@ -367,7 +371,7 @@ def test_tax_legal_and_collateral_concerns_route_manual_review(client, bki_calls
 def test_zero_turnover_routes_manual_review_without_a_score_or_limit(client, bki_calls, revenue, previous):
     company = onboard(client, 'strong')
     set_turnover(client, company, revenue, previous)
-    application = submitted(client, 'strong', company=company)
+    application = scored(client, submitted(client, 'strong', company=company))
     evaluation = application['latest_evaluation']
     assert (application['status'], evaluation['rule'], evaluation['score'], evaluation['risk']) == ('MANUAL_REVIEW', 'R5', None, None)
     assert application['scored_limit_rub'] is None and application['preapproved_amount_rub'] is None
@@ -377,7 +381,7 @@ def test_zero_turnover_routes_manual_review_without_a_score_or_limit(client, bki
                                                    (2_400_001, 'R9', 2_400_000), (3_000_000, 'R9', 2_400_000)])
 def test_low_risk_request_is_compared_with_the_scored_limit(client, requested, rule, amount):
     assert oracle.outcome(TERM, 100, oracle.scored_limit(TERM, 'low', 800_000), requested) == (rule, 'PREAPPROVED', amount)
-    application = submitted(client, 'strong', requested_amount_rub=requested)
+    application = scored(client, submitted(client, 'strong', requested_amount_rub=requested))
     evaluation = application['latest_evaluation']
     assert (application['status'], evaluation['rule'], application['preapproved_amount_rub']) == ('PREAPPROVED', rule, amount)
     assert application['requested_amount_rub'] == requested and application['scored_limit_rub'] == 2_400_000
@@ -388,7 +392,7 @@ def test_low_risk_request_is_compared_with_the_scored_limit(client, requested, r
 @pytest.mark.parametrize('requested,rule', [(600_000, 'R10'), (600_001, 'R11')])
 def test_medium_risk_goes_to_manual_review_with_the_possible_amount(client, requested, rule):
     assert oracle.outcome(LINE, 65, oracle.scored_limit(LINE, 'medium', 600_000), requested) == (rule, 'MANUAL_REVIEW', None)
-    application = submitted(client, 'medium', requested_amount_rub=requested)
+    application = scored(client, submitted(client, 'medium', requested_amount_rub=requested))
     evaluation = application['latest_evaluation']
     assert (application['status'], evaluation['rule'], evaluation['score']) == ('MANUAL_REVIEW', rule, 65)
     assert application['scored_limit_rub'] == 600_000 and application['preapproved_amount_rub'] is None
@@ -403,7 +407,8 @@ def test_a_scored_limit_below_the_product_minimum_rejects(client, revenue, rule,
     assert (limit, oracle.outcome(TERM, total, limit, 300_000)[:2]) == (3 * revenue, (rule, status))
     company = onboard(client, 'strong')
     set_turnover(client, company, revenue, revenue)
-    application = submitted(client, 'strong', company=company, requested_amount_rub=300_000, answers={'monthly_debt_payment_rub': 0})
+    application = scored(client, submitted(client, 'strong', company=company, requested_amount_rub=300_000,
+                                           answers={'monthly_debt_payment_rub': 0}))
     assert (application['status'], application['latest_evaluation']['rule'], application['scored_limit_rub']) == (status, rule, limit)
 
 
@@ -412,7 +417,8 @@ def test_a_scored_limit_below_the_product_minimum_rejects(client, revenue, rule,
 def test_secured_scored_limit_applies_the_declared_collateral_cap(client, declared, requested, limit):
     assert oracle.scored_limit(SECURED, 'low', 800_000, declared) == limit  # acceptance values agree with exact arithmetic
     rule, status, amount = oracle.outcome(SECURED, 100, limit, requested)
-    application = submitted(client, 'strong', product=SECURED, requested_amount_rub=requested, collateral=declared_collateral(declared))
+    application = scored(client, submitted(client, 'strong', product=SECURED, requested_amount_rub=requested,
+                                           collateral=declared_collateral(declared)))
     assert (application['status'], application['latest_evaluation']['rule']) == (status, rule)
     assert (application['scored_limit_rub'], application['preapproved_amount_rub']) == (limit, amount)
 
@@ -432,7 +438,8 @@ def test_attainable_score_band_boundaries(client, monkeypatch, registered_at, pr
     company = onboard(client, 'strong')
     set_company(client, company, registered_at=date.fromisoformat(registered_at))
     set_turnover(client, company, 800_000, previous)
-    application = submitted(client, 'strong', company=company, requested_amount_rub=500_000, answers={'monthly_debt_payment_rub': debt})
+    application = scored(client, submitted(client, 'strong', company=company, requested_amount_rub=500_000,
+                                           answers={'monthly_debt_payment_rub': debt}))
     evaluation = application['latest_evaluation']
     assert (evaluation['score'], evaluation['risk'], evaluation['rule'], application['status']) == (total, band, rule, status)
 
@@ -444,7 +451,7 @@ def test_business_age_counts_completed_calendar_months_on_the_business_date(clie
     assert oracle.score(months, 800_000, 680_000, 160_000, 'clean') == total
     company = onboard(client, 'strong')
     set_company(client, company, registered_at=date.fromisoformat(registered_at))
-    assert submitted(client, 'strong', company=company)['latest_evaluation']['score'] == total
+    assert scored(client, submitted(client, 'strong', company=company))['latest_evaluation']['score'] == total
 
 
 @pytest.mark.parametrize('revenue,previous,debt,total', [
@@ -456,7 +463,7 @@ def test_revenue_growth_and_debt_burden_boundaries(client, revenue, previous, de
     company = onboard(client, 'strong')
     set_turnover(client, company, revenue, previous)
     application = submitted(client, 'strong', company=company, requested_amount_rub=300_000, answers={'monthly_debt_payment_rub': debt})
-    assert application['latest_evaluation']['score'] == total
+    assert scored(client, application)['latest_evaluation']['score'] == total
 
 
 def test_a_replayed_submission_returns_the_original_result_once(client, bki_calls):
@@ -508,7 +515,7 @@ def test_an_internal_check_reports_a_client_answer_gap_as_a_client_answers_reque
         change = ApplicationChange(db, row, actor_id=None, now=FIXED_NOW)
         change.move('CHECKING', reason_code='SUBMITTED', reason_text='Проверка без шлюза анкеты')
         checks.run_check(db, change, db.get(Company, row.company_id), terms_for(CONFIG.product(TERM), None))
-    result = read(client, application)
+    result = scored(client, read(client, application))
     assert (result['status'], result['latest_evaluation']['rule']) == ('NEED_INFO', 'R3')
     request = result['open_info_request']
     assert (request['kind'], request['source'], request['requested_by']) == ('client_answers', None, 'system')

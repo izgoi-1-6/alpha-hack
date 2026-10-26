@@ -43,12 +43,15 @@ test("journey 3 — three refusals: an automatic high-risk rejection, an officer
   await page.getByLabel("Сумма, ₽", { exact: true }).fill("300000");
   await expect(page.locator(termCard)).toContainText("Расчёт на сумму 300 000 ₽");
 
-  // 1. Four months in business, falling turnover, a heavy debt load, a closed minor overdue: 10 points, R6.
+  // 1. Four months in business, falling turnover, a heavy debt load, a closed minor overdue: 10 points, R6. The client
+  // is told the outcome without the score.
   const automatic = await submitApplication(page, termCard, { debt: "180000" }, rejected);
   await expect(page.locator(".status-pill")).toHaveText("Отказ");
-  await expect(page.locator(".status-next")).toContainText("Причина — в результате проверки ниже");
-  await expect(page.locator(".status-result")).toContainText("Высокий риск по результатам скоринга");
-  await expect(page.locator(".status-result")).toContainText("10 баллов");
+  await expect(page.locator(".status-next")).toContainText("Итог проверки — ниже");
+  await expect(page.locator(".status-result")).toContainText(
+    "К сожалению, сейчас мы не можем одобрить заявку.",
+  );
+  await expect(page.locator(".status-result")).not.toContainText(/балл|риск|скоринг|лимит/i);
   // A refusal shows no estimate that could read like available capacity, and offers a new choice instead of a cancel.
   await expect(page.getByRole("group", { name: "Предварительная оценка лимита" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Отменить заявку" })).toHaveCount(0);
@@ -57,7 +60,7 @@ test("journey 3 — three refusals: an automatic high-risk rejection, an officer
   expect((await history(page, automatic)).map((item) => item.reason_code)).toEqual([
     "CREATED",
     "SUBMITTED",
-    "R6",
+    "CHECK_RESULT",
   ]);
 
   // 2. A new application for the same product (the refused one is closed), now with tax arrears: a specialist reviews
@@ -84,7 +87,7 @@ test("journey 3 — three refusals: an automatic high-risk rejection, an officer
   );
   await decision.getByRole("button", { name: "Отказ", exact: true }).click();
   await expect(decision).toContainText("Предварительный отказ");
-  const reason = "Высокий риск и налоговая задолженность: одобрение невозможно.";
+  const reason = "Налоговая задолженность и долговая нагрузка: одобрение невозможно.";
   await decision.getByLabel("Причина отказа").fill(reason);
   await decision.getByRole("button", { name: "Отказать", exact: true }).click();
   // «Вернуться» from the confirmation gives focus back to the action.
@@ -134,7 +137,7 @@ test("journey 3 — three refusals: an automatic high-risk rejection, an officer
   expect((await history(page, documentStage)).map((item) => item.reason_code)).toEqual([
     "CREATED",
     "SUBMITTED",
-    "R8",
+    "CHECK_RESULT",
     "DOCUMENTS_SUBMITTED",
     "DOCUMENT_REJECTED",
     "FINAL_REJECTED",
@@ -165,8 +168,10 @@ test("journey 5 — a secured loan's valuation is rejected and replaced; the off
     },
     preapproved,
   );
-  // Secured: the scored limit is min(3 × 1 500 000 ₽, 70% of the declared 8 000 000 ₽) = 4 500 000 ₽; four documents.
-  await expect(page.locator(".status-result")).toContainText("4 500 000 ₽");
+  // Secured: the scored limit is min(3 × 1 500 000 ₽, 70% of the declared 8 000 000 ₽) = 4 500 000 ₽, which the client
+  // never sees; four documents.
+  await expect(page.locator(".status-result")).toContainText("Заявка предварительно одобрена.");
+  await expect(page.locator(".status-result")).not.toContainText(/лимит|4 500 000/);
   const card = documentsCard(page);
   await expect(card.locator("[data-document-type]")).toHaveCount(4);
   await uploadDocument(requirementRow(card, "BANK_STATEMENT"), pdfFile("Выписка.pdf"));

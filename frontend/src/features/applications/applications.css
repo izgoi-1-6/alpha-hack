@@ -751,12 +751,6 @@
   border-top: 1px solid #f0ecec;
   padding: 9px 0;
 }
-.result-meta dd small {
-  display: block;
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-}
 
 /* Unsaveable values: stay and fix, or move on without them */
 .unsaved-dialog {

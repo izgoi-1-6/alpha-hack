@@ -14,8 +14,8 @@ import application_oracle as oracle
 import catalog_oracle
 from datetime import date
 from application_helpers import (CONSENTS, FIXED_DATE, LINE, SECURED, TERM, bki_calls, clock, complete, create,
-                                 declared_collateral, history, onboard, patch_answers, read, retry, rows, set_company,
-                                 snapshot_for, submit)
+                                 declared_collateral, history, onboard, patch_answers, read, retry, rows, scored,
+                                 set_company, snapshot_for, submit)
 from document_helpers import accept_all, checklist, completed, storage, upload_all
 from officer_helpers import claimed, detail, officer, ok, preapprove, request_info, respond
 from recommendation_oracle import FIXTURES, PRODUCTS
@@ -222,9 +222,9 @@ def test_an_unavailable_registry_waits_for_the_source_instead_of_asking_for_a_co
     assert dialog(client, application)['field_issues'] == {} and application['missing_fields'] == []
     response = submit(client, application)
     assert response.status_code == 200, response.text
-    waiting = response.json()['application']
+    waiting = scored(client, response.json()['application'])
     assert (waiting['status'], waiting['latest_evaluation']['rule'], bki_calls) == ('WAIT_EXTERNAL', 'R4', [])
-    result = saved(retry(client, waiting))
+    result = scored(client, saved(retry(client, waiting)))
     assert client.get(company_url).json()['company']['msp_registry'] is True
     months = oracle.completed_months(date.fromisoformat(fixture['registered_at']), FIXED_DATE)
     total = oracle.score(months, fixture['monthly_revenue_rub'], fixture['previous_monthly_revenue_rub'],
@@ -251,9 +251,12 @@ def test_a_recovery_that_fails_eligibility_is_a_mandatory_stop_without_bki(clien
     source = companies.SOURCES[inn]
     monkeypatch.setitem(companies.SOURCES, inn, {**source, 'recovery': {**source['recovery'], 'retry_msp_registry': False}})
     application = ready(client, GOSCREDIT, 'registry_unavailable')
-    waiting = submit(client, application).json()['application']
+    waiting = scored(client, submit(client, application).json()['application'])
     assert (waiting['status'], waiting['latest_evaluation']['rule']) == ('WAIT_EXTERNAL', 'R4')
     result = saved(retry(client, waiting))
+    reasons = result['latest_evaluation']['reasons']  # an eligibility stop keeps its own text for the client
+    result = scored(client, result)
+    assert reasons == result['latest_evaluation']['reasons']
     evaluation = result['latest_evaluation']
     assert (result['status'], evaluation['rule'], evaluation['outcome'], evaluation['score']) == ('REJECTED', 'R2', 'REJECTED', None)
     assert result['scored_limit_rub'] is None and result['preapproved_amount_rub'] is None and result['allowed_actions'] == []
@@ -277,7 +280,7 @@ def test_an_inactive_company_on_an_sme_register_product_is_corrected_before_r2(c
     refused_correction(client, corrected, {'product_id'})
     rejected = submit(client, ready(client, TERM, 'inactive', company=corrected['company_id']))
     assert rejected.status_code == 200 and rejected.json()['application']['status'] == 'REJECTED'
-    assert rejected.json()['application']['latest_evaluation']['rule'] == 'R2' and bki_calls == []
+    assert scored(client, rejected.json()['application'])['latest_evaluation']['rule'] == 'R2' and bki_calls == []
 
 
 def edited_catalog(tmp_path, edit) -> 'object':
@@ -416,7 +419,7 @@ def test_every_post_submission_reader_uses_the_pinned_facts(client, officer, bki
     latest = max(evaluation, key=lambda row: row.sequence)
     assert reviewed['status'] == 'MANUAL_REVIEW' and 'collateral_unconfirmed' in latest.input_snapshot['review_flags']
     limit = oracle.scored_limit(UNIVERSAL, 'low', 800_000, 1_000_000, secured=True)
-    assert limit == min(70_000_000, 2_400_000, 20_000_000 + 700_000) == reviewed['scored_limit_rub']
+    assert limit == min(70_000_000, 2_400_000, 20_000_000 + 700_000) == scored(client, reviewed)['scored_limit_rub']
     assert reviewed['product']['collateral_mode'] == 'optional' and reviewed['product']['secured'] is True
     staff = claimed(officer, reviewed)
     paths = detail(officer, staff)['requestable_fields']

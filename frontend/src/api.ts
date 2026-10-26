@@ -398,13 +398,10 @@ export type ApplicationProduct = { id: string } & Partial<{
   secured: boolean;
   required_documents: string[];
 }>;
+/** The latest check as the client reads it: the outcome and the client's texts, never the scoring (staff only). */
 export type Evaluation = {
   id: string;
-  rule: string;
   outcome: ApplicationStatus;
-  score: number | null;
-  risk: "low" | "medium" | "high" | null;
-  scored_limit_rub: number | null;
   reasons: string[];
   created_at: string;
 };
@@ -432,7 +429,6 @@ export type Application = {
   submitted_at: string | null;
   requested_amount_rub: number | null;
   indicative_limit_rub: number | null;
-  scored_limit_rub: number | null;
   preapproved_amount_rub: number | null;
   final_amount_rub: number | null;
   preapproved_at: string | null;

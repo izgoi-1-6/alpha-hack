@@ -27,7 +27,6 @@ pytestmark = pytest.mark.usefixtures('clock')
 # The tax regime, the employee count and the representative are source-owned: prefilled, never missing client input.
 MISSING_IN_NEW_DRAFT = ['company_confirmed', 'actual_address', 'actual_activity', 'monthly_debt_payment_rub', 'tax_debt_rub',
                         'legal_proceedings', 'beneficial_owners_confirmed', 'accuracy_confirmed']
-PUBLIC_EVALUATION = {'id', 'rule', 'outcome', 'score', 'risk', 'scored_limit_rub', 'reasons', 'created_at'}
 
 
 def url(application, suffix=''):
@@ -65,7 +64,7 @@ def test_draft_is_created_from_an_owned_snapshot_with_server_prefill(client, bki
     assert (answers['representative_name'], answers['representative_authority_confirmed']) == (FIXTURES['strong']['director_name'], True)
     assert all(answers[key] is None for key in MISSING_IN_NEW_DRAFT)
     assert application['requested_amount_rub'] == 2_000_000 and application['indicative_limit_rub'] == 2_400_000
-    for key in ('scored_limit_rub', 'preapproved_amount_rub', 'final_amount_rub', 'submitted_at', 'preapproved_at', 'preapproval_expires_at'):
+    for key in ('preapproved_amount_rub', 'final_amount_rub', 'submitted_at', 'preapproved_at', 'preapproval_expires_at'):
         assert application[key] is None, key
     assert application['allowed_actions'] == ['edit_answers', 'submit', 'cancel']
     assert application['missing_fields'] == MISSING_IN_NEW_DRAFT[:3] + ['purpose', 'term_months'] + MISSING_IN_NEW_DRAFT[3:]
@@ -78,8 +77,8 @@ def test_draft_is_created_from_an_owned_snapshot_with_server_prefill(client, bki
     assert (product['secured'], product['payment_model']) == (False, 'annuity')
     assert application['company']['id'] == company and application['company']['inn'] == FIXTURES['strong']['inn']
     assert application['created_at'].endswith('Z')
-    # Staff-only fields stay out of the customer view.
-    assert not {'assignee_id', 'submitted_input_snapshot', 'factors', 'sources'} & set(application)
+    # Staff-only fields stay out of the customer view, the scored limit among them.
+    assert not {'assignee_id', 'submitted_input_snapshot', 'factors', 'sources', 'scored_limit_rub'} & set(application)
     assert bki_calls == []
     items = history(client, application)
     assert [(item['from_status'], item['to_status']) for item in items] == [(None, 'DRAFT')]
@@ -351,7 +350,8 @@ def test_history_records_each_transition_with_its_simulated_notification(client)
     assert all('actor_id' not in item for item in items)  # the customer timeline names roles, never user ids
     saved_rows = sorted(rows(client, 'StatusHistory', application_id=application['id']), key=lambda row: row.sequence)
     assert [row.actor_id for row in saved_rows] == [me, me, None]
-    assert [item['reason_code'] for item in items] == ['CREATED', 'SUBMITTED', 'R8']
+    assert [item['reason_code'] for item in items] == ['CREATED', 'SUBMITTED', 'CHECK_RESULT']  # the rule stays with the bank
+    assert [row.reason_code for row in saved_rows] == ['CREATED', 'SUBMITTED', 'R8']
     assert all(item['created_at'].endswith('Z') and item['reason_text'] for item in items)
     assert all(item['notification']['channel'] == 'demo_in_app' and item['notification']['message'] for item in items)
     assert '2\u00a0000\u00a0000\u00a0₽' in items[2]['notification']['message'] and '07.11.2026' in items[2]['notification']['message']

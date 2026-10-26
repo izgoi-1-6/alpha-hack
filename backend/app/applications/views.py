@@ -1,8 +1,10 @@
 """Customer-facing serialization of applications, the dialog, evaluations, info requests and history.
 
-Staff-only data stays out: assignee, score factors, source payloads and input snapshots, consents, officer ids and
-decisions; history names actor roles, not users. The staff serializers in app.officer.views build on these (spec:
-"Staff detail additionally returns source snapshots, factors, decisions, claim owner and documents").
+Staff-only data stays out: assignee, the scoring (score, risk band, factors, review flags, the scored limit and the
+evaluation's rule; check texts and score-revealing reason codes are mapped by `disclosure`), source payloads and input
+snapshots, consents, officer ids and decisions; history names actor roles, not users. The staff serializers in
+app.officer.views build on these (spec: "Staff detail additionally returns source snapshots, factors, decisions, claim
+owner and documents").
 """
 from datetime import date, datetime
 from sqlalchemy import select
@@ -14,16 +16,16 @@ from ..errors import ApiError
 from ..models import Company, User
 from ..documents import service as documents
 from ..documents.models import Document
-from . import stages
+from . import disclosure, stages
 from .info_requests import open_info_request
-from .lifecycle import CANCELLABLE
+from .lifecycle import CANCELLABLE, NOTIFICATIONS
 from .models import TERMINAL_STATUSES, Application, Evaluation, InfoRequest, Notification, StatusHistory
 from .products import Terms, application_terms
 
 APPLICATION_FIELDS = ('id', 'company_id', 'product_id', 'recommendation_snapshot_id', 'status', 'current_stage', 'version',
-                      'answers', 'submitted_at', 'requested_amount_rub', 'indicative_limit_rub', 'scored_limit_rub',
-                      'preapproved_amount_rub', 'final_amount_rub', 'preapproved_at', 'preapproval_expires_at',
-                      'catalog_version', 'rules_version', 'created_at', 'updated_at')
+                      'answers', 'submitted_at', 'requested_amount_rub', 'indicative_limit_rub', 'preapproved_amount_rub',
+                      'final_amount_rub', 'preapproved_at', 'preapproval_expires_at', 'catalog_version', 'rules_version',
+                      'created_at', 'updated_at')
 PRODUCT_FIELDS = ('id', 'name', 'instrument_type', 'amount_min_rub', 'amount_max_rub', 'term_min_months', 'term_max_months',
                   'term_max_months_by_purpose', 'annual_rate_bps', 'rate_certainty', 'rate_preferential_months',
                   'payment_model', 'collateral_mode', 'collateral_ltv_bps')
@@ -89,11 +91,13 @@ def missing_fields(db: Session, application: Application, company: Company, term
     return []
 
 
-def public_evaluation(row: Evaluation | None) -> dict | None:
+def public_evaluation(row: Evaluation | None, application: Application) -> dict | None:
+    """The latest check as the client reads it: its outcome and the client's reasons, never the scoring."""
     if row is None:
         return None
-    return {'id': row.id, 'rule': row.rule, 'outcome': row.outcome, 'score': row.score, 'risk': row.risk,
-            'scored_limit_rub': row.scored_limit_rub, 'reasons': list(row.reasons), 'created_at': iso_utc(row.created_at)}
+    return {'id': row.id, 'outcome': row.outcome,
+            'reasons': disclosure.customer_reasons(row.outcome, row.rule, row.reasons, application.preapproved_amount_rub),
+            'created_at': iso_utc(row.created_at)}
 
 
 def public_info_request(row: InfoRequest | None) -> dict | None:
@@ -122,7 +126,7 @@ def public_application(db: Session, application: Application, company: Company |
     application_documents = documents.documents_of(db, application.id)
     body = {name: plain(getattr(application, name)) for name in APPLICATION_FIELDS}
     body.update(company=company_summary(company), product=product_summary(application, terms),
-                latest_evaluation=public_evaluation(latest_evaluation(db, application.id)),
+                latest_evaluation=public_evaluation(latest_evaluation(db, application.id), application),
                 allowed_actions=allowed_actions(application, company, request, application_documents),
                 missing_fields=missing_fields(db, application, company, terms, request),
                 open_info_request=public_info_request(request),
@@ -172,6 +176,23 @@ def history_item(entry: StatusHistory, note: Notification | None, user: User | N
                                                        'created_at': iso_utc(note.created_at)}}
 
 
+def public_history_item(entry: StatusHistory, note: Notification | None, user: User | None,
+                        application: Application) -> dict:
+    """A history row as the client reads it. A check result (CHECKING→outcome) that `disclosure` hides gets the reason
+    code CHECK_RESULT and the neutral text, and a rejection its neutral notice. The CHECKING notice is always today's
+    text: rows stored before scoring was hidden named it."""
+    item = history_item(entry, note, user)
+    if note is not None and note.event_code == 'application_checking':
+        item['notification']['message'] = NOTIFICATIONS['CHECKING']
+    if entry.from_status != 'CHECKING' or disclosure.disclosed(entry.to_status, entry.reason_text):
+        return item
+    item.update(reason_code=disclosure.CHECK_RESULT,
+                reason_text=disclosure.neutral_text(entry.to_status, entry.reason_code, application.preapproved_amount_rub))
+    if note is not None and entry.to_status == 'REJECTED':
+        item['notification']['message'] = disclosure.REJECTION_NOTICE
+    return item
+
+
 def public_history(db: Session, application: Application) -> list[dict]:
-    """The customer's timeline: roles only, so no officer user id is ever disclosed."""
-    return [history_item(*row) for row in history_rows(db, application)]
+    """The customer's timeline: roles only, so no officer user id is ever disclosed, and no scoring."""
+    return [public_history_item(*row, application) for row in history_rows(db, application)]

@@ -1,11 +1,13 @@
-"""Staff serialization: the customer's public fields plus the claim owner, score factors, review flags, source
-evidence, decisions, all information requests, every document revision with its reviewer, the final approval terms,
-the answer paths an officer may request for this product, and a history that names users. Officer-only reads
-(role-gated by the router). Unresolved requests on a terminal application are shown as audit rows (`open: false`),
-never as actionable.
+"""Staff serialization: the customer's public fields plus the claim owner, the scoring the client never sees (the
+application's scored limit; the evaluation's rule, score, risk, scored limit and stored reasons, factors and review
+flags), source evidence, decisions, all information requests, every document revision with its reviewer, the final
+approval terms, the answer paths an officer may request for this product, and a history that names users and keeps
+the stored rule codes and texts. Officer-only reads (role-gated by the router). Unresolved requests on a terminal
+application are shown as audit rows (`open: false`), never as actionable.
 """
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from ..clock import iso_utc
 from ..companies import latest_precheck, public_row
 from ..models import Company, User
 from ..applications import stages
@@ -16,11 +18,11 @@ from ..documents.views import REVIEW_NOTICE, ordered, public_document
 from ..applications.models import TERMINAL_STATUSES, Application, Evaluation, InfoRequest, OfficerDecision
 from ..applications.products import Terms, application_terms
 from ..applications.views import (APPLICATION_FIELDS, company_summary, current_request, history_item, history_rows,
-                                  latest_evaluation, missing_fields, plain, product_summary, public_evaluation,
-                                  public_info_request)
+                                  latest_evaluation, missing_fields, plain, product_summary, public_info_request)
 from .policy import final_terms, preapproval_terms, staff_actions
 
 SUBMITTED_EVIDENCE = ('submitted_at', 'company', 'precheck', 'answers', 'secured', 'required_documents')
+STAFF_APPLICATION_FIELDS = APPLICATION_FIELDS + ('scored_limit_rub',)
 
 
 def user_ref(user: User | None) -> dict | None:
@@ -28,10 +30,13 @@ def user_ref(user: User | None) -> dict | None:
 
 
 def evaluation_summary(row: Evaluation | None) -> dict | None:
-    summary = public_evaluation(row)
-    if summary is not None:
-        summary.update(factors=row.factors, review_flags=list(row.input_snapshot.get('review_flags', [])))
-    return summary
+    """An evaluation as staff read it: the rule, the score, the risk band, the scored limit, the stored reasons, the
+    factors and the review flags."""
+    if row is None:
+        return None
+    return {'id': row.id, 'rule': row.rule, 'outcome': row.outcome, 'score': row.score, 'risk': row.risk,
+            'scored_limit_rub': row.scored_limit_rub, 'reasons': list(row.reasons), 'created_at': iso_utc(row.created_at),
+            'factors': row.factors, 'review_flags': list(row.input_snapshot.get('review_flags', []))}
 
 
 def staff_evaluation(row: Evaluation) -> dict:
@@ -73,7 +78,7 @@ def staff_application(db: Session, application: Application, officer_id: str, co
     preapproval = preapproval_view(application, company, evaluation, terms)
     final_approval = final_approval_view(application, application_documents, evaluation, terms)
     reviewable = any(row.status == 'UPLOADED' for row in documents.current_documents(application_documents).values())
-    body = {name: plain(getattr(application, name)) for name in APPLICATION_FIELDS}
+    body = {name: plain(getattr(application, name)) for name in STAFF_APPLICATION_FIELDS}
     body.update(company=company_summary(company), product=product_summary(application, terms),
                 latest_evaluation=evaluation_summary(evaluation),
                 assignee=user_ref(application.assignee_id and db.get(User, application.assignee_id)),

@@ -202,9 +202,11 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
   await expect(requested).toContainText("2 000 000 ₽");
   await expect(indicative).toContainText("2 400 000 ₽");
   await expect(indicative).toContainText("не предложение");
-  await expect(page.locator(".result-meta")).toContainText(
-    "Расчёт скоринга — не предложение",
+  // The check result names the outcome only: no score, risk band or calculated limit for the client.
+  await expect(page.locator(".status-result")).toContainText(
+    "Заявка предварительно одобрена. Это не окончательное решение.",
   );
+  await expect(page.locator(".result-meta dt")).toHaveText(["Проверено"]);
   await expect(preapproved).toContainText("2 000 000 ₽");
   await expect(preapproved).toContainText("не окончательное решение");
   await expect(page.locator(".status-next")).toContainText(
@@ -334,7 +336,7 @@ test("unavailable BKI: lost submit and retry responses replay their keys; WAIT_E
     ["DRAFT", "CHECKING", "SUBMITTED"],
     ["CHECKING", "WAIT_EXTERNAL", "R4"],
     ["WAIT_EXTERNAL", "CHECKING", "RETRY_CHECK"],
-    ["CHECKING", "PREAPPROVED", "R8"],
+    ["CHECKING", "PREAPPROVED", "CHECK_RESULT"],
   ]);
   await expect(
     page.getByRole("list", { name: "История заявки" }).getByRole("listitem"),

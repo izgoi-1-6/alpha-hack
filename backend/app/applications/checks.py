@@ -14,7 +14,7 @@ from ..companies import latest_precheck, public_row
 from ..models import Company, Precheck
 from ..recommendations import catalog
 from ..recommendations.service import eligibility_checks
-from . import bki, scoring, stages
+from . import bki, disclosure, scoring, stages
 from .info_requests import create_info_request, open_info_request
 from .lifecycle import PREAPPROVAL_TTL, ApplicationChange, preapproval_notice
 from .models import Application, Evaluation
@@ -59,10 +59,11 @@ def complete_report(report: dict | None) -> bool:
 
 
 def outcome_notification(decision: scoring.Decision, application: Application) -> str | None:
+    """The message the client is sent: a rejection names no score-derived reason (`disclosure`)."""
     if decision.outcome == 'PREAPPROVED':
         return preapproval_notice(application)
     if decision.outcome == 'REJECTED':
-        return 'По заявке принят отказ. ' + decision.reasons[0]
+        return disclosure.rejection_notice(decision.reasons[0])
     if decision.outcome in ('WAIT_EXTERNAL', 'NEED_INFO'):
         return decision.reasons[0]
     return None

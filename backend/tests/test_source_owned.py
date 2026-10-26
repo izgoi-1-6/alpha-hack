@@ -7,7 +7,7 @@ Expected values come from the raw fixture file (recommendation_oracle.FIXTURES),
 """
 import pytest
 from application_helpers import (FIXED_NOW, bki_calls, clock, complete, draft, history, patch_answers, read, retry, rows,
-                                 submit, submitted)
+                                 scored, submit, submitted)
 from officer_helpers import claimed, decisions, detail, ok, officer, refused, request_info, respond
 from recommendation_oracle import FIXTURES
 from test_identity_company import client
@@ -140,13 +140,13 @@ def test_r3_never_asks_the_client_for_a_value_the_registry_does_not_know(client,
 def test_an_unavailable_registry_still_waits_for_the_source(client, bki_calls, monkeypatch, registry_values):
     if registry_values == 'absent':
         without_registry_values(monkeypatch, 'registry_unavailable')
-    application = submitted(client, 'registry_unavailable')
+    application = scored(client, submitted(client, 'registry_unavailable'))
     assert (application['status'], application['latest_evaluation']['rule']) == ('WAIT_EXTERNAL', 'R4')
     assert application['open_info_request'] is None and application['allowed_actions'] == ['retry_check', 'cancel']
     assert bki_calls == [] and rows(client, 'InfoRequest', application_id=application['id']) == []
     (first,) = rows(client, 'Evaluation', application_id=application['id'])
     assert first.input_snapshot['missing_answers'] == []
-    recovered = retry(client, application).json()['application']
+    recovered = scored(client, retry(client, application).json()['application'])
     assert (recovered['status'], recovered['latest_evaluation']['rule']) == ('PREAPPROVED', 'R8') and len(bki_calls) == 1
 
 

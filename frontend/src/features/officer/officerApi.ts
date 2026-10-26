@@ -32,7 +32,13 @@ export type ScoreFactors = {
   credit_history: CreditHistory;
   credit_history_points: number;
 };
+/** An evaluation as staff read it: the client's view never carries the rule, the score, the risk or the limit,
+ * and its reasons are the stored staff texts. */
 export type StaffEvaluation = Evaluation & {
+  rule: string;
+  score: number | null;
+  risk: "low" | "medium" | "high" | null;
+  scored_limit_rub: number | null;
   factors: ScoreFactors | null;
   review_flags: string[];
 };
@@ -86,6 +92,8 @@ export type StaffApplication = Omit<
   Application,
   "allowed_actions" | "latest_evaluation" | "open_info_request"
 > & {
+  /** The scored limit, which the client's view never carries. */
+  scored_limit_rub: number | null;
   assignee: UserRef | null;
   /** What the session officer may do now. */
   allowed_actions: StaffAction[];

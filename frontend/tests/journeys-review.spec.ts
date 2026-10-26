@@ -43,7 +43,7 @@ test("journey 2 — a medium-risk application: the officer asks for the debt pay
     { debt: "240000", term: null },
     "Заявка на рассмотрении у специалиста",
   );
-  // MANUAL_REVIEW as the client sees it: no decision yet, the estimate and the scored limit kept apart.
+  // MANUAL_REVIEW as the client sees it: no decision yet, the turnover estimate, and no score or scored limit.
   await expect(page.locator(".status-pill")).toHaveText("На рассмотрении");
   await expect(page.locator(".status-next")).toContainText("Пока это не одобрение");
   await expect(page.getByRole("group", { name: "Запрошенная сумма" })).toContainText("700 000 ₽");
@@ -51,8 +51,8 @@ test("journey 2 — a medium-risk application: the officer asks for the debt pay
     page.getByRole("group", { name: "Предварительная оценка лимита" }),
   ).toContainText("1 800 000 ₽");
   await expect(page.getByRole("group", { name: "Предварительно одобрено" })).toHaveCount(0);
-  await expect(page.locator(".status-result")).toContainText("65 баллов");
-  await expect(page.locator(".status-result")).toContainText("600 000 ₽");
+  await expect(page.locator(".status-result")).toContainText("Заявку рассмотрит кредитный специалист.");
+  await expect(page.locator(".status-result")).not.toContainText(/балл|риск|скоринг|лимит|600 000/i);
   await expectNoDemoWording(page);
   await shot(page, "journey-manual-review");
 
@@ -99,7 +99,7 @@ test("journey 2 — a medium-risk application: the officer asks for the debt pay
   await expect(requests).toContainText("Закрыт");
   const amount = decision.getByLabel("Сумма предварительного одобрения, ₽");
   await expect(amount).toHaveValue("600000");
-  const reason = "Средний риск: одобряем в пределах расчётного лимита.";
+  const reason = "Платежи по кредитам уточнены: одобряем предварительно.";
   await decision.getByLabel("Основание решения").fill(reason);
   // Above min(request, scored limit) the server refuses, with its message beside the amount.
   await amount.fill("600001");
@@ -128,7 +128,7 @@ test("journey 2 — a medium-risk application: the officer asks for the debt pay
   expect((await history(page, id)).map((item) => item.reason_code)).toEqual([
     "CREATED",
     "SUBMITTED",
-    "R11",
+    "CHECK_RESULT",
     "INFO_REQUESTED",
     "INFO_PROVIDED",
     "R12",
@@ -192,7 +192,7 @@ test("journey 4 — missing data and a source outage: undeclared turnover is dec
   expect((await history(page, recovered)).map((item) => item.reason_code)).toEqual([
     "CREATED",
     "SUBMITTED",
-    "R8",
+    "CHECK_RESULT",
   ]);
 
   // Both applications in «Мои заявки» on a 390 px phone: each with its status and next step, nothing overflows.

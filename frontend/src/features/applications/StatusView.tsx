@@ -17,9 +17,7 @@ import {
   formatDateTime,
   keepAmountsTogether,
   nextStep,
-  points,
   productName,
-  RISK,
   rub,
   STATUS,
 } from "./format";
@@ -42,7 +40,7 @@ function explanation(application: Application, byOfficer: boolean) {
   const request = application.open_info_request;
   switch (application.status) {
     case "CHECKING":
-      return "Проверка источников данных и скоринг ещё идут. Обновите страницу через несколько секунд.";
+      return "Проверка по данным источников ещё идёт. Обновите страницу через несколько секунд.";
     case "WAIT_EXTERNAL":
       return "Один из источников данных не ответил, поэтому решение пока не принято. Нажмите «Повторить проверку»: запрос выполнится по согласию, которое вы уже дали.";
     case "NEED_INFO":
@@ -64,7 +62,7 @@ function explanation(application: Application, byOfficer: boolean) {
     case "REJECTED":
       return byOfficer
         ? "Решение принял кредитный специалист — его комментарий ниже. Можно подобрать другой продукт или изменить параметры."
-        : "Причина — в результате проверки ниже. Можно подобрать другой продукт или изменить параметры.";
+        : "Итог проверки — ниже. Можно подобрать другой продукт или изменить параметры.";
     case "CANCELLED":
       return "Заявка отменена и больше не рассматривается. Новую заявку можно начать из подбора.";
     case "EXPIRED":
@@ -327,26 +325,6 @@ export function StatusView({
                 ))}
               </ul>
               <dl className="result-meta">
-                {evaluation.score !== null && (
-                  <div>
-                    <dt>Скоринг</dt>
-                    <dd>
-                      {points(evaluation.score)}
-                      {evaluation.risk ? ` · ${RISK[evaluation.risk]}` : ""}
-                    </dd>
-                  </div>
-                )}
-                {evaluation.scored_limit_rub !== null && (
-                  <div>
-                    <dt>Расчётный лимит по проверке</dt>
-                    <dd>
-                      {rub(evaluation.scored_limit_rub)}
-                      <small>
-                        Расчёт скоринга — не предложение и не решение банка.
-                      </small>
-                    </dd>
-                  </div>
-                )}
                 <div>
                   <dt>Проверено</dt>
                   <dd>{formatDateTime(evaluation.created_at)}</dd>
@@ -362,8 +340,8 @@ export function StatusView({
       <div className="notice quiet">
         <Icon name="shield" />
         <span>
-          Скоринг и предварительные оценки — не предложение банка: итоговую
-          сумму определяет кредитный специалист после проверки документов. В
+          Предварительные оценки — не предложение банка: итоговую сумму
+          определяет кредитный специалист после проверки документов. В
           «Кредитном маршруте» договор не подписывается и деньги не
           перечисляются.
         </span>

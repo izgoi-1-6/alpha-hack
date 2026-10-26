@@ -114,7 +114,7 @@ def respond(client, application: dict, answers: dict, response: str = 'Отве�
 
 
 def set_status(client, application: dict, status: str) -> None:
-    """Moves a persisted application to a document-phase status directly (document commands are Task 6)."""
+    """Moves a persisted application to a document-phase status directly, without the document commands."""
     from app.applications.models import Application
     with client.app.state.test_factory.begin() as db:
         db.execute(update(Application).where(Application.id == application['id']).values(status=status))

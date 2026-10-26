@@ -1,6 +1,6 @@
 """Officer commands on an application the router has locked (company row, then application row, lazy expiry) after
 the idempotency replay check; any ApiError rolls the whole command back, so nothing is half-recorded. Document review
-and final approval (Task 6) follow the same order and record on the document row or as an OfficerDecision.
+and final approval follow the same order and record on the document row or as an OfficerDecision.
 
 Claim checks state, then another assignee, then the version (a racing claim that lost sees ALREADY_ASSIGNED). Every
 decision checks the assignment, then the version, then the state, then its own guards, and records an

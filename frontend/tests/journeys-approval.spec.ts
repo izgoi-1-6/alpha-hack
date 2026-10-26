@@ -20,7 +20,7 @@ import {
   onboard,
   registerClient,
   requirementRow,
-  revision,
+  artifacts,
   reviewDocument,
   saveAndContinue,
   settle,
@@ -32,7 +32,7 @@ import {
 } from "./helpers";
 import { pdfFile, pngFile } from "./files";
 
-// End-to-end journeys against the real app (Task 13): fresh synthetic clients, officer@demo.local in a browser
+// End-to-end journeys against the real app: fresh synthetic clients, officer@demo.local in a browser
 // context of its own, no injected replies. The journey of a brand-new client follows the walkthrough (switched on
 // here) up to the questionnaire and goes on to the final approval and the Alfa-Business hand-off.
 
@@ -45,7 +45,7 @@ const expectStep = (page: Page, number: number) =>
     new RegExp(`^Шаг ${number} из 9(\\s|$)`),
   );
 const shot = (page: Page, name: string, fullPage = true) =>
-  page.screenshot({ path: `${revision}/task-13-${name}.png`, fullPage });
+  page.screenshot({ path: `${artifacts}/${name}.png`, fullPage });
 
 /** No page overflow and 44 px targets at a laptop and a phone size; captures each. */
 async function checkSizes(page: Page, name: string) {
@@ -288,7 +288,7 @@ test("journey 7 — a manufacturer in a border region applies for the border-ter
   );
   await expect(border.locator(".product-payment")).toContainText("в льготный период 12 мес.");
   await border.scrollIntoViewIfNeeded();
-  await border.screenshot({ path: `${revision}/task-13-journey-gov-card.png` });
+  await border.screenshot({ path: `${artifacts}/journey-gov-card.png` });
 
   const id = await submitApplication(
     page,

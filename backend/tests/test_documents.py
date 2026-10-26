@@ -2,7 +2,7 @@
 packets, replacement of UPLOADED revisions, deletion, completion, download authorization and headers, idempotent
 replays, lazy expiry in the document phase and PostgreSQL races (one current document per requirement).
 
-Expected values are the spec's literal states, codes and checklist, never the code under test.
+Expected values are the literal states, codes and checklist of docs/application-states.md, never the code under test.
 """
 from datetime import datetime, timedelta, timezone
 import os
@@ -43,7 +43,7 @@ def test_a_preapproved_application_lists_its_required_documents(client):
     notice = body.pop('notice')
     assert body == {'requirements': [{'document_type': kind, 'required': True, 'current_document': None} for kind in UNSECURED_DOCS],
                     'items': []}
-    # An honest scope note without demo wording (revision rule 7): no antivirus or authenticity claim.
+    # An honest scope note without demo wording: no antivirus or authenticity claim.
     assert notice.startswith('Проверка документов') and 'не антивирусная' in notice and 'не проверка подлинности' in notice
     assert application['document_summary'] == summary()
     assert application['allowed_actions'] == ['upload_document', 'cancel']

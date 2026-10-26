@@ -9,11 +9,11 @@ import {
   onboard,
   password,
   registerClient,
-  revision,
+  artifacts,
   settle,
 } from "./helpers";
 
-// The interactive client walkthrough (Task 12): it opens by itself on a new client's first visit and leads from adding
+// The interactive client walkthrough: it opens by itself on a new client's first visit and leads from adding
 // a company to the questionnaire; the client acts on the real pages and a new page brings the next step. It can be
 // skipped, it is restarted from «Как это работает», and an officer never sees it. Every other spec runs with it off
 // (fixtures.ts); this one switches it on. Real UI and API throughout, fresh synthetic clients only.
@@ -274,11 +274,11 @@ const scrolls = (page: Page) =>
  * The full walk of a new client, from the empty home to the questionnaire: the client acts on the highlighted
  * controls (adding the company, the Госуслуги check, the consents, the product choice) and uses «Далее» and
  * «Назад» within a page. Reaching the last step completes the walkthrough: on the desktop the client closes it with
- * «Готово», on the phone by leaving the questionnaire. Captures the steps for the report.
+ * «Готово», on the phone by leaving the questionnaire. Captures the steps as screenshots.
  */
 async function walk(page: Page, size: "desktop" | "mobile") {
   const shot = (name: string) =>
-    page.screenshot({ path: `${revision}/task-12-${size}-${name}.png` });
+    page.screenshot({ path: `${artifacts}/tour-${size}-${name}.png` });
   const id = await userId(page);
 
   await expectStep(page, 1);
@@ -718,7 +718,7 @@ async function walkAt(page: Page, shots: number[]) {
     await expectStep(page, number);
     if (shots.includes(number))
       await page.screenshot({
-        path: `${revision}/task-12-fix1-${size.width}x${size.height}-step-${number}.png`,
+        path: `${artifacts}/tour-${size.width}x${size.height}-step-${number}.png`,
       });
   };
   await at(1);

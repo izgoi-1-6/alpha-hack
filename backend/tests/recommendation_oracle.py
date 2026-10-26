@@ -2,7 +2,7 @@
 
 Nothing here imports application code. Products are catalog_oracle's own reading of the raw catalog and policy
 files, fixtures come straight from data/demo-companies.json, and the arithmetic is exact (Fraction and integer
-ceiling), not the Decimal implementation under test. The rules are transcribed from the plan's binding changes:
+ceiling), not the Decimal implementation under test. The rules are transcribed from docs/products-and-scoring.md:
 machine-checkable eligibility only, failed → does_not_fit, unknown → needs_info, can_apply on the eligibility and
 amount-range gates, the ranking key (status, shortfall, collateral burden, rate certainty, rate, priority, id) and the
 overlay badge rule (applies_to + MSP registry + main OKVED not denied, with the policy's exemptions).

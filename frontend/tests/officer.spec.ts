@@ -118,7 +118,7 @@ test("A06 medium review: claim → information request → the client answers on
   await expect(row).toContainText("700 000 ₽");
   await expect(row).toContainText("600 000 ₽");
   await row.scrollIntoViewIfNeeded();
-  await officer.screenshot({ path: `${artifacts}/task-5b-queue-row.png` });
+  await officer.screenshot({ path: `${artifacts}/queue-row.png` });
   await row.getByRole("link").click();
   await expect(
     officer.getByRole("heading", { level: 1, name: "ИП «Средний риск»" }),
@@ -161,10 +161,10 @@ test("A06 medium review: claim → information request → the client answers on
   await expect(decision).toContainText("Предварительное одобрение — не окончательное решение");
   await officer.evaluate(() => window.scrollTo(0, 0));
   await officer.screenshot({
-    path: `${artifacts}/task-5b-review-desktop.png`,
+    path: `${artifacts}/review-desktop.png`,
     fullPage: true,
   });
-  await decision.screenshot({ path: `${artifacts}/task-5b-decision-controls.png` });
+  await decision.screenshot({ path: `${artifacts}/decision-controls.png` });
 
   // A second tab of the same officer asks the client about the debt payments.
   const second = await officer.context().newPage();
@@ -250,7 +250,7 @@ test("A06 medium review: claim → information request → the client answers on
   await form.getByLabel("Ответ специалисту").fill(answer);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: `${artifacts}/task-5b-respond-info.png`,
+    path: `${artifacts}/respond-info.png`,
     fullPage: true,
   });
   await form.getByRole("button", { name: "Отправить ответ" }).click();
@@ -328,7 +328,7 @@ test("A06 medium review: claim → information request → the client answers on
   await officer.evaluate(() => window.scrollTo(0, 0));
   await settle(officer);
   await officer.screenshot({
-    path: `${artifacts}/task-5b-review-mobile.png`,
+    path: `${artifacts}/review-mobile.png`,
     fullPage: true,
   });
 
@@ -385,7 +385,7 @@ test("filters survive a reload; a non-computable limit is refused with the serve
   await expectNoPageOverflow(officer);
   await officer.evaluate(() => window.scrollTo(0, 0));
   await settle(officer);
-  await officer.screenshot({ path: `${artifacts}/task-5b-queue.png` });
+  await officer.screenshot({ path: `${artifacts}/queue.png` });
   await officer.setViewportSize({ width: 1440, height: 1000 });
 
   await row.getByRole("link").click();

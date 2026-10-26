@@ -3,7 +3,7 @@ export default defineConfig({
   testDir: "./tests",
   timeout: 30000,
   workers: 1,
-  outputDir: "../.superpowers/sdd/2026-10-24-credit-route/browser-results",
+  outputDir: "test-results/output",
   use: {
     baseURL: "http://localhost:5173",
     browserName: "chromium",

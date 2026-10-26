@@ -39,7 +39,7 @@ class CollateralAnswer(StrictModel):
 
 
 class AnswersInput(StrictModel):
-    """The questionnaire whitelist (spec "Six saved questionnaire stages"); credit history and overdue days are BKI-owned.
+    """The questionnaire whitelist (the six stages of stages.py); credit history and overdue days are BKI-owned.
     The source-owned answers (tax regime, employees, the representative's name and authority) stay typed here so that a
     client write of one is refused as SOURCE_OWNED_FIELDS by the commands rather than as an unknown key."""
     company_confirmed: StrictBool | None = None

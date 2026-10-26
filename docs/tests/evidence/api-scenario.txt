@@ -1,0 +1,59 @@
+# 2026-10-26, the final tree (v1.0.0). The folder «Сквозной сценарий» of docs/api/postman_collection.json, request by request in order, with the collection's own pre-request and test scripts and one cookie jar, against http://localhost:5173/api/v1 (Vite proxy to the local API).
+1. Регистрация нового клиента — POST /auth/register → 201 user=client-1793036325460@example.test role=CLIENT
+    PASS HTTP 201
+2. Подтверждение полномочий через Госуслуги — POST /identity/gosuslugi/verify → 201 person=Петрова Мария Сергеевна role=Индивидуальный предприниматель
+    PASS HTTP 201
+3. Добавление компании — POST /companies → 201
+    PASS HTTP 201
+4. Подбор продуктов на сумму — POST /companies/10afb106-bc08-4102-888d-b0b3541da9b6/recommendations → 201 snapshot items=11
+    PASS HTTP 201
+    PASS Продукт можно выбрать
+5. Создание черновика заявки — POST /applications → 201 status=DRAFT version=1
+    PASS HTTP 201
+    PASS Статус DRAFT
+6. Ответы анкеты — PATCH /applications/bdd27d1b-8542-4825-89c2-f5723a347e5f/answers → 200 status=DRAFT version=2
+    PASS HTTP 200
+    PASS Анкета заполнена
+7. Отправка заявки с согласиями — POST /applications/bdd27d1b-8542-4825-89c2-f5723a347e5f/submit → 200 status=MANUAL_REVIEW version=3
+    PASS HTTP 200
+    PASS Статус MANUAL_REVIEW
+    PASS Клиент не видит скоринг
+8. Вход кредитного специалиста — POST /auth/login → 200 user=officer@demo.local role=CREDIT_OFFICER
+    PASS HTTP 200
+9. Карточка заявки со скорингом — GET /officer/applications/bdd27d1b-8542-4825-89c2-f5723a347e5f → 200 status=MANUAL_REVIEW version=3 score=65 risk=medium rule=R10
+    PASS HTTP 200
+    PASS Специалист видит балл
+10. Взять заявку в работу — POST /officer/applications/bdd27d1b-8542-4825-89c2-f5723a347e5f/claim → 200 status=MANUAL_REVIEW version=4 score=65 risk=medium rule=R10
+    PASS HTTP 200
+    PASS Статус MANUAL_REVIEW
+11. Предварительное одобрение — POST /officer/applications/bdd27d1b-8542-4825-89c2-f5723a347e5f/preapprove → 200 status=PREAPPROVED version=5 score=65 risk=medium rule=R10 preapproved=500000
+    PASS HTTP 200
+    PASS Статус PREAPPROVED
+12. Вход клиента — POST /auth/login → 200 user=client-1793036325460@example.test role=CLIENT
+    PASS HTTP 200
+13. Загрузка банковской выписки — POST /applications/bdd27d1b-8542-4825-89c2-f5723a347e5f/documents → 201 status=PREAPPROVED version=6 preapproved=500000
+    PASS HTTP 201
+14. Загрузка финансовой отчётности — POST /applications/bdd27d1b-8542-4825-89c2-f5723a347e5f/documents → 201 status=PREAPPROVED version=7 preapproved=500000
+    PASS HTTP 201
+15. Отправка комплекта документов — POST /applications/bdd27d1b-8542-4825-89c2-f5723a347e5f/documents/complete → 200 status=DOCS_UPLOADED version=8 preapproved=500000
+    PASS HTTP 200
+    PASS Статус DOCS_UPLOADED
+16. Вход кредитного специалиста — POST /auth/login → 200 user=officer@demo.local role=CREDIT_OFFICER
+    PASS HTTP 200
+17. Принять выписку — POST /officer/applications/bdd27d1b-8542-4825-89c2-f5723a347e5f/documents/0aa246dd-636d-4d39-a1bf-e8db595423d9/review → 200 status=DOCS_UPLOADED version=9 score=65 risk=medium rule=R10 preapproved=500000
+    PASS HTTP 200
+    PASS Статус DOCS_UPLOADED
+18. Принять отчётность — POST /officer/applications/bdd27d1b-8542-4825-89c2-f5723a347e5f/documents/17434d9d-d2d6-4d26-bf76-12319f251494/review → 200 status=DOCS_UPLOADED version=10 score=65 risk=medium rule=R10 preapproved=500000
+    PASS HTTP 200
+    PASS Статус DOCS_UPLOADED
+19. Окончательное одобрение — POST /officer/applications/bdd27d1b-8542-4825-89c2-f5723a347e5f/approve → 200 status=APPROVED version=11 score=65 risk=medium rule=R10 preapproved=500000 final=500000
+    PASS HTTP 200
+    PASS Статус APPROVED
+20. Вход клиента — POST /auth/login → 200 user=client-1793036325460@example.test role=CLIENT
+    PASS HTTP 200
+21. Ссылка на переход в Альфа-Бизнес — POST /integrations/alfa-business/link → 200 url=/alfa-business/bdd27d1b-8542-4825-89c2-f5723a347e5f simulated=true
+    PASS HTTP 200
+    PASS Локальная страница перехода
+
+All scenario tests passed
+exit=0

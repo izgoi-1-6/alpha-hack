@@ -1,4 +1,4 @@
-"""The client never learns the scoring (user request after hand-over: «User shouldn't know the results of scoring»).
+"""The client never learns the scoring (docs/application-states.md, «Что видит клиент и что видит специалист»).
 
 Every customer application surface — the application, the list, the dialog, the history with its notifications, the
 document checklist and every command response — carries no score, risk band, factors, review flags, scored limit or
@@ -6,7 +6,7 @@ rule field, no score-revealing rule id (R5–R11) and no text about points, risk
 every outcome family. Clients get neutral texts by outcome; a source wait, an information request, a known inactive
 company and a failed eligibility fact keep their own texts. Staff responses keep everything.
 
-The customer texts are the ruling's literal wording, written out here rather than read from the code under test.
+The customer texts are the documented literal wording, written out here rather than read from the code under test.
 """
 import json
 import re

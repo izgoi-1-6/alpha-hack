@@ -1,5 +1,7 @@
-# Web workspace
+# Интерфейс
 
-React 18 / TypeScript / Vite. Run `npm ci`, `npm run dev`, `npm run typecheck`, `npm run build` here. Use `http://localhost:5173` so the exact Origin matches the API default. `/api` is proxied locally; the browser never stores auth tokens.
+React 18, TypeScript, Vite. Команды выполняются в этом каталоге: `npm ci`, `npm run dev`, `npm run typecheck`, `npm run build`. Открывайте `http://localhost:5173`: этот адрес совпадает с разрешённым `Origin` API. Vite проксирует `/api` на `http://127.0.0.1:8000`, токены в браузере не хранятся.
 
-`src/api.ts` exports the typed same-origin API client and standardized errors. Company selection is kept in the URL for refresh/deep-link support; business data, consents and sessions remain server-owned. The UI uses local system fonts, a responsive dark navigation and warm neutral workspace. Browser checks run with `npm run test:e2e` against an already running seeded stack and installed Chrome; see the root README for Chromium alternatives.
+`src/api.ts` — типизированный клиент API с едиными ошибками. Разделы интерфейса лежат в `src/features/*`; их назначение описано в [архитектуре](../docs/architecture.md#фронтенд-frontendsrc).
+
+Браузерные тесты: `npm run test:e2e`. Нужны запущенные API, Vite и начальные данные, а также установленный Chrome. Тесты создают новых синтетических клиентов, снимки экрана сохраняются в `test-results/`. Сценарии описаны в [тестовых сценариях](../docs/tests/test-scenarios.md).

@@ -8,7 +8,6 @@ import {
   onboard,
   password,
   registerClient,
-  revision,
   settle,
 } from "./helpers";
 
@@ -30,11 +29,11 @@ test("seeded client login, source details, retry and persistent refresh", async 
   await expect(page.locator("body")).not.toContainText("Пароль:");
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: artifacts + "/task-2-login-desktop.png",
+    path: artifacts + "/login-desktop.png",
     fullPage: true,
   });
   await page.screenshot({
-    path: `${revision}/task-11-login.png`,
+    path: `${artifacts}/login.png`,
     fullPage: true,
   });
   await loginClient(page);
@@ -47,7 +46,7 @@ test("seeded client login, source details, retry and persistent refresh", async 
   await expect(page.getByText("800 000 ₽", { exact: true })).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: artifacts + "/task-2-company-desktop.png",
+    path: artifacts + "/company-desktop.png",
     fullPage: true,
   });
   expect(await page.evaluate(() => document.cookie)).not.toContain(
@@ -79,7 +78,7 @@ test("seeded client login, source details, retry and persistent refresh", async 
   );
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: artifacts + "/task-2-onboarding-desktop.png",
+    path: artifacts + "/onboarding-desktop.png",
     fullPage: true,
   });
 });
@@ -121,7 +120,7 @@ test("mobile registration, explicit consents, source recovery, reload, errors an
   );
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: artifacts + "/task-2-onboarding-mobile.png",
+    path: artifacts + "/onboarding-mobile.png",
     fullPage: true,
   });
   await page.getByRole("button", { name: "Добавить и проверить" }).click();
@@ -142,7 +141,7 @@ test("mobile registration, explicit consents, source recovery, reload, errors an
   ).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: artifacts + "/task-2-company-mobile.png",
+    path: artifacts + "/company-mobile.png",
     fullPage: true,
   });
   expect(
@@ -485,7 +484,7 @@ test("adding a company needs the representative's Госуслуги confirmatio
     dialog.getByRole("button", { name: "Подтвердить" }),
   ).toBeFocused();
   await expect(dialog.locator("img")).toHaveCount(0);
-  await dialog.screenshot({ path: `${revision}/task-11-gosuslugi-dialog.png` });
+  await dialog.screenshot({ path: `${artifacts}/gosuslugi-dialog.png` });
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
@@ -505,7 +504,7 @@ test("adding a company needs the representative's Госуслуги confirmatio
   await expect(add).toBeEnabled();
   await page
     .locator("#gosuslugi-step")
-    .screenshot({ path: `${revision}/task-11-gosuslugi-confirmed.png` });
+    .screenshot({ path: `${artifacts}/gosuslugi-confirmed.png` });
 
   // Another ИНН needs its own confirmation; coming back to the first one asks again too.
   await page.getByRole("button").filter({ hasText: "Средний риск" }).click();

@@ -1,7 +1,7 @@
 """Pure post-submission scoring and R2-R11 decisions, compared with the independent oracle. No HTTP, no database.
 
-Inputs sweep the spec's boundaries; expected values come from application_oracle (exact fractions and calendar
-stepping) and the spec's rule table, never from the scoring module under test.
+Inputs sweep the boundaries of docs/tests/test-scenarios.md; expected values come from application_oracle (exact fractions and calendar
+stepping) and the R1–R12 table of docs/application-states.md, never from the scoring module under test.
 """
 from datetime import date, timedelta
 from itertools import product as grid
@@ -205,7 +205,7 @@ def test_trusted_source_recovery_reviews_unless_a_mandatory_rejection_applies():
     assert (overdue.rule, overdue.outcome) == ('R2', 'REJECTED')
     flagged = decide(check(tax_debt_rub=5), trusted=True)
     assert (flagged.rule, flagged.outcome, flagged.score) == ('R5', 'MANUAL_REVIEW', 100)
-    # Mandatory rejections still apply in recovery even when review flags exist (spec: R2/R6/R7 cannot be overridden).
+    # Mandatory rejections still apply in recovery even when review flags exist (R2/R6/R7 cannot be overridden).
     flagged_high = decide(check(origin='declared', age=4, revenue=300_000, previous=375_000, debt=180_000),
                           {**CLEAN, 'credit_history': 'minor_closed'}, trusted=True)
     assert (flagged_high.rule, flagged_high.outcome) == ('R6', 'REJECTED')

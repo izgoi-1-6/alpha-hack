@@ -1,5 +1,4 @@
 .git
-.superpowers
 .worktrees
 **/.venv
 **/node_modules

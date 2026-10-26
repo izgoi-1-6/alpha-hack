@@ -1,6 +1,6 @@
 """The product configuration layer: loading, every validation rule, version stamps, the CLI and the effective terms.
 
-Expected values are literal (the golden table below, transcribed from the plan's effective-terms table) and the
+Expected values are literal (the golden table below, transcribed from the product table of docs/products-and-scoring.md) and the
 independent reading in catalog_oracle.py; neither uses the loader under test. Broken configurations are edited copies
 of the shipped files in a temporary directory, loaded with `load_config` directly.
 """
@@ -20,7 +20,7 @@ BACKEND = Path(__file__).resolve().parents[1]
 SOURCE_CATALOG = json.loads(oracle.CATALOG_PATH.read_text(encoding='utf-8'))
 SOURCE_POLICY = json.loads(oracle.POLICY_PATH.read_text(encoding='utf-8'))
 N = None  # no term / no rate / no preferential period
-# The plan's effective-terms table, literally: amount min/max, unsecured cap, term min/max, per-purpose term caps,
+# The effective-terms table (docs/products-and-scoring.md), literally: amount min/max, unsecured cap, term min/max, per-purpose term caps,
 # collateral mode, annual rate (bps), rate certainty, preferential months, payment model, fields filled by the policy.
 GOLDEN = {
     'alfa_term_loan_unsecured': (300_000, 30_000_000, 30_000_000, 12, 60, {}, 'none', 2350, 'full', N, 'annuity', []),
@@ -367,7 +367,7 @@ CASES = [
      "policy.region_normalization[3]: unsupported step 'transliterate'"),
     ('non-positive estimate term', None, lambda p: p.update(payment_estimate_term_months=0),
      'policy.payment_estimate_term_months: must be a positive integer'),
-    # Fix round 1: mistyped numbers must fail the check instead of reaching a recommendation.
+    # Mistyped numbers must fail the check instead of reaching a recommendation.
     ('amount maximum as a string', lambda c: item(c, 'alfa_term_loan_unsecured')['amount'].update(max='30000000'), None,
      'items[alfa_term_loan_unsecured].amount.max: must be a positive integer, got "30000000"'),
     ('fractional amount maximum', lambda c: item(c, 'alfa_term_loan_unsecured')['amount'].update(max=30000000.5), None,
@@ -406,7 +406,7 @@ CASES = [
      'policy.products.alfa_factoring.amount_min_rub: must be a positive integer, got 0'),
     ('unknown per-product setting', None, lambda p: p['products']['alfa_factoring'].update(foo=1),
      'policy.products.alfa_factoring.foo: unknown setting'),
-    # Fix round 1: malformed shapes are reported, never raised.
+    # Malformed shapes are reported, never raised.
     ('non-numeric key rate', lambda c: c['params']['key_rate'].update(value_percent='abc'), None,
      'params.key_rate.value_percent: must be a number, got "abc"'),
     ('key rate below a basis point', lambda c: c['params']['key_rate'].update(value_percent=14.005), None,
@@ -430,7 +430,7 @@ CASES = [
     ('slider bands that are not objects', None, lambda p: p['amount_slider'].update(snap=[1, 2]),
      'policy.amount_slider.snap: bands need ascending up_to_rub and positive step_rub'),
     ('malformed entry', lambda c: drop(item(c, 'alfa_factoring'), 'rate'), None, "items[alfa_factoring]: malformed entry (KeyError: 'rate')"),
-    # Fix round 1: the remaining checker branches.
+    # The remaining checker branches.
     ('rate type a card cannot use', lambda c: item(c, 'alfa_factoring')['rate'].update(type='schedule'), None,
      "items[alfa_factoring].rate.type: 'schedule' is not supported for a card product"),
     ('formula rate without a formula', lambda c: item(c, 'psk_invest_subsidy')['rate']['periods'][0].update(rate_formula=None), None,
@@ -462,7 +462,7 @@ CASES = [
      'policy.amount_slider.snap: bands need ascending up_to_rub and positive step_rub'),
     ('slider preset out of range', None, lambda p: p['amount_slider']['presets_rub'].append(3_000_000_000),
      'policy.amount_slider.presets_rub[7]: 3000000000 is outside 300000–2000000000'),
-    # Fix round 1: catalog vocabulary and eligibility shapes.
+    # Catalog vocabulary and eligibility shapes.
     ('status typo', lambda c: item(c, 'alfa_factoring').update(status='actve'), None, "items[alfa_factoring].status: unknown value 'actve'"),
     ('display typo', lambda c: item(c, 'alfa_factoring')['display'].update(**{'as': 'cards'}), None,
      "items[alfa_factoring].display.as: unknown value 'cards'"),
@@ -471,7 +471,7 @@ CASES = [
      'items[alfa_factoring].purposes: at least one purpose is required'),
     ('collateral flag not a boolean', lambda c: item(c, 'alfa_factoring')['collateral'].update(required='no'), None,
      'items[alfa_factoring].collateral.required: must be true, false or null'),
-    # Task 9: a JSON 1.0/0.0 parses as a Decimal equal to True/False; it is no boolean, and 1.0 must not let the policy
+    # A JSON 1.0/0.0 parses as a Decimal equal to True/False; it is no boolean, and 1.0 must not let the policy
     # make a required pledge optional unnoticed.
     ('collateral flag 1.0', lambda c: item(c, 'alfa_term_loan_secured')['collateral'].update(required=1.0),
      lambda p: p['products']['alfa_term_loan_secured'].update(collateral_mode='optional'),

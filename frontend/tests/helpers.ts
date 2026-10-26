@@ -5,9 +5,8 @@ import { UploadFile } from "./files";
 // so no application is ever created on the seeded client@demo.local companies; officer@demo.local is the only seeded
 // officer, and the queue also holds other tests' applications, so rows are always located by the application id.
 
-export const artifacts = "../.superpowers/sdd/2026-10-24-credit-route";
-/** Evidence of the catalog and UX revision (Task 11 on). */
-export const revision = "../.superpowers/sdd/2026-10-25-catalog-ux-revision";
+/** Screenshots the browser tests save for review; `test-results/` is git-ignored. */
+export const artifacts = "test-results/screenshots";
 export const termCard = '[data-product-id="alfa_term_loan_unsecured"]';
 export const lineCard = '[data-product-id="alfa_revolving_line_unsecured"]';
 export const securedCard = '[data-product-id="alfa_term_loan_secured"]';
@@ -332,7 +331,7 @@ export async function expectNoPageOverflow(page: Page) {
 
 /**
  * The words the user removed from the app (any case): «демо…», «демонстрац…», «имитац…»/«имитатор», and the Latin
- * "demo". The only Latin exception that can appear on screen is a seeded `@demo.local` e-mail (binding rule 7).
+ * "demo". The only Latin exception that can appear on screen is a seeded `@demo.local` e-mail.
  */
 export const DEMO_WORDS = /(?<![а-яё])(демо|имитац|имитатор)/iu;
 export const LATIN_DEMO = /demo/i;

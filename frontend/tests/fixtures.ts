@@ -16,7 +16,7 @@ export function walkthroughDone() {
 }
 
 /**
- * The browser tests' `test`: the client walkthrough (Task 12) starts automatically for a new client, so the test's
+ * The browser tests' `test`: the client walkthrough starts automatically for a new client, so the test's
  * own `context` (and every page in it) gets the init script above unless a spec opts in with
  * `test.use({ tour: true })` (tour.spec.ts).
  *

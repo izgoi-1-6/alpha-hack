@@ -1,13 +1,13 @@
-"""No demo wording in what the server says (revision rule 7).
+"""No demo wording in what the server says.
 
 Cyrillic «демо», «демонстрац…» or «имитац…» is refused in every string literal of the backend code outside docstrings
 (labels, notices, notifications, errors, consent texts, the document review notice), in the fixture and policy files and
 in every response body of the main client and officer flows.
 
-Latin "demo" (any case) is refused (controller ruling, Task 10 fix round 1) in the values the UI renders — the consent
+Latin "demo" (any case) is refused in the values the UI renders — the consent
 `version` of both consent stages, `rules_version`, `catalog_version` — and in every human-readable text the server
 sends: each Russian literal of the code (the labels, messages, notices, notifications and errors are all Russian) and
-each key and string value of the flows' response bodies. The binding exceptions are named in the allow-list below and
+each key and string value of the flows' response bodies. The exceptions are named in the allow-list below and
 nothing else may say "demo"; Latin identifiers of the code that are never sent (env names, file paths, constraint
 names, the seed's console output) are outside the human-text scan. The OpenAPI document is a schema of route
 identifiers (the allowed fixture list route with its generated operation id and summary): only its title is checked.
@@ -26,7 +26,7 @@ pytestmark = pytest.mark.usefixtures('clock')
 FORBIDDEN = re.compile(r'(?<![а-яё])(?:демо|имитац|имитатор)', re.IGNORECASE)  # «лимита» is not «имита…»
 LATIN = re.compile(r'demo', re.IGNORECASE)
 CYRILLIC = re.compile(r'[а-яё]', re.IGNORECASE)
-# The binding exceptions (revision rule 7: technical names stay; Task 10 fix round 1 ruling). Within any text:
+# The exceptions (technical names stay). Within any text:
 ALLOWED_TEXT = {
     'seeded e-mail': re.compile(r'[\w.+-]+@demo\.local\b'),
     'data file name': re.compile(r'\bdemo-[\w-]+\.json\b'),

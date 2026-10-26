@@ -20,7 +20,6 @@ import {
   password,
   processingConsent,
   registerClient,
-  revision,
   saveAndContinue,
   securedCard,
   termCard,
@@ -116,7 +115,7 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
   await fillFinanceStage(page);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: `${artifacts}/task-4b-wizard-desktop.png`,
+    path: `${artifacts}/wizard-desktop.png`,
     fullPage: true,
   });
   await saveAndContinue(page);
@@ -154,7 +153,7 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
   await expect(submit).toBeEnabled();
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: `${artifacts}/task-4b-review-consent.png`,
+    path: `${artifacts}/review-consent.png`,
     fullPage: true,
   });
 
@@ -233,7 +232,7 @@ test("strong company: card → saved six-stage questionnaire → reload resumes 
   ).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: `${artifacts}/task-4b-status-timeline.png`,
+    path: `${artifacts}/status-timeline.png`,
     fullPage: true,
   });
 
@@ -859,7 +858,7 @@ for (const viewport of [
       ) {
         await page.evaluate(() => window.scrollTo(0, 0));
         await page.screenshot({
-          path: `${artifacts}/task-4b-wizard-mobile.png`,
+          path: `${artifacts}/wizard-mobile.png`,
           fullPage: true,
         });
       }
@@ -883,7 +882,7 @@ for (const viewport of [
     // Captured before any resize: a full-page capture right after a resize can repeat the first screen.
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({
-      path: `${artifacts}/task-4b-status-${viewport.name}.png`,
+      path: `${artifacts}/status-${viewport.name}.png`,
       fullPage: true,
     });
     if (viewport.name === "mobile") {
@@ -927,7 +926,7 @@ test("stage 2 follows each product's contract: a pledge for the secured loan, no
   await expect(pledge.getByRole("radio")).toHaveCount(3);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: `${revision}/task-11-stage2-secured.png`,
+    path: `${artifacts}/stage2-secured.png`,
     fullPage: true,
   });
 
@@ -948,7 +947,7 @@ test("stage 2 follows each product's contract: a pledge for the secured loan, no
   );
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
-    path: `${revision}/task-11-stage2-line.png`,
+    path: `${artifacts}/stage2-line.png`,
     fullPage: true,
   });
 
@@ -1001,7 +1000,7 @@ test("source-owned answers are static values with their source: the registry's t
   }
   await page
     .locator(".stage-card")
-    .screenshot({ path: `${revision}/task-11-stage3-read-only.png` });
+    .screenshot({ path: `${artifacts}/stage3-read-only.png` });
   await fillFinanceStage(page);
   await saveAndContinue(page);
   await fillObligationsStage(page);

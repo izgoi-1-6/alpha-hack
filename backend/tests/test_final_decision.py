@@ -4,7 +4,7 @@ required document accepted and within product_min <= final <= min(preapproved, t
 below-minimum refusal, final-phase rejections with incomplete packets, lazy expiry, idempotent replays, the staff
 views and DB constraints, and the A09/A10 journeys.
 
-Amounts are the acceptance document's literal numbers and integer arithmetic on the spec's 70% LTV, never the code
+Amounts are the literal numbers of docs/tests/test-scenarios.md and integer arithmetic on the 70% LTV, never the code
 under test.
 """
 from datetime import timedelta
@@ -22,14 +22,14 @@ from officer_helpers import (OFFICER_EMAIL, claimed, decisions, detail, login, o
 from test_identity_company import ORIGIN, client, register
 
 pytestmark = pytest.mark.usefixtures('clock', 'storage')
-TERM_MIN, SECURED_MIN = 300_000, 500_000  # spec product table
-STRONG_PREAPPROVED, STRONG_LIMIT = 2_000_000, 2_400_000  # acceptance: strong R8 2m, limit 2.4m
-SECURED_PREAPPROVED = 4_000_000  # acceptance: secured_investment R8 4m (limit 4.5m)
+TERM_MIN, SECURED_MIN = 300_000, 500_000  # product table, docs/products-and-scoring.md
+STRONG_PREAPPROVED, STRONG_LIMIT = 2_000_000, 2_400_000  # docs/tests/test-scenarios.md: strong R8 2m, limit 2.4m
+SECURED_PREAPPROVED = 4_000_000  # docs/tests/test-scenarios.md: secured_investment R8 4m (limit 4.5m)
 REASON = 'Демонстрационная проверка документов: всё сходится.'
 
 
 def ltv_cap(value: int) -> int:
-    return value * 7000 // 10000  # spec: floor(value x 70%)
+    return value * 7000 // 10000  # floor(value x 70%)
 
 
 def history_rows(client, application):
@@ -101,7 +101,7 @@ def test_a_rejected_document_moves_the_packet_to_rework_and_accepted_ones_stay_f
 
 
 def test_the_owner_may_delete_a_rejected_current_file_and_the_requirement_reopens(client, officer, storage):
-    """Ruling: a REJECTED current revision is deletable; the DELETED row keeps its review, the bytes go."""
+    """A REJECTED current revision is deletable; the DELETED row keeps its review, the bytes go."""
     application, documents = in_review(client, officer)
     rejected = documents['FINANCIAL_REPORT']
     _, application = reviewed(officer, application, rejected, 'reject', reason='Отчёт за другой период.')
@@ -239,7 +239,7 @@ def secured_ready(client, officer, valuation: int) -> dict:
 
 
 def test_the_secured_bound_is_recomputed_from_the_verified_valuation(client, officer):
-    """Acceptance: verified collateral 5m caps at 3.5m — the original 4m cannot be approved, at most 3.5m can."""
+    """Verified collateral 5m caps at 3.5m — the original 4m cannot be approved, at most 3.5m can."""
     application = secured_ready(client, officer, 5_000_000)
     cap = ltv_cap(5_000_000)
     assert cap == 3_500_000
@@ -268,7 +268,7 @@ def test_a_higher_verified_value_never_lifts_the_final_amount_above_the_preappro
 
 @pytest.mark.parametrize('valuation,approvable', [(714_285, False), (714_286, True)])
 def test_a_verified_bound_below_the_product_minimum_refuses_approval(client, officer, valuation, approvable):
-    """Acceptance: 714,285 caps at 499,999 (< 500,000 minimum), 714,286 at exactly 500,000."""
+    """714,285 caps at 499,999 (< 500,000 minimum), 714,286 at exactly 500,000."""
     application = secured_ready(client, officer, valuation)
     cap = ltv_cap(valuation)
     final = detail(officer, application)['application']['final_approval']
@@ -366,7 +366,7 @@ def test_a09_document_correction_journey_ends_in_a_simulated_handoff(client, off
     refused(upload(client, customer, 'FINANCIAL_REPORT'), 409, 'INVALID_STATUS')  # accepted evidence is final
     refused(delete(client, customer, replacement), 409, 'INVALID_STATUS')
     first = link(client, application, key='handoff')
-    # The address bar shows the hand-off path: no demo wording (Task 10 fix round 1 ruling).
+    # The address bar shows the hand-off path: no demo wording.
     assert first.status_code == 200 and first.json() == {'url': f"/alfa-business/{application['id']}", 'simulated': True}
     assert link(client, application, key='handoff').json() == first.json()
     assert read(client, application)['version'] == customer['version']  # the link changes nothing

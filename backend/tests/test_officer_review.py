@@ -2,7 +2,7 @@
 evidence detail, claims (one assignee), request-info, preapprove within the R12 bounds, preliminary and final
 rejections, idempotent replays (one OfficerDecision), stale versions, lazy expiry and PostgreSQL races.
 
-Amounts and bounds are the spec's literal numbers and application_oracle's exact arithmetic, never the code under
+Amounts and bounds are the literal numbers of docs/tests/test-scenarios.md and application_oracle's exact arithmetic, never the code under
 test. Information responses from the customer are covered in test_information_requests.py. The customer's responses
 carry no scoring; where a test checks it before a staff read, it reads the persisted rows (`scored`).
 """
@@ -25,8 +25,8 @@ from test_identity_company import ORIGIN, client
 
 pytestmark = pytest.mark.usefixtures('clock')
 QUEUE = '/api/v1/officer/applications'
-PRODUCT_MIN = 300_000  # both unsecured products (spec product table)
-MEDIUM_LIMIT = 600_000  # acceptance: medium R600k scored limit 600k
+PRODUCT_MIN = 300_000  # both unsecured products (docs/products-and-scoring.md)
+MEDIUM_LIMIT = 600_000  # docs/tests/test-scenarios.md: medium R600k scored limit 600k
 
 
 def queue(session, **params) -> list[str]:
@@ -295,7 +295,7 @@ def test_medium_risk_manual_preapproval_records_the_officer_decision(client, off
     assert body['decisions'][0]['officer'] == {'id': officer.user['id'], 'display_name': officer.user['display_name']}
 
 
-# Inclusive bounds product_min <= amount <= min(request, scored limit) (spec R12; acceptance medium limit 600k).
+# Inclusive bounds product_min <= amount <= min(request, scored limit) (R12; docs/tests/test-scenarios.md: medium limit 600k).
 @pytest.mark.parametrize('requested,amount,accepted', [
     (700_000, PRODUCT_MIN - 1, False), (700_000, PRODUCT_MIN, True), (700_000, MEDIUM_LIMIT, True), (700_000, MEDIUM_LIMIT + 1, False),
     (500_000, 500_000, True), (500_000, 500_001, False),  # the request bounds it below the scored limit
@@ -443,7 +443,7 @@ def test_a_preliminary_rejection_from_manual_review(client, officer):
 def test_a_final_phase_rejection_needs_no_documents(client, officer, status):
     application = submitted(client, 'strong')  # auto-preapproved, unassigned
     if status != 'PREAPPROVED':
-        set_status(client, application, status)  # document commands are Task 6; the state is seeded directly
+        set_status(client, application, status)  # the state is seeded directly, without document commands
     application = claimed(officer, application)
     assert application['allowed_actions'] == ['reject']
     result = ok(reject(officer, application, reason='Финальная проверка: отказ.'))

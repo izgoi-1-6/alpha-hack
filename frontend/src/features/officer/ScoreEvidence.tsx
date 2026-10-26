@@ -145,7 +145,7 @@ export function ScorePanel({
   const debt = numberAt(
     evaluation?.input_snapshot.answers?.monthly_debt_payment_rub,
   );
-  // Factor maxima are the spec's original scoring table (age 20, growth 25, burden 30, history 25).
+  // Factor maxima of the scoring table, docs/products-and-scoring.md (age 20, growth 25, burden 30, history 25).
   const rows: [string, string, number, number][] = factors
     ? [
         ["Возраст бизнеса", `${factors.age_months} мес.`, factors.age_points, 20],

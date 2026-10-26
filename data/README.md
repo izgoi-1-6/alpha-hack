@@ -1,10 +1,14 @@
-# Synthetic demo data
+# Данные
 
-- `credit_catalog.json`: the product catalog (schema 3.2, `catalog_version` `2026-10-25.1`). A copy of the user's `credit_catalog_updated.json` (schema 3.1, `2026-10-25`) with only these additions: per-card `display.summary`, `display.features` and `display.best_for` drafted from each item's own facts, `amount.max_unsecured` (the universal limit's 20 000 000 without collateral; `null` elsewhere) and `term.max_months_by_purpose` (`alfa_goscredit_zont`: working capital 36; `null` elsewhere). Authoritative for amounts, terms, rates, purposes and eligibility.
-- `demo-policy.json`: the demo decision rules (`rules-v2`): fallbacks for catalog nulls, payment models, ranking, the amount slider, overlay badges and the OKVED and region rules. It may tighten the catalog, never weaken it. Edit and validate both files as described in `docs/catalog.md` (`python -m app.products_config check`).
-- `demo-companies.json`: ten synthetic IP/LLC profiles (`demo-fixtures-v2`), checksum-valid generated mock INNs, deterministic actor/company UUIDs, real region names, the SME-register flag, tax regime and staff count (the registry payload's source-owned answers), a synthetic director name (the mock Госуслуги check's person), recoveries, and frozen product-choice answer keys (`need`: purpose, amount, term; `expected_check_outcome`). `gov_manufacturer` (ООО, OKVED 25.62, Курская область) exercises the border-region gov program. Business age reference date 2026-10-24; do not freeze app time. `expected_check_outcome` labels describe the internal evaluation path if reached; UI precheck/required-field gating is separate (`expected_ui_action`). Never load expectations into recommendation/scoring logic.
-- `catalog.research.json`: nine archived source claims, `can_apply=false` throughout, source path/hash in provenance. History only: the app never reads it.
+Все файлы — синтетические или собраны из публичных источников. Реальных клиентов, персональных данных и секретов здесь нет.
 
-`demo-products.json` (the three-product demo policy `demo-2026-10-24-v1` / `demo-rules-v1`) was removed in the 2026-10-25 revision; git history keeps it.
+| Файл | Содержание |
+|---|---|
+| `credit_catalog.json` | Каталог продуктов (схема 3.2, `catalog_version` `2026-10-25.1`): 11 продуктов-карточек и бейдж «Зонтичное» поручительство. Главный источник сумм, сроков, ставок, целей и требований к заёмщику. У каждого элемента в `source` указана публичная страница и дата сверки |
+| `demo-policy.json` | Правила решения (`rules-v2`): значения по умолчанию для пустых полей каталога, мультипликаторы оборота, LTV, документы, модели платежа, ранжирование, шкала суммы, тексты бейджей, правила ОКВЭД и регионов. Может ужесточать каталог, но не ослаблять |
+| `demo-companies.json` | Синтетические данные (`demo-fixtures-v2`): 3 учётные записи и 10 компаний ИП и ООО. Для каждой компании — ИНН с верной контрольной суммой, реестр и обороты, признак МСП, налоговый режим, число сотрудников, ФИО директора для заглушки Госуслуг, ответы БКИ, сценарии восстановления источников, ожидаемые итоги для тестов. Деловая дата — 2026-10-24 |
+| `catalog.research.json` | Архив прежнего исследования: 9 записей, `can_apply=false`. Приложение его не читает |
 
-Only local mocks consume these INNs; generated checksums do not imply unassigned real numbers. Names, addresses and directors are invented; no real customer data. Seed credentials are published synthetic local accounts in the canonical spec. No real secrets or personal information belong here.
+Правка и проверка каталога и политики описаны в [продуктах и скоринге](../docs/products-and-scoring.md#как-править-каталог-и-политику). Что показывает каждая компания — в [запуске и показе](../docs/demo.md#синтетические-компании).
+
+ИНН сгенерированы с правильной контрольной суммой; они используются только локальными заглушками. Не утверждается, что эти номера никому не принадлежат. Названия, адреса и ФИО придуманы.

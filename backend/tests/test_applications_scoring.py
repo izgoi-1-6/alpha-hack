@@ -2,7 +2,7 @@
 source recovery.
 
 Scores, limits and rules come from application_oracle (exact fractions and calendar stepping, no application code)
-and the literal numbers of docs/test-scenarios/acceptance.md; fixture labels are only cross-checked against the oracle.
+and the literal numbers of docs/tests/test-scenarios.md; fixture labels are only cross-checked against the oracle.
 The customer's responses carry no scoring (test_hidden_scoring.py), so the scoring is read from the persisted rows
 (`scored`).
 """
@@ -142,7 +142,7 @@ def test_secured_submission_needs_a_declared_collateral(client, bki_calls, colla
     assert paths <= set(response.json()['error']['fields']) and bki_calls == []
 
 
-# The acceptance table, plus the gov-program fixture: low risk, min(30m border-program maximum, 3 × 12m) = 30m.
+# The fixture table of docs/tests/test-scenarios.md, plus the gov-program fixture: low risk, min(30m border-program maximum, 3 × 12m) = 30m.
 SPEC_LIMITS = {'strong': 2_400_000, 'medium': 600_000, 'high_risk': None, 'secured_investment': 4_500_000,
                'gov_manufacturer': 30_000_000}
 
@@ -415,7 +415,7 @@ def test_a_scored_limit_below_the_product_minimum_rejects(client, revenue, rule,
 @pytest.mark.parametrize('declared,requested,limit', [(714_285, 500_000, 499_999), (714_286, 500_000, 500_000),
                                                       (1_000_000, 700_000, 700_000), (1_000_000, 800_000, 700_000)])
 def test_secured_scored_limit_applies_the_declared_collateral_cap(client, declared, requested, limit):
-    assert oracle.scored_limit(SECURED, 'low', 800_000, declared) == limit  # acceptance values agree with exact arithmetic
+    assert oracle.scored_limit(SECURED, 'low', 800_000, declared) == limit  # the values of docs/tests/test-scenarios.md agree with exact arithmetic
     rule, status, amount = oracle.outcome(SECURED, 100, limit, requested)
     application = scored(client, submitted(client, 'strong', product=SECURED, requested_amount_rub=requested,
                                            collateral=declared_collateral(declared)))
@@ -504,7 +504,7 @@ def test_a_retry_needs_the_stored_submission_bki_consent(client, bki_calls):
 
 
 def test_an_internal_check_reports_a_client_answer_gap_as_a_client_answers_request(client, bki_calls):
-    """The defensive check outcome for a source gap that reaches the check without the submit gate (acceptance note)."""
+    """The defensive check outcome for a source gap that reaches the check without the submit gate."""
     from app.applications import checks
     from app.applications.lifecycle import ApplicationChange
     from app.applications.models import Application

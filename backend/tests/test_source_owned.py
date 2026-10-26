@@ -1,4 +1,4 @@
-"""Source-owned answers over HTTP + DB (revision rule 5 and 6): the tax regime and the employee count come from the
+"""Source-owned answers over HTTP + DB: the tax regime and the employee count come from the
 registry payload, the representative's name and authority from the company's Госуслуги verification. They are
 prefilled, read-only in the dialog, refused in answers PATCH and in an information response, never asked by R3, never
 requestable by an officer, and pinned from their sources at submission. An unavailable registry still waits (R4).

@@ -10,7 +10,7 @@ import {
   officerPage,
   onboard,
   registerClient,
-  revision,
+  artifacts,
   settle,
   staffDetail,
   statusPill,
@@ -18,11 +18,11 @@ import {
   termCard,
 } from "./helpers";
 
-// End-to-end journeys against the real app (Task 13): fresh synthetic clients, officer@demo.local in a browser
+// End-to-end journeys against the real app: fresh synthetic clients, officer@demo.local in a browser
 // context of its own, no injected replies.
 
 const shot = (page: Page, name: string) =>
-  page.screenshot({ path: `${revision}/task-13-${name}.png`, fullPage: true });
+  page.screenshot({ path: `${artifacts}/${name}.png`, fullPage: true });
 const heading = (page: Page, name: string) =>
   page.getByRole("heading", { level: 1, name });
 

@@ -1,137 +1,149 @@
-# Running and presenting «Кредитный маршрут»
+# Запуск и показ
 
-«Кредитный маршрут» takes a small business (ИП or ООО) from its first visit to a final credit decision: the client adds a company (with a Госуслуги authority check), picks an amount, compares the bank's catalog products on explained cards, fills a six-stage questionnaire and submits it with consents. Scoring then gives a preliminary approval, a review by a credit officer or a refusal. After a preliminary approval the client uploads documents, the officer reviews them and takes the final decision, and an approved client is handed off to Alfa-Business.
+«Кредитный маршрут» ведёт малый бизнес (ИП или ООО) от первого визита до окончательного решения по кредиту:
 
-Everything runs locally on synthetic data. The registry, turnover, ФНС/open sources, BKI, Госуслуги, notifications, document checks and Alfa-Business are local mocks, and no real call ever leaves the machine. What is executed and what is assumed is listed in [evidence.md](evidence.md).
+1. Клиент добавляет компанию с подтверждением полномочий через Госуслуги.
+2. Указывает сумму и сравнивает продукты банка на карточках с пояснениями.
+3. Заполняет анкету из шести этапов и отправляет её с согласиями.
+4. Проверка даёт предварительное одобрение, передаёт заявку кредитному специалисту или отказывает.
+5. После предварительного одобрения клиент загружает документы, специалист проверяет их и принимает окончательное решение.
+6. Одобренный клиент переходит в Альфа-Бизнес.
 
-## 1. Start-up
+Всё работает локально на синтетических данных. Реестр и обороты, БКИ, Госуслуги, уведомления, проверка документов и Альфа-Бизнес — локальные заглушки; запросов наружу нет.
 
-### Local (the development set-up)
+## Запуск
 
-Requires Python 3.12, Node 24 with npm, and Docker (for PostgreSQL only).
+### Локально
 
-```sh
-cp .env.example .env          # optional: the defaults below are the same
-./scripts/setup.sh            # venv + npm ci + PostgreSQL container + migrations + seed (idempotent)
-./scripts/run-api.sh          # API on http://127.0.0.1:8000 (auto-reload)
-npm run dev --prefix frontend # in another terminal: UI on http://localhost:5173
-```
-
-Open **http://localhost:5173**, not 127.0.0.1. The API accepts commands only from the exact UI origin (`UI_ORIGIN`, default `http://localhost:5173`), and Vite proxies `/api` so the browser stays same-origin. OpenAPI is at http://127.0.0.1:8000/docs.
-
-### Docker Compose (the whole stack in containers)
+Нужны Python 3.12, Node 24 с npm и Docker (только для PostgreSQL).
 
 ```sh
-docker compose up --build -d   # db + api + web; UI on http://localhost:5173
-docker compose logs -f api     # «Uvicorn running on http://0.0.0.0:8000»
-docker compose stop api web    # stop the app, keep the database running
+cp .env.example .env            # необязательно: значения по умолчанию те же
+./scripts/setup.sh              # venv, npm ci, контейнер PostgreSQL, миграции, начальные данные
+./scripts/run-api.sh            # API на http://127.0.0.1:8000 (с автоперезапуском)
+npm run dev --prefix frontend   # в другом терминале: интерфейс на http://localhost:5173
 ```
 
-- `db` is PostgreSQL 17 on `127.0.0.1:5432`, with its data in the named volume `credit_route_data`.
-- `api` runs the migrations and, with `DEMO_MODE=true`, the idempotent seed at every start, then Uvicorn on `127.0.0.1:8000`. Uploaded files go to the named volume `credit_route_documents`.
-- `web` is nginx serving the production build on `127.0.0.1:5173`. It proxies `/api/` to the API and accepts bodies up to 21 MiB (the API's 20 MiB file limit plus the envelope).
+`setup.sh` можно запускать повторно: начальные данные загружаются идемпотентно.
 
-The compose `db` is the same database the local set-up uses. Stop the local API and Vite before `docker compose up` (same ports 8000 and 5173), and start them again after `docker compose stop api web`. Never pass `-v` to `docker compose down`: it deletes the volumes and with them the data and the uploaded files. Files uploaded through the containers live in the `credit_route_documents` volume, not in `var/documents`.
+Открывайте **http://localhost:5173**, а не 127.0.0.1: API принимает команды только с точного адреса интерфейса (`UI_ORIGIN`, по умолчанию `http://localhost:5173`). Vite проксирует `/api`, поэтому для браузера интерфейс и API — один источник. Интерактивное описание API — http://127.0.0.1:8000/docs, файлы — в [docs/api](api/).
 
-## 2. Accounts
+### Docker Compose
 
-All seeded accounts use the synthetic password `DemoCredit2026!`. The login page has a quick-login button for each:
+```sh
+docker compose up --build -d   # db + api + web; интерфейс на http://localhost:5173
+docker compose logs -f api     # «Uvicorn running on http://0.0.0.0:8000»; Ctrl+C — выйти из просмотра
+./scripts/smoke-docker.sh      # быстрая проверка через nginx: вход, Госуслуги, заявка, загрузка файла
+docker compose stop api web    # остановить приложение, база продолжит работать
+```
 
-| Button | Account | Role | Starts with |
+`scripts/smoke-docker.sh` нужны bash, curl и python3. Скрипт создаёт одного синтетического клиента и одну заявку и печатает PASS или FAIL по каждой проверке.
+
+- `db` — PostgreSQL 17 на `127.0.0.1:5432`, данные в томе `credit_route_data`.
+- `api` при каждом старте применяет миграции и при `DEMO_MODE=true` загружает начальные данные, затем запускает Uvicorn на `127.0.0.1:8000`. Загруженные файлы хранятся в томе `credit_route_documents`.
+- `web` — nginx со сборкой интерфейса на `127.0.0.1:5173`: проксирует `/api/` в API и принимает тело запроса до 21 МиБ (лимит файла 20 МиБ плюс служебная часть).
+
+Контейнер `db` — та же база, что и при локальном запуске. Порты 8000 и 5173 тоже общие, поэтому перед `docker compose up` остановите локальные API и Vite. Не используйте `docker compose down -v`: команда удалит тома с данными и загруженными файлами.
+
+## Учётные записи
+
+У всех начальных учётных записей синтетический пароль `DemoCredit2026!`. На странице входа для каждой есть кнопка быстрого входа:
+
+| Кнопка | Учётная запись | Роль | Что есть изначально |
 |---|---|---|---|
-| «Войти как клиент» | `client@demo.local` | client | the ten fixture companies below (no applications) |
-| «Новый клиент» | `other@demo.local` | client | no companies (a good account to show the walkthrough) |
-| «Войти как специалист» | `officer@demo.local` | credit officer | the review queue |
+| «Войти как клиент» | `client@demo.local` | клиент | 10 синтетических компаний, заявок нет |
+| «Новый клиент» | `other@demo.local` | клиент | компаний нет: удобно показать пошаговую подсказку |
+| «Войти как специалист» | `officer@demo.local` | кредитный специалист | очередь заявок |
 
-«Регистрация» creates more clients (any synthetic e-mail; a password of at least 10 characters). Public registration only ever creates clients; credit officers come only from the seed. The walkthrough opens once per client and browser (its flag is kept in `localStorage`). «Как это работает» in the top bar restarts it.
+«Регистрация» создаёт новых клиентов: подойдёт любая синтетическая почта и пароль от 10 символов. Специалисты есть только в начальных данных. Пошаговая подсказка открывается один раз для клиента в этом браузере; «Как это работает» в верхней панели запускает её снова.
 
-## 3. Fixture companies
+## Синтетические компании
 
-Adding a company means choosing one of these ten synthetic ИНН (`data/demo-companies.json`, `demo-fixtures-v2`). Each one exercises a path through the rules. The outcomes are those the browser journeys and backend tests produce. Business age is counted to the fixture date 2026-10-24.
+Добавить можно любую из десяти компаний `data/demo-companies.json`. Заглушка Госуслуг всегда подтверждает директора из фикстуры, поэтому для каждого клиента ничего настраивать не нужно. Каждая компания проводит заявку своим путём через правила. Итоги ниже воспроизводят браузерные сценарии и тесты бэкенда. Возраст бизнеса считается до даты добавления компании (для начальных данных — до 2026-10-24).
 
-| Company | ИНН | What it shows |
+| Компания | ИНН | Что показывает |
 |---|---|---|
-| ООО «Сильный бизнес» | 9900000017 | Low risk: 48 months, 800 000 ₽ a month, clean history. Personal estimate 2 400 000 ₽ (3 × turnover). Term loan 2 000 000 ₽ → score 100, R8 preliminary approval; 2 500 000 ₽ → R9, approved at the 2 400 000 ₽ limit. The main story. |
-| ИП «Средний риск» | 990000000299 | Medium risk (65 points). The revolving line at 700 000 ₽ goes to an officer (R11, scored limit 600 000 ₽ = min(1 000 000, turnover)). The information-request story. |
-| ИП «Высокий риск» | 990000000362 | Four months old, falling turnover, heavy debt: 10 points → automatic refusal (R6). With tax arrears the check goes to an officer instead (R5), where a preliminary approval is a mandatory stop. Main OKVED 47.11 falls under the guarantee's retail exclusion, so the «Зонтичное» badge shows only on the exempt border-territories program. |
-| ООО «Неактивный бизнес» | 9900000049 | Closed business: read-only results, «Не рассчитывается» instead of an estimate, no «Начать анкету». |
-| ИП «Неполные обороты» | 990000000500 | No turnover in the sources: estimates «Нужно уточнить». The client declares turnover in the questionnaire and a specialist reviews it (R5). A declared 0 makes the limit not computable for the officer. |
-| ООО «Реестр недоступен» | 9900000063 | Registry did not answer: eligibility unknown, no application until «Повторить проверку» on the company profile recovers it. |
-| ООО «Оборудование» | 9900000070 | Secured loan: 1 500 000 ₽ a month, an 8 000 000 ₽ pledge. Secured term loan 4 000 000 ₽ → R8 (limit 4 500 000 ₽), four documents. A verified valuation of 5 000 000 ₽ bounds the final amount at 3 500 000 ₽ (70 %). |
-| ИП «БКИ недоступно» | 990000000820 | The credit bureau does not answer: «Ждём источник данных» (R4), then «Повторить проверку» → preliminary approval. |
-| ИП «БКИ без категории» | 990000000901 | The bureau answers without a history category: a system request that only a source retry can close, then a specialist's review. |
-| ООО «Курский производитель» | 9900000095 | Manufacturer in Курская область (OKVED 25.62) on the SME register: eligible for every card product. At 20 000 000 ₽ seven cards fit, the three secured ones wait for the pledge and the subsidy program starts at 25 000 000 ₽. «Кредит по ПСК для приграничных территорий» at 20 000 000 ₽ → score 100, R8 (limit 30 000 000 ₽). |
+| ООО «Сильный бизнес» | 9900000017 | Низкий риск: 48 месяцев, оборот 800 000 ₽ в месяц, чистая история. Оценка 2 400 000 ₽ (3 × оборот). Кредит одной суммой на 2 000 000 ₽ — 100 баллов, R8, предварительное одобрение. На 2 500 000 ₽ — R9, одобрение на 2 400 000 ₽. Основной сценарий |
+| ИП «Средний риск» | 990000000299 | Средний риск, 65 баллов. Линия на 700 000 ₽ уходит специалисту: R11, лимит 600 000 ₽ = min(1 000 000, оборот). Сценарий запроса сведений |
+| ИП «Высокий риск» | 990000000362 | 4 месяца, оборот падает, высокая нагрузка — 10 баллов, автоматический отказ (R6). С налоговой задолженностью заявка уходит специалисту (R5), но предварительное одобрение невозможно: обязательная остановка. Основной ОКВЭД 47.11, поэтому бейдж поручительства есть только на приграничной программе ПСК |
+| ООО «Неактивный бизнес» | 9900000049 | Деятельность прекращена: только просмотр, «Не рассчитывается» вместо оценки, нет «Начать анкету» |
+| ИП «Неполные обороты» | 990000000500 | В источнике нет оборотов: оценки «Нужно уточнить». Клиент указывает выручку в анкете, и специалист её проверяет (R5, «Заявлено клиентом»). Заявленный 0 не даёт рассчитать лимит |
+| ООО «Реестр недоступен» | 9900000063 | Реестр не ответил: требования к компании неизвестны, анкету не начать, пока «Повторить проверку» в профиле не восстановит данные |
+| ООО «Оборудование» | 9900000070 | Кредит с залогом: оборот 1 500 000 ₽, залог на 8 000 000 ₽. Кредит одной суммой с залогом на 4 000 000 ₽ — R8 (лимит 4 500 000 ₽), четыре документа. Проверенная оценка залога 5 000 000 ₽ ограничивает итоговую сумму 3 500 000 ₽ (70 %) |
+| ИП «БКИ недоступно» | 990000000820 | БКИ не отвечает: «Ждём источник данных» (R4), затем «Повторить проверку» — предварительное одобрение |
+| ИП «БКИ без категории» | 990000000901 | БКИ ответило без категории кредитной истории: системный запрос, который закрывает только повторный запрос к источнику, затем рассмотрение специалистом |
+| ООО «Курский производитель» | 9900000095 | Производитель из Курской области (ОКВЭД 25.62) в реестре МСП, подходит под требования всех продуктов. На 20 000 000 ₽ подходят 7 карточек, три продукта с залогом ждут залог, субсидируемая ПСК начинается от 25 000 000 ₽. «Кредит по ПСК для приграничных территорий» на 20 000 000 ₽ — 100 баллов, R8 (лимит 30 000 000 ₽) |
 
-Any client can add any of these ИНН: the mock Госуслуги always confirms the fixture's director, so nothing needs setting up per account.
+## Каталог и политика
 
-## 4. Editing the catalog and the policy
-
-Products come from two files, both validated when the API starts:
-
-- `data/credit_catalog.json`: the bank's products and their facts (amounts, terms, rates, purposes, eligibility, card texts). It is authoritative.
-- `data/demo-policy.json`: the decision rules. It holds fallbacks for catalog nulls, payment models, ranking, the amount slider, badge texts and the OKVED/region rules. It may only tighten the catalog.
-
-After editing either file, validate it before restarting the API:
+Продукты задают `data/credit_catalog.json` (факты о продуктах) и `data/demo-policy.json` (правила решения). После правки проверьте файлы и перезапустите API:
 
 ```sh
 PYTHONPATH=backend backend/.venv/bin/python -m app.products_config check
 # OK: catalog 2026-10-25.1+c0683aa1, rules rules-v2+e3e3ac59, 11 products, 1 overlay
 ```
 
-A broken edit prints every problem with its path and exits 1, and the API refuses to start with the same messages. Restart the API after a valid edit (it reads the files once). Versions carry a content hash, so any edit makes saved recommendations and drafts stale (409 `RECOMMENDATION_STALE`; the client recalculates), while submitted applications keep the product they pinned. [catalog.md](catalog.md) explains every setting, what the checker enforces and the common edits (key rate, terms, a new product, closing a program).
+Все настройки, проверки и частые правки описаны в [продуктах и скоринге](products-and-scoring.md#как-править-каталог-и-политику).
 
-## 5. Resetting to the seed
+## Сброс к начальным данным
 
-`scripts/reset-demo.sh` empties the configured database and reloads the seed: `alembic downgrade base`, `upgrade head`, then the seed. It deletes every user, company, application and document record; uploaded files stay on disk. Stop the API first, then:
+`scripts/reset-demo.sh` очищает базу и загружает начальные данные заново: `alembic downgrade base`, `upgrade head`, затем начальные данные. Удаляются все пользователи, компании, заявки и записи документов; загруженные файлы остаются на диске. Сначала остановите API:
 
 ```sh
-./scripts/reset-demo.sh            # asks: type yes
-./scripts/reset-demo.sh --yes      # no question
-./scripts/reset-demo.sh --dry-run  # all checks, prints the steps, changes nothing
-./scripts/run-api.sh               # start the API again
+./scripts/reset-demo.sh            # спросит подтверждение: введите yes
+./scripts/reset-demo.sh --yes      # без вопроса
+./scripts/reset-demo.sh --dry-run  # все проверки и список шагов, без изменений
+./scripts/run-api.sh               # снова запустить API
 ```
 
-It refuses unless `DEMO_MODE` is true (as the app reads it), and it refuses a `DATABASE_URL` whose host is not `localhost`, `127.0.0.1` or `db`, or whose query sets a host (`host=`, `hostaddr=`), unless `--force-remote` is given. Values in the environment win over `.env`. With the Docker stack, run it from the host after `docker compose stop api` (the database port is published on 127.0.0.1:5432), then `docker compose start api`. There is no reset endpoint: `DEMO_MODE=false` also makes the seed refuse and hides the fixture list.
+Скрипт отказывается работать:
 
-## 6. A short presentation script (about 12 minutes)
+- если `DEMO_MODE` не равен true (так, как его читает приложение);
+- если хост в `DATABASE_URL` не `localhost`, `127.0.0.1` или `db` либо задан в параметрах строки (`host=`, `hostaddr=`) — разрешить это может только `--force-remote`.
 
-Use two browser windows: a normal one for the client, a private one for the officer. Start from a freshly reset database for clean lists.
+Значения из окружения важнее `.env`. С Docker запускайте скрипт с хоста после `docker compose stop api` (порт базы опубликован на 127.0.0.1:5432), затем `docker compose start api`.
 
-**The client (about 6 minutes).**
+## Сценарий показа (около 12 минут)
 
-1. On http://localhost:5173 choose «Регистрация» and create a client (or use «Новый клиент»). Say: the data is synthetic and every bank source is a local mock.
-2. The walkthrough opens: «Начните с компании». Click «Добавить компанию» and follow it.
-3. Choose «Сильный бизнес», then «Подтвердить через Госуслуги». The dialog shows the director (Соколов Андрей Викторович, Генеральный директор); click «Подтвердить». Tick both permissions and click «Добавить и проверить». Point out that the credit history is not requested yet.
-4. The profile shows what the sources returned (registry, turnover 800 000 ₽). Click «Подобрать финансирование».
-5. The amount is the only input (default 2 000 000 ₽). Show the eleven catalog products ranked on explained cards: what the product is, its features, who it suits. «Лучшее совпадение» is on the fitting first card. Keep the personal estimate (2 400 000 ₽) apart from the product maximum (30 000 000 ₽). The payment is 77 942 ₽ over the 36-month estimate term. Move to 3 000 000 ₽: the term loan offers «Рассчитать на 2 400 000 ₽». Come back to 2 000 000 ₽.
-6. «Начать анкету» on «Кредит одной суммой без залога», then «Готово» on the last walkthrough step.
-7. Go through the six stages:
-   - confirm the company, give an address and an activity;
-   - choose «Пополнение оборотных средств» and 12 months;
-   - the turnover comes from the source, and the tax regime and staff are read-only;
-   - debt payments 160 000 ₽, no tax arrears, no proceedings;
-   - the representative comes from Госуслуги; confirm the owners;
-   - give both consents and click «Отправить заявку».
-8. «Заявка предварительно одобрена»: preliminary approval 2 000 000 ₽. Stress that it is not a final decision, and that the client never sees the scoring: the 100 points and the 2 400 000 ₽ scored limit are shown to the officer only. Upload any small synthetic PDF as the bank statement and a PNG or JPEG as the financial report, then click «Отправить комплект».
+Нужны два окна браузера: обычное для клиента и приватное для специалиста. Чистые списки получаются после сброса базы.
 
-**The officer (about 4 minutes).**
+**Клиент (около 6 минут).**
 
-9. In the private window click «Войти как специалист». The queue lists the oldest submission first; filter «Статус» = «Документы на проверке» and open the application. Click «Взять в работу» and show the evidence: score factors, sources, amounts and the history.
-10. Accept both documents with a comment. The final decision opens at 2 000 000 ₽ with its bounds. Give a reason, click «Одобрить окончательно», then «Да, одобрить».
-11. In the client window reload the page: «Заявка одобрена», with the requested, preliminarily approved and final amounts on separate tiles. «Перейти в Альфа-Бизнес» opens the hand-off page: no money moves and nothing is signed here.
+1. На http://localhost:5173 выберите «Регистрация» и создайте клиента или нажмите «Новый клиент». Скажите, что данные синтетические, а источники банка — локальные заглушки.
+2. Откроется подсказка «Начните с компании». Нажмите «Добавить компанию» и идите по шагам.
+3. Выберите «Сильный бизнес», затем «Подтвердить через Госуслуги». Диалог покажет директора: Соколов Андрей Викторович, Генеральный директор. Нажмите «Подтвердить», отметьте оба разрешения и нажмите «Добавить и проверить». Обратите внимание: кредитная история пока не запрашивается.
+4. Профиль показывает, что вернули источники: реестр и оборот 800 000 ₽. Нажмите «Подобрать финансирование».
+5. Единственное поле — сумма, по умолчанию 2 000 000 ₽. На карточках 11 продуктов по рангу: что это, особенности, кому подходит; первая подходящая помечена «Лучшее совпадение». Личная оценка 2 400 000 ₽ показана отдельно от максимума продукта 30 000 000 ₽. Платёж — 77 942 ₽ при расчётном сроке 36 месяцев. На 3 000 000 ₽ карточка кредита предложит «Рассчитать на 2 400 000 ₽». Верните 2 000 000 ₽.
+6. Нажмите «Начать анкету» на «Кредит одной суммой без залога», затем «Готово» на последнем шаге подсказки.
+7. Пройдите шесть этапов:
+   - подтвердите сведения о компании, укажите адрес и деятельность;
+   - выберите «Пополнение оборотных средств» и 12 месяцев;
+   - оборот пришёл из источника, налоговый режим и число сотрудников показаны только для чтения;
+   - платежи по кредитам 160 000 ₽, налоговой задолженности и судебных разбирательств нет;
+   - представитель пришёл из Госуслуг, подтвердите сведения о владельцах;
+   - отметьте оба согласия и нажмите «Отправить заявку».
+8. «Заявка предварительно одобрена»: 2 000 000 ₽. Это не окончательное решение. Клиент не видит скоринг: 100 баллов и рассчитанный лимит 2 400 000 ₽ показаны только специалисту. Загрузите любой небольшой синтетический PDF как банковскую выписку, PNG или JPEG как финансовую отчётность и нажмите «Отправить комплект».
 
-**Optional stories (2–3 minutes each).**
+**Специалист (около 4 минут).**
 
-- *An information request*: as the client add «Средний риск» and apply for the revolving line at 700 000 ₽ («На рассмотрении», 65 points). The officer claims it, asks about the debt payments, the client answers on the same application, and the officer preliminarily approves up to 600 000 ₽. An amount above that is refused with the bounds.
-- *A refusal*: «Высокий риск» at 300 000 ₽ is refused automatically (10 points). At the document stage the officer can refuse with a reason; the packet then stays as a read-only record.
-- *A source outage*: «Реестр недоступен» shows unknown eligibility and no «Начать анкету» until «Повторить проверку» on the profile.
-- *A gov program*: «Курский производитель» at 20 000 000 ₽ fits «Кредит по ПСК для приграничных территорий» (a preferential 14 % rate for 12 months).
+9. В приватном окне нажмите «Войти как специалист». Очередь показывает давние заявки первыми. Выберите в «Статусе» «Документы на проверке» и откройте заявку. Нажмите «Взять в работу» и покажите: факторы скоринга, источники, суммы, историю.
+10. Примите оба документа с комментарием. Окончательное решение откроется на 2 000 000 ₽ с границами. Укажите причину, нажмите «Одобрить окончательно», затем «Да, одобрить».
+11. В окне клиента обновите страницу: «Заявка одобрена», запрошенная, предварительно одобренная и итоговая суммы — на отдельных плитках. «Перейти в Альфа-Бизнес» откроет страницу перехода: деньги не перечисляются, договор здесь не подписывается.
 
-## 7. Troubleshooting
+**Дополнительные сюжеты (по 2–3 минуты).**
 
-- **«Нет связи с сервером» or «Сервер не смог выполнить запрос»**: the UI server or the API behind it is not running. The first means no answer at all; the second is a proxy or server failure. Start `./scripts/run-api.sh` (and Vite), or the compose `api` and `web`.
-- **«Откройте приложение по разрешённому адресу»**: the UI was opened at another address (e.g. 127.0.0.1 instead of localhost), so the Origin check refuses commands; open http://localhost:5173 or set `UI_ORIGIN`.
-- **The API does not start**: run the config check above, which names the broken catalog or policy value. Make sure PostgreSQL is up (`docker compose up -d --wait db`).
-- **Port 5173 or 8000 busy**: a local API/Vite and the compose `api`/`web` cannot run at the same time.
-- **«Условия продуктов изменились…» when starting or submitting**: the catalog or policy changed after the estimate; recalculate («Пересчитать оценку»).
-- **The walkthrough does not open**: it opens once per client and browser. Use «Как это работает» or a private window.
+- **Запрос сведений.** Клиент добавляет «Средний риск» и подаёт заявку на линию на 700 000 ₽: «На рассмотрении», у специалиста 65 баллов. Специалист берёт заявку, запрашивает платежи по кредитам, клиент отвечает в той же заявке. Специалист предварительно одобряет до 600 000 ₽; сумма больше отклоняется с указанием границ.
+- **Отказ.** «Высокий риск» на 300 000 ₽ получает автоматический отказ (10 баллов). На этапе документов специалист может отказать с причиной; комплект остаётся записью только для чтения.
+- **Сбой источника.** У «Реестр недоступен» требования неизвестны, и «Начать анкету» нет, пока «Повторить проверку» в профиле не восстановит реестр.
+- **Госпрограмма.** «Курский производитель» на 20 000 000 ₽ подходит под «Кредит по ПСК для приграничных территорий» (льготные 14 % на 12 месяцев).
+
+Тот же путь через API — папка «Сквозной сценарий» в [Postman-коллекции](api/postman_collection.json).
+
+## Неполадки
+
+- **«Нет связи с сервером» или «Сервер не смог выполнить запрос».** Не запущен сервер интерфейса или API за ним. Первое сообщение — ответа нет вовсе, второе — сбой прокси или сервера. Запустите `./scripts/run-api.sh` и Vite либо сервисы `api` и `web` в Compose.
+- **«Откройте приложение по разрешённому адресу».** Интерфейс открыт по другому адресу, например 127.0.0.1 вместо localhost, и проверка `Origin` отклоняет команды. Откройте http://localhost:5173 или задайте `UI_ORIGIN`.
+- **API не запускается.** Выполните проверку каталога выше: она назовёт сломанное значение. Убедитесь, что PostgreSQL запущен (`docker compose up -d --wait db`).
+- **Порт 5173 или 8000 занят.** Локальные API и Vite нельзя запускать одновременно с сервисами `api` и `web` из Compose.
+- **«Условия продуктов изменились…» при создании или отправке.** Каталог или политика изменились после подбора: пересчитайте («Пересчитать оценку»).
+- **Подсказка не открывается.** Она открывается один раз для клиента в этом браузере. Нажмите «Как это работает» или откройте приватное окно.

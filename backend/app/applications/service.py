@@ -2,7 +2,7 @@
 the router has already locked (company first, then application) and after the idempotency replay check; any ApiError
 rolls the whole command back.
 
-Submit validates in the spec's order: version, draft, the company's Госуслуги verification (403
+Submit validates in this order: version, draft, the company's Госуслуги verification (403
 AUTHORITY_NOT_VERIFIED), current policy, one active application per company/product, R1 corrections (the company's
 current eligibility included; with the registry source unavailable an unknown fact waits for R4 instead), explicit
 current consents, R3 required answers (skipped for a known inactive company, which the check rejects through R2). The

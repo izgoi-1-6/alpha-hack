@@ -3,8 +3,7 @@
 Staff-only data stays out: assignee, the scoring (score, risk band, factors, review flags, the scored limit and the
 evaluation's rule; check texts and score-revealing reason codes are mapped by `disclosure`), source payloads and input
 snapshots, consents, officer ids and decisions; history names actor roles, not users. The staff serializers in
-app.officer.views build on these (spec: "Staff detail additionally returns source snapshots, factors, decisions, claim
-owner and documents").
+app.officer.views build on these and add the source snapshots, factors, decisions, claim owner and documents.
 """
 from datetime import date, datetime
 from sqlalchemy import select

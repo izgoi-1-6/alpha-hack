@@ -1,8 +1,7 @@
 """Independent expectations for the application scoring tests.
 
 Nothing here imports application code. The factor points, risk bands, the personal-limit formula and R6-R11 order
-are transcribed from the spec ("Scoring and state machine", "Product policy and recommendations") and the plan's config
-design; product bounds, collateral modes, unsecured caps, purposes, term ranges and documents come from catalog_oracle's
+are transcribed from docs/products-and-scoring.md and docs/application-states.md; product bounds, collateral modes, unsecured caps, purposes, term ranges and documents come from catalog_oracle's
 own reading of the catalog and policy files (a reader, not a calculator). The arithmetic deliberately differs from the
 implementation: exact fractions instead of integer cross-multiplication, and calendar stepping instead of a month
 formula, so a shared mistake cannot make both agree.

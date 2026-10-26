@@ -7,7 +7,7 @@ import {
   nbsp,
   onboard,
   registerClient,
-  revision,
+  artifacts,
   settle,
   termCard,
 } from "./helpers";
@@ -391,7 +391,7 @@ test("amount slider: log scale from the config, exact snapping, keyboard, preset
   await expect(field).toHaveValue(grouped(3000000));
   await page
     .locator(".amount-picker")
-    .screenshot({ path: `${revision}/task-11-slider.png` });
+    .screenshot({ path: `${artifacts}/slider.png` });
 });
 
 /** The term loan's annuity, rounded half up, in exact integer arithmetic: A·p·(q+p)ⁿ / (q·((q+p)ⁿ − qⁿ)), q = 120 000. */
@@ -635,13 +635,13 @@ test("cards: two per row with aligned sections at 1366×768 and 1440, one column
     await page.evaluate(() => window.scrollTo(0, 0));
     await settle(page);
     await page.screenshot({
-      path: `${revision}/task-11-product-choice-${width}.png`,
+      path: `${artifacts}/product-choice-${width}.png`,
       fullPage: true,
     });
   }
   await page
     .locator(termCard)
-    .screenshot({ path: `${revision}/task-11-card.png` });
+    .screenshot({ path: `${artifacts}/card.png` });
 
   // The switch sits at 900 px of window width: two columns there, one just below; nothing overflows either way.
   for (const [width, columns] of [
@@ -677,7 +677,7 @@ test("cards: two per row with aligned sections at 1366×768 and 1440, one column
   await page.evaluate(() => window.scrollTo(0, 0));
   await settle(page);
   await page.screenshot({
-    path: `${revision}/task-11-product-choice-390.png`,
+    path: `${artifacts}/product-choice-390.png`,
     fullPage: true,
   });
 });

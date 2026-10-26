@@ -14,7 +14,7 @@ import {
 } from "./helpers";
 import { pdfFile } from "./files";
 
-// End-to-end journey against the real app (Task 13): who may see and do what. A fresh synthetic client owns an
+// End-to-end journey against the real app: who may see and do what. A fresh synthetic client owns an
 // application with a document; another fresh client, officer@demo.local and a signed-out visitor try to reach it.
 // The seeded client@demo.local's company is only read (refused), never changed.
 

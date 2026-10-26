@@ -2,7 +2,7 @@
 ownership, idempotency, versions, the one-active-application guard, lazy expiry and history with simulated
 notifications.
 
-Expected values come from the spec, the acceptance document and the frozen fixtures, never from the code under test.
+Expected values come from docs/application-states.md, docs/tests/test-scenarios.md and the frozen fixtures, never from the code under test.
 Scoring outcomes are covered in test_applications_scoring.py.
 """
 from datetime import datetime, timezone

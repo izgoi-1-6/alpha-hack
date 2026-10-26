@@ -1,7 +1,7 @@
 """Independent reading of the product configuration for the tests.
 
 Nothing here imports application code. It reads `data/credit_catalog.json` and `data/demo-policy.json` straight from
-disk and derives each card product's effective terms by the plan's rules, in its own way:
+disk and derives each card product's effective terms by the rules of docs/products-and-scoring.md, in its own way:
 
 - a value is the policy's per-product override if one exists, else the catalog's value, else the policy default;
 - rates come from the key-rate formula (or the stated percent) in exact Fraction arithmetic;

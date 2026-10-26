@@ -19,7 +19,7 @@ FIXED_DATE = FIXED_NOW.date()
 TERM, LINE, SECURED = 'alfa_term_loan_unsecured', 'alfa_revolving_line_unsecured', 'alfa_term_loan_secured'
 CONSENTS = [{'code': 'APPLICATION_PROCESSING', 'version': CONSENT_VERSION, 'accepted': True},
             {'code': 'BKI', 'version': CONSENT_VERSION, 'accepted': True}]
-# The spec's six-stage table, in order.
+# The six questionnaire stages, in order.
 STAGE_FIELDS = [
     ['company_confirmed', 'actual_address', 'actual_activity'],
     ['purpose', 'requested_amount_rub', 'term_months', 'collateral'],

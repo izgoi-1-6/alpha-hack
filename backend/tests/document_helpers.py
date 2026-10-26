@@ -18,7 +18,7 @@ from application_helpers import submitted
 from officer_helpers import claimed, staff_command
 
 MIB = 1024 * 1024
-LIMIT = 20 * MIB  # spec: a single file of at most 20 MiB
+LIMIT = 20 * MIB  # a single file of at most 20 MiB
 DEADLINE = datetime(2026, 11, 7, 12, 0, tzinfo=timezone.utc)  # FIXED_NOW (2026-10-24 12:00 UTC) + 14 days
 UNSECURED_DOCS = ['BANK_STATEMENT', 'FINANCIAL_REPORT']
 SECURED_DOCS = ['BANK_STATEMENT', 'FINANCIAL_REPORT', 'COLLATERAL_OWNERSHIP', 'COLLATERAL_VALUATION']

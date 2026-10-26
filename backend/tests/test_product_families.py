@@ -4,7 +4,7 @@ final bounds per product, the documents of the pinned list, R7 against effective
 universal limit, factoring and the medium-risk cap on gov programs.
 
 Every expected score, limit, rule, amount and document comes from application_oracle (exact fractions, its own reading
-of the data files) and is cross-checked with a literal number where the acceptance document states one. The customer's
+of the data files) and is cross-checked with a literal number where docs/tests/test-scenarios.md states one. The customer's
 responses carry no scoring, so it is read from the persisted rows (`scored`).
 """
 from datetime import date
@@ -166,7 +166,7 @@ def test_the_universal_limit_lends_its_unsecured_cap_plus_the_pledge(client, dec
 
 @pytest.mark.parametrize('requested,rule,amount', [(2_400_000, 'R8', 2_400_000), (2_400_001, 'R9', 2_400_000)])
 def test_factoring_capacity_is_bounded_by_turnover(client, requested, rule, amount):
-    """Ruling: factoring has no catalog maximum (2b fallback); its limit is the turnover limit, 3 x 800k."""
+    """Factoring has no catalog maximum (2b fallback); its limit is the turnover limit, 3 x 800k."""
     assert oracle.scored_limit(FACTORING, 'low', 800_000) == 2_400_000
     application = scored(client, submitted(client, 'strong', product=FACTORING, requested_amount_rub=requested))
     assert (application['latest_evaluation']['rule'], application['preapproved_amount_rub']) == (rule, amount)
@@ -178,7 +178,7 @@ def test_factoring_capacity_is_bounded_by_turnover(client, requested, rule, amou
     (PSK_INVEST, 25_000_000, 'R7', 'REJECTED'),
 ])
 def test_the_medium_risk_cap_applies_to_gov_programs(client, product_id, requested, rule, status):
-    """Ruling: medium risk is min(max, 1m, R) for every product, so a 25m-minimum program needs low risk."""
+    """Medium risk is min(max, 1m, R) for every product, so a 25m-minimum program needs low risk."""
     limit = oracle.scored_limit(product_id, 'medium', 600_000)
     assert limit == 600_000 and oracle.outcome(product_id, 65, limit, requested)[:2] == (rule, status)
     application = scored(client, submitted(client, 'medium', product=product_id, requested_amount_rub=requested,

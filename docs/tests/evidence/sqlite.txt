@@ -1,11 +1,11 @@
-$ cd backend && .venv/bin/pytest   # 2026-10-26T10:35:39Z, HEAD bbffa22 (final fix wave)
+$ cd backend && .venv/bin/pytest   # 2026-10-26, the final tree (v1.0.0)
 ============================= test session starts ==============================
 platform darwin -- Python 3.12.0, pytest-8.4.2, pluggy-1.7.0
-rootdir: /Users/ren1kron/Developer/hakatons/alpha-hack/.worktrees/credit-route-mvp/backend
+rootdir: backend
 configfile: pytest.ini
 testpaths: tests
 plugins: anyio-4.15.1
-collected 1167 items
+collected 1187 items
 
 tests/test_application_products.py ..................................... [  3%]
 .........................                                                [  5%]
@@ -16,24 +16,25 @@ tests/test_applications_scoring.py ..................................... [ 16%]
 .......................................................                  [ 21%]
 tests/test_authority.py .................................s.....          [ 24%]
 tests/test_document_files.py ........................................... [ 28%]
-.........................................................                [ 33%]
+.........................................................                [ 32%]
 tests/test_documents.py ........................ssss                     [ 35%]
-tests/test_final_decision.py .........................................s  [ 39%]
-tests/test_identity_company.py ................................          [ 42%]
-tests/test_information_requests.py ..................................... [ 45%]
-.....................                                                    [ 47%]
-tests/test_officer_review.py ........................................... [ 50%]
+tests/test_final_decision.py .........................................s  [ 38%]
+tests/test_hidden_scoring.py ....................                        [ 40%]
+tests/test_identity_company.py ................................          [ 43%]
+tests/test_information_requests.py ..................................... [ 46%]
+.....................                                                    [ 48%]
+tests/test_officer_review.py ........................................... [ 51%]
 ............sss                                                          [ 52%]
-tests/test_product_families.py ........................................  [ 55%]
+tests/test_product_families.py ........................................  [ 56%]
 tests/test_products_config.py .......................................... [ 59%]
 ........................................................................ [ 65%]
-........................................................................ [ 71%]
+........................................................................ [ 72%]
 .........                                                                [ 72%]
 tests/test_recommendation_policy.py .................................... [ 75%]
 ....................                                                     [ 77%]
-tests/test_recommendations.py .......................................... [ 80%]
-........................................................................ [ 86%]
-..........................................................s              [ 91%]
+tests/test_recommendations.py .......................................... [ 81%]
+........................................................................ [ 87%]
+..........................................................s              [ 92%]
 tests/test_reset_script.py .........................                     [ 94%]
 tests/test_source_owned.py ...................................           [ 97%]
 tests/test_start_scripts.py ...........................                  [ 99%]
@@ -41,9 +42,9 @@ tests/test_wording.py .......                                            [100%]
 
 =============================== warnings summary ===============================
 .venv/lib/python3.12/site-packages/starlette/testclient.py:37
-  /Users/ren1kron/Developer/hakatons/alpha-hack/.worktrees/credit-route-mvp/backend/.venv/lib/python3.12/site-packages/starlette/testclient.py:37: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+  backend/.venv/lib/python3.12/site-packages/starlette/testclient.py:37: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
     _PortalFactoryType = typing.Callable[[], typing.ContextManager[anyio.abc.BlockingPortal]]
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-=========== 1156 passed, 11 skipped, 1 warning in 161.60s (0:02:41) ============
+=========== 1176 passed, 11 skipped, 1 warning in 202.09s (0:03:22) ============
 exit=0

@@ -1,0 +1,15 @@
+$ npm run build --prefix frontend   # 2026-10-26, the final tree (v1.0.0)
+
+> credit-route@1.0.0 build
+> tsc --noEmit && vite build
+
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 92 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.47 kB │ gzip:   0.36 kB
+dist/assets/index-D9l4vf7J.css   62.24 kB │ gzip:  12.46 kB
+dist/assets/index-D8pknGnp.js   354.46 kB │ gzip: 105.22 kB
+✓ built in 589ms
+exit=0

@@ -1,0 +1,2382 @@
+openapi: "3.1.0"
+info:
+  title: "Кредитный маршрут — API"
+  version: "1.0.0"
+  description: |-
+    API «Кредитного маршрута»: путь клиента малого бизнеса от добавления компании до окончательного решения и работа кредитного специалиста. Все пути начинаются с `/api/v1`. Документ сгенерирован из кода (`scripts/export-api-docs.py`); интерактивная версия — http://127.0.0.1:8000/docs.
+
+    **Сессия.** `POST /auth/register` или `POST /auth/login` ставят cookie `credit_route_session` (HttpOnly, SameSite=Lax, срок 12 часов, `Secure` при `COOKIE_SECURE=true`). Без действующей сессии — 401 `AUTH_REQUIRED`. Роли: клиент (`CLIENT`) и кредитный специалист (`CREDIT_OFFICER`); чужая роль — 403 `CLIENT_REQUIRED` или `OFFICER_REQUIRED`, чужой или несуществующий ресурс — 404.
+
+    **Origin.** Каждый запрос POST, PATCH и DELETE должен нести заголовок `Origin`, точно равный адресу интерфейса (`UI_ORIGIN`, по умолчанию `http://localhost:5173`), иначе 403 `ORIGIN_FORBIDDEN`.
+
+    **Idempotency-Key.** Команды, меняющие состояние, требуют заголовок `Idempotency-Key` (1–128 символов). Повтор с тем же ключом и телом возвращает сохранённый ответ и ничего не выполняет снова; тот же ключ с другим телом — 409 `IDEMPOTENCY_CONFLICT`. Ключ не нужен для регистрации, входа и выхода, `POST /companies`, подбора (`POST /companies/{company_id}/recommendations`) и `PATCH /applications/{application_id}/answers`.
+
+    **version.** Команды над заявкой передают в теле `version` — текущую целую ревизию заявки (для `POST /companies/{company_id}/precheck/retry` — ревизию компании). Несовпадение — 409 `VERSION_CONFLICT`; успешная команда увеличивает ревизию на 1.
+
+    **Ошибки.** Тело ошибки — `{"error": {"code": "…", "message": "…", "fields": {…}, "details": {…}}}`: `code` — английский код, `message` — текст на русском, `fields` — сообщения по полям, `details` — данные для интерфейса. Неизвестные ключи в теле запроса — 422 `VALIDATION_ERROR`.
+
+    **Скоринг.** Маршруты клиента не возвращают балл, категорию риска, факторы, флаги проверки и рассчитанный лимит. Маршруты `/officer/*` возвращают их полностью.
+
+    Суммы — целые рубли, время — UTC в ISO 8601 с `Z`. Все данные синтетические; внешние сервисы (реестр, обороты, БКИ, Госуслуги, уведомления, Альфа-Бизнес) — локальные заглушки.
+paths:
+  /api/v1/auth/register:
+    post:
+      tags:
+        - "Аутентификация"
+      summary: "Регистрация клиента"
+      operationId: "register_api_v1_auth_register_post"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInput"
+        required: true
+      responses:
+        "201":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Создаёт пользователя с ролью CLIENT и сразу открывает сессию (cookie `credit_route_session`). Почта приводится к нижнему регистру, пароль — 10–128 символов, имя — 1–100. 201 `{user}`; 409 `EMAIL_EXISTS`."
+      security: []
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+  /api/v1/auth/login:
+    post:
+      tags:
+        - "Аутентификация"
+      summary: "Вход"
+      operationId: "login_api_v1_auth_login_post"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+        required: true
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Открывает новую сессию на 12 часов. 200 `{user}`; 401 `INVALID_CREDENTIALS`; 429 `LOGIN_RATE_LIMIT` после 10 неудачных попыток за 15 минут для пары «почта + адрес клиента»."
+      security: []
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+  /api/v1/auth/logout:
+    post:
+      tags:
+        - "Аутентификация"
+      summary: "Выход"
+      operationId: "logout_api_v1_auth_logout_post"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StrictModel"
+        required: true
+      responses:
+        "204":
+          description: "Успешный ответ"
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Тело — пустой объект `{}`. Отзывает текущую сессию и удаляет cookie; повтор безопасен. 204."
+      security: []
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+  /api/v1/auth/me:
+    get:
+      tags:
+        - "Аутентификация"
+      summary: "Текущий пользователь"
+      operationId: "me_api_v1_auth_me_get"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "`{user: {id, email, display_name, role}}`; 401 `AUTH_REQUIRED` без действующей сессии."
+  /api/v1/identity/gosuslugi/verify:
+    post:
+      tags:
+        - "Госуслуги"
+      summary: "Подтверждение полномочий через Госуслуги (заглушка)"
+      operationId: "verify_api_v1_identity_gosuslugi_verify_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthorityCheckInput"
+      responses:
+        "201":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Только CLIENT. Для ИНН из синтетического справочника всегда подтверждает представителя: ФИО директора из фикстуры, роль «Генеральный директор» (ООО) или «Индивидуальный предприниматель» (ИП). 201 `{verification_id, inn, person_name, role, verified_at, expires_at}`; подтверждение действует 30 минут и добавляет одну компанию. ИНН вне справочника — 422 `REGISTRY_NOT_FOUND`. Реальные ЕСИА/Госуслуги не вызываются."
+  /api/v1/consents/documents:
+    get:
+      tags:
+        - "Компании"
+      summary: "Тексты согласий"
+      operationId: "consent_documents_api_v1_consents_documents_get"
+      parameters:
+        -
+          name: "stage"
+          in: "query"
+          required: true
+          schema:
+            enum:
+              - "onboarding"
+              - "application"
+            type: "string"
+            title: "Stage"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "`stage=onboarding` — ONBOARDING_PROCESSING и REGISTRY_LOOKUP, `stage=application` — APPLICATION_PROCESSING и BKI. Версия текстов `consent-v2`. Доступно без входа."
+      security: []
+  /api/v1/demo/fixtures:
+    get:
+      tags:
+        - "Компании"
+      summary: "Синтетические компании для выбора"
+      operationId: "demo_fixtures_api_v1_demo_fixtures_get"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Только CLIENT. ИНН, название, тип и состояние источников каждой синтетической компании; при `DEMO_MODE=false` — 404."
+  /api/v1/companies:
+    get:
+      tags:
+        - "Компании"
+      summary: "Компании клиента"
+      operationId: "list_companies_api_v1_companies_get"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "`{items, total}` в порядке добавления."
+    post:
+      tags:
+        - "Компании"
+      summary: "Добавление компании"
+      description: "Тело: `inn`, оба согласия этапа onboarding версии `consent-v2` с `accepted: true` и `authority_verification_id`. Порядок отказов: 422 `REGISTRY_NOT_FOUND` → 403 `AUTHORITY_NOT_VERIFIED` (нет, чужое, другого ИНН, использованное или просроченное подтверждение) → 409 `COMPANY_EXISTS`. 201 `{company, precheck}`: данные реестра и оборотов из синтетических источников."
+      operationId: "onboard_api_v1_companies_post"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompanyInput"
+        required: true
+      responses:
+        "201":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+  /api/v1/companies/{company_id}/precheck:
+    get:
+      tags:
+        - "Компании"
+      summary: "Последняя проверка источников"
+      operationId: "read_company_api_v1_companies__company_id__precheck_get"
+      parameters:
+        -
+          name: "company_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Company Id"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "То же, что `GET /companies/{company_id}`."
+  /api/v1/companies/{company_id}:
+    get:
+      tags:
+        - "Компании"
+      summary: "Компания и последняя проверка источников"
+      operationId: "read_company_api_v1_companies__company_id__get"
+      parameters:
+        -
+          name: "company_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Company Id"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "`{company, precheck}`. Чужая или несуществующая компания — 404 `COMPANY_NOT_FOUND`."
+  /api/v1/companies/{company_id}/precheck/retry:
+    post:
+      tags:
+        - "Компании"
+      summary: "Повторная проверка источников"
+      operationId: "retry_precheck_api_v1_companies__company_id__precheck_retry_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "company_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Company Id"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionInput"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Тело `{version}` — текущая версия компании. Добавляет новую проверку по сценарию восстановления фикстуры (реестр или обороты), версия компании +1. БКИ не запрашивается. 409 `VERSION_CONFLICT`."
+  /api/v1/catalog:
+    get:
+      tags:
+        - "Каталог и подбор"
+      summary: "Каталог продуктов"
+      operationId: "read_catalog_api_v1_catalog_get"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Версии каталога и правил, ключевая ставка, шкала суммы, 11 продуктов-карточек с действующими условиями и надстройка-бейдж. Доступно без входа."
+      security: []
+  /api/v1/companies/{company_id}/recommendations:
+    post:
+      tags:
+        - "Каталог и подбор"
+      summary: "Подбор продуктов на сумму"
+      operationId: "create_recommendation_api_v1_companies__company_id__recommendations_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "company_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Company Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NeedInput"
+      responses:
+        "201":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Тело `{requested_amount_rub}` — целое число от 1 до 2 000 000 000. 201 — неизменяемый снимок `{snapshot_id, catalog_version, rules_version, items, created_at}`: все продукты по рангу со статусом `fits`, `needs_info` или `does_not_fit`, проверками, личной предварительной оценкой и платежом. БКИ не запрашивается, скоринг не считается. Без `Idempotency-Key`: каждый вызов — новый снимок."
+  /api/v1/companies/{company_id}/recommendations/{snapshot_id}:
+    get:
+      tags:
+        - "Каталог и подбор"
+      summary: "Сохранённый снимок подбора"
+      operationId: "read_recommendation_api_v1_companies__company_id__recommendations__snapshot_id__get"
+      parameters:
+        -
+          name: "company_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Company Id"
+        -
+          name: "snapshot_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Snapshot Id"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Тот же снимок без пересчёта. 404 `RECOMMENDATION_NOT_FOUND`."
+  /api/v1/applications:
+    post:
+      tags:
+        - "Заявки клиента"
+      summary: "Создание черновика заявки"
+      operationId: "create_application_api_v1_applications_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInput"
+      responses:
+        "201":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Тело `{company_id, product_id, recommendation_snapshot_id}`; продукт должен входить в снимок этой компании. 201 — заявка в статусе DRAFT, версия 1. 422 `PRODUCT_NOT_SUPPORTED`, 409 `RECOMMENDATION_STALE` (каталог или правила изменились после подбора)."
+    get:
+      tags:
+        - "Заявки клиента"
+      summary: "Заявки клиента"
+      operationId: "list_applications_api_v1_applications_get"
+      parameters:
+        -
+          name: "status"
+          in: "query"
+          required: false
+          schema:
+            anyOf:
+              -
+                enum:
+                  - "DRAFT"
+                  - "CHECKING"
+                  - "WAIT_EXTERNAL"
+                  - "MANUAL_REVIEW"
+                  - "NEED_INFO"
+                  - "PREAPPROVED"
+                  - "DOCS_UPLOADED"
+                  - "DOCS_REWORK"
+                  - "APPROVED"
+                  - "REJECTED"
+                  - "CANCELLED"
+                  - "EXPIRED"
+                type: "string"
+              -
+                type: "null"
+            title: "Status"
+        -
+          name: "company_id"
+          in: "query"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Company Id"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Фильтры `status` и `company_id`; новые первыми. Перед фильтром применяется ленивое истечение срока."
+  /api/v1/applications/{application_id}:
+    get:
+      tags:
+        - "Заявки клиента"
+      summary: "Заявка"
+      operationId: "read_application_api_v1_applications__application_id__get"
+      parameters:
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "`{application}`: ответы, суммы, `allowed_actions`, `missing_fields`, открытый запрос сведений, сводка документов. Скоринга нет: ни балла, ни риска, ни факторов, ни рассчитанного лимита."
+  /api/v1/applications/{application_id}/dialog:
+    get:
+      tags:
+        - "Заявки клиента"
+      summary: "Анкета из шести этапов"
+      operationId: "read_dialog_api_v1_applications__application_id__dialog_get"
+      parameters:
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Описания полей с границами выбранного продукта, ответы, незаполненные поля и `field_issues` черновика. Поля из источников (`tax_regime`, `employees`, `representative_name`, `representative_authority_confirmed`) помечены `read_only`."
+  /api/v1/applications/{application_id}/history:
+    get:
+      tags:
+        - "Заявки клиента"
+      summary: "История заявки"
+      operationId: "read_history_api_v1_applications__application_id__history_get"
+      parameters:
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Переходы статусов с ролью участника (`client`, `officer`, `system`) и уведомлением в кабинете. Результат автоматической проверки по скорингу показан кодом `CHECK_RESULT` и нейтральным текстом."
+  /api/v1/applications/{application_id}/answers:
+    patch:
+      tags:
+        - "Заявки клиента"
+      summary: "Сохранение ответов анкеты"
+      operationId: "save_answers_api_v1_applications__application_id__answers_patch"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnswersPatch"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Только DRAFT. Тело `{version, current_stage, answers}`: частичное сохранение, `collateral` объединяется по ключам. Без `Idempotency-Key` — повтор защищает версия. 422 `SOURCE_OWNED_FIELDS` (поле из источника), 409 `VERSION_CONFLICT`, 409 `INVALID_STATUS`."
+  /api/v1/applications/{application_id}/submit:
+    post:
+      tags:
+        - "Заявки клиента"
+      summary: "Отправка заявки"
+      operationId: "submit_application_api_v1_applications__application_id__submit_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitInput"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Тело `{version, consents}` — согласия APPLICATION_PROCESSING и BKI версии `consent-v2`. Порядок отказов: 409 `VERSION_CONFLICT`, 409 `INVALID_STATUS`, 403 `AUTHORITY_NOT_VERIFIED`, 409 `RECOMMENDATION_STALE`, 409 `DUPLICATE_ACTIVE_APPLICATION`, 422 `CORRECTION_REQUIRED` (R1), 422 `NEED_INFO` (согласия, затем R3). Затем проверка выполняется синхронно — не больше одного запроса в БКИ — и ответ содержит итоговый статус."
+  /api/v1/applications/{application_id}/retry-check:
+    post:
+      tags:
+        - "Заявки клиента"
+      summary: "Повторная проверка"
+      operationId: "retry_check_api_v1_applications__application_id__retry_check_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionInput"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Из WAIT_EXTERNAL или из NEED_INFO с открытым запросом к источнику; использует сохранённое согласие на БКИ. 409 `INVALID_STATUS`, 409 `CONSENT_REQUIRED`."
+  /api/v1/applications/{application_id}/respond-info:
+    post:
+      tags:
+        - "Заявки клиента"
+      summary: "Ответ на запрос сведений"
+      operationId: "respond_info_api_v1_applications__application_id__respond_info_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RespondInput"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "NEED_INFO с запросом `client_answers`. Тело `{version, response, answers}` — только запрошенные поля. Заявка возвращается в MANUAL_REVIEW без нового запроса в БКИ. 409 `TRUSTED_SOURCE_REQUIRED`; 422 `NEED_FIELDS_LOCKED`, `SOURCE_OWNED_FIELDS`, `ANSWER_NOT_REQUESTED`, `NEED_INFO`."
+  /api/v1/applications/{application_id}/cancel:
+    post:
+      tags:
+        - "Заявки клиента"
+      summary: "Отмена заявки"
+      operationId: "cancel_application_api_v1_applications__application_id__cancel_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelInput"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Тело `{version, reason}` (причина 1–2000 символов). Доступно в DRAFT, WAIT_EXTERNAL, NEED_INFO, MANUAL_REVIEW, PREAPPROVED, DOCS_UPLOADED и DOCS_REWORK."
+  /api/v1/officer/applications:
+    get:
+      tags:
+        - "Кредитный специалист"
+      summary: "Очередь заявок"
+      operationId: "review_queue_api_v1_officer_applications_get"
+      parameters:
+        -
+          name: "status"
+          in: "query"
+          required: false
+          schema:
+            anyOf:
+              -
+                enum:
+                  - "DRAFT"
+                  - "CHECKING"
+                  - "WAIT_EXTERNAL"
+                  - "MANUAL_REVIEW"
+                  - "NEED_INFO"
+                  - "PREAPPROVED"
+                  - "DOCS_UPLOADED"
+                  - "DOCS_REWORK"
+                  - "APPROVED"
+                  - "REJECTED"
+                  - "CANCELLED"
+                  - "EXPIRED"
+                type: "string"
+              -
+                type: "null"
+            title: "Status"
+        -
+          name: "assignee"
+          in: "query"
+          required: false
+          schema:
+            anyOf:
+              -
+                enum:
+                  - "me"
+                  - "unassigned"
+                type: "string"
+              -
+                type: "null"
+            title: "Assignee"
+        -
+          name: "company_id"
+          in: "query"
+          required: false
+          schema:
+            anyOf:
+              -
+                type: "string"
+              -
+                type: "null"
+            title: "Company Id"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Только CREDIT_OFFICER. Отправленные заявки, давние первыми; фильтры `status`, `assignee=me|unassigned`, `company_id`; `status=DRAFT` показывает черновики."
+  /api/v1/officer/applications/{application_id}:
+    get:
+      tags:
+        - "Кредитный специалист"
+      summary: "Карточка заявки для специалиста"
+      operationId: "read_application_api_v1_officer_applications__application_id__get"
+      parameters:
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Полный скоринг (балл, риск, факторы, рассчитанный лимит, правило), все оценки, данные источников, решения, запросы сведений, история с именами, все версии документов и `requestable_fields`."
+  /api/v1/officer/applications/{application_id}/claim:
+    post:
+      tags:
+        - "Кредитный специалист"
+      summary: "Взять заявку в работу"
+      operationId: "claim_api_v1_officer_applications__application_id__claim_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionInput"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Тело `{version}`. Статус не меняется. 409 `ALREADY_ASSIGNED`, 409 `INVALID_STATUS`."
+  /api/v1/officer/applications/{application_id}/request-info:
+    post:
+      tags:
+        - "Кредитный специалист"
+      summary: "Запрос сведений у клиента"
+      operationId: "request_info_api_v1_officer_applications__application_id__request_info_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestInfoInput"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Назначенный специалист, MANUAL_REVIEW → NEED_INFO. Тело `{version, reason, requested_fields}`. 409 `ASSIGNMENT_REQUIRED`, 409 `INFO_REQUEST_OPEN`; 422 `NEED_FIELDS_LOCKED`, `FIELD_NOT_REQUESTABLE`."
+  /api/v1/officer/applications/{application_id}/preapprove:
+    post:
+      tags:
+        - "Кредитный специалист"
+      summary: "Предварительное одобрение (R12)"
+      operationId: "preapprove_api_v1_officer_applications__application_id__preapprove_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreapproveInput"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Назначенный специалист, MANUAL_REVIEW → PREAPPROVED. Сумма — от минимума продукта до min(запрошенная сумма, рассчитанный лимит). 409 `MANDATORY_STOP`, 409 `LIMIT_NOT_COMPUTABLE`; 422 `AMOUNT_OUT_OF_BOUNDS`."
+  /api/v1/officer/applications/{application_id}/reject:
+    post:
+      tags:
+        - "Кредитный специалист"
+      summary: "Отказ"
+      operationId: "reject_api_v1_officer_applications__application_id__reject_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectInput"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Назначенный специалист. Из MANUAL_REVIEW — предварительный отказ (R12), из PREAPPROVED, DOCS_UPLOADED или DOCS_REWORK — окончательный. Причина 1–2000 символов."
+  /api/v1/officer/applications/{application_id}/documents/{document_id}/review:
+    post:
+      tags:
+        - "Кредитный специалист"
+      summary: "Проверка документа"
+      operationId: "review_document_api_v1_officer_applications__application_id__documents__document_id__review_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+        -
+          name: "document_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Document Id"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewInput"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Назначенный специалист, DOCS_UPLOADED. Тело `{version, decision: accept|reject, reason, verified_value_rub?}`; принять отчёт об оценке залога можно только с `verified_value_rub`. Первое отклонение переводит заявку в DOCS_REWORK. 409 `DOCUMENT_NOT_REVIEWABLE`; 422 `VERIFIED_VALUE_REQUIRED`, `VERIFIED_VALUE_NOT_ALLOWED`."
+  /api/v1/officer/applications/{application_id}/approve:
+    post:
+      tags:
+        - "Кредитный специалист"
+      summary: "Окончательное одобрение"
+      operationId: "approve_api_v1_officer_applications__application_id__approve_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveInput"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Назначенный специалист, DOCS_UPLOADED → APPROVED, когда все обязательные документы приняты. Сумма — от минимума продукта до min(предварительно одобренная сумма, лимит по проверенным данным). 409 `DOCUMENTS_NOT_ACCEPTED`, `LIMIT_NOT_COMPUTABLE`, `COLLATERAL_INSUFFICIENT` (с залогом) или `LIMIT_BELOW_MINIMUM` (без залога); 422 `AMOUNT_OUT_OF_BOUNDS`. Деньги не перечисляются, договор не подписывается."
+  /api/v1/applications/{application_id}/documents:
+    get:
+      tags:
+        - "Документы"
+      summary: "Перечень документов"
+      operationId: "read_documents_api_v1_applications__application_id__documents_get"
+      parameters:
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "`{notice, requirements, items}`: обязательные документы заявки с текущим файлом и все версии файлов."
+    post:
+      tags:
+        - "Документы"
+      summary: "Загрузка документа"
+      operationId: "upload_document_api_v1_applications__application_id__documents_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      responses:
+        "201":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "multipart/form-data: `file`, `document_type`, `version`. PDF, JPEG или PNG до 20 МиБ: расширение, MIME-тип, сигнатура и структура файла должны совпадать. Только в PREAPPROVED и DOCS_REWORK. 201 `{document, application}`; 413 `FILE_TOO_LARGE`, 415 `MEDIA_NOT_ALLOWED`, 422 `FILE_INVALID`, 422 `DOCUMENT_TYPE_NOT_ALLOWED`, 409 `DOCUMENT_ACCEPTED`."
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: "object"
+              required:
+                - "file"
+                - "document_type"
+                - "version"
+              properties:
+                file:
+                  type: "string"
+                  format: "binary"
+                  description: "PDF, JPEG или PNG до 20 МиБ"
+                document_type:
+                  type: "string"
+                  enum:
+                    - "BANK_STATEMENT"
+                    - "FINANCIAL_REPORT"
+                    - "COLLATERAL_OWNERSHIP"
+                    - "COLLATERAL_VALUATION"
+                version:
+                  type: "string"
+                  pattern: "^[1-9][0-9]{0,8}$"
+                  description: "Текущая ревизия заявки"
+  /api/v1/applications/{application_id}/documents/{document_id}/download:
+    get:
+      tags:
+        - "Документы"
+      summary: "Скачивание файла"
+      operationId: "download_document_api_v1_applications__application_id__documents__document_id__download_get"
+      parameters:
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+        -
+          name: "document_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Document Id"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/pdf:
+              schema:
+                type: "string"
+                format: "binary"
+            image/jpeg:
+              schema:
+                type: "string"
+                format: "binary"
+            image/png:
+              schema:
+                type: "string"
+                format: "binary"
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Владелец заявки или кредитный специалист. `Content-Disposition: attachment`, `Cache-Control: private, no-store`, `Content-Security-Policy: default-src 'none'; sandbox`. 404 `DOCUMENT_NOT_FOUND`."
+  /api/v1/applications/{application_id}/documents/{document_id}:
+    delete:
+      tags:
+        - "Документы"
+      summary: "Удаление файла"
+      operationId: "delete_document_api_v1_applications__application_id__documents__document_id__delete"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+        -
+          name: "document_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Document Id"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionInput"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Тело `{version}`. Текущий непринятый файл в PREAPPROVED или DOCS_REWORK. 409 `DOCUMENT_ACCEPTED`, 409 `DOCUMENT_NOT_CURRENT`."
+  /api/v1/applications/{application_id}/documents/complete:
+    post:
+      tags:
+        - "Документы"
+      summary: "Отправка комплекта документов"
+      operationId: "complete_documents_api_v1_applications__application_id__documents_complete_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "application_id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            title: "Application Id"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionInput"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "PREAPPROVED или DOCS_REWORK → DOCS_UPLOADED, когда загружены все обязательные документы и нет отклонённых. 409 `DOCUMENTS_INCOMPLETE` (`details: {missing, rejected}`)."
+  /api/v1/integrations/alfa-business/link:
+    post:
+      tags:
+        - "Интеграции"
+      summary: "Ссылка на переход в Альфа-Бизнес"
+      operationId: "alfa_business_link_api_v1_integrations_alfa_business_link_post"
+      parameters:
+        -
+          $ref: "#/components/parameters/Origin"
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+            minLength: 1
+            maxLength: 128
+            title: "Idempotency-Key"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkInput"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        "422":
+          description: "Ошибка проверки данных"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      description: "Владелец заявки в статусе APPROVED: `{url: \"/alfa-business/{id}\", simulated: true}`. Ничего не меняет и никуда не обращается. 409 `INVALID_STATUS` до окончательного одобрения."
+  /api/v1/health:
+    get:
+      summary: "Проверка работоспособности"
+      operationId: "health_api_v1_health_get"
+      responses:
+        "200":
+          description: "Успешный ответ"
+          content:
+            application/json:
+              schema: {}
+        default:
+          description: "Ошибка"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      tags:
+        - "Служебные"
+      description: "`{status: \"ok\", demo_mode}`; выполняет запрос к базе данных."
+      security: []
+components:
+  schemas:
+    AnswersInput:
+      properties:
+        company_confirmed:
+          anyOf:
+            -
+              type: "boolean"
+            -
+              type: "null"
+          title: "Company Confirmed"
+        actual_address:
+          anyOf:
+            -
+              type: "string"
+              maxLength: 300
+            -
+              type: "null"
+          title: "Actual Address"
+        actual_activity:
+          anyOf:
+            -
+              type: "string"
+              maxLength: 300
+            -
+              type: "null"
+          title: "Actual Activity"
+        purpose:
+          anyOf:
+            -
+              type: "string"
+              enum:
+                - "working_capital"
+                - "business_development"
+                - "investment"
+                - "refinancing"
+            -
+              type: "null"
+          title: "Purpose"
+        requested_amount_rub:
+          anyOf:
+            -
+              type: "integer"
+              exclusiveMinimum: 0.0
+            -
+              type: "null"
+          title: "Requested Amount Rub"
+        term_months:
+          anyOf:
+            -
+              type: "integer"
+              maximum: 120.0
+              minimum: 1.0
+            -
+              type: "null"
+          title: "Term Months"
+        collateral:
+          anyOf:
+            -
+              $ref: "#/components/schemas/CollateralAnswer"
+            -
+              type: "null"
+        monthly_revenue_rub:
+          anyOf:
+            -
+              type: "integer"
+              maximum: 9000000000000000.0
+              minimum: 0.0
+            -
+              type: "null"
+          title: "Monthly Revenue Rub"
+        previous_monthly_revenue_rub:
+          anyOf:
+            -
+              type: "integer"
+              maximum: 9000000000000000.0
+              minimum: 0.0
+            -
+              type: "null"
+          title: "Previous Monthly Revenue Rub"
+        financial_period_end:
+          anyOf:
+            -
+              type: "string"
+              format: "date"
+            -
+              type: "null"
+          title: "Financial Period End"
+        tax_regime:
+          anyOf:
+            -
+              type: "string"
+              enum:
+                - "OSN"
+                - "USN"
+                - "PSN"
+                - "OTHER"
+            -
+              type: "null"
+          title: "Tax Regime"
+        employees:
+          anyOf:
+            -
+              type: "integer"
+              maximum: 1000000.0
+              minimum: 0.0
+            -
+              type: "null"
+          title: "Employees"
+        seasonal:
+          anyOf:
+            -
+              type: "boolean"
+            -
+              type: "null"
+          title: "Seasonal"
+        monthly_debt_payment_rub:
+          anyOf:
+            -
+              type: "integer"
+              maximum: 9000000000000000.0
+              minimum: 0.0
+            -
+              type: "null"
+          title: "Monthly Debt Payment Rub"
+        tax_debt_rub:
+          anyOf:
+            -
+              type: "integer"
+              maximum: 9000000000000000.0
+              minimum: 0.0
+            -
+              type: "null"
+          title: "Tax Debt Rub"
+        legal_proceedings:
+          anyOf:
+            -
+              type: "boolean"
+            -
+              type: "null"
+          title: "Legal Proceedings"
+        obligations_note:
+          anyOf:
+            -
+              type: "string"
+              maxLength: 1000
+            -
+              type: "null"
+          title: "Obligations Note"
+        representative_name:
+          anyOf:
+            -
+              type: "string"
+              maxLength: 100
+            -
+              type: "null"
+          title: "Representative Name"
+        representative_authority_confirmed:
+          anyOf:
+            -
+              type: "boolean"
+            -
+              type: "null"
+          title: "Representative Authority Confirmed"
+        beneficial_owners_confirmed:
+          anyOf:
+            -
+              type: "boolean"
+            -
+              type: "null"
+          title: "Beneficial Owners Confirmed"
+        accuracy_confirmed:
+          anyOf:
+            -
+              type: "boolean"
+            -
+              type: "null"
+          title: "Accuracy Confirmed"
+      additionalProperties: false
+      type: "object"
+      title: "AnswersInput"
+      description: |-
+        The questionnaire whitelist (the six stages of stages.py); credit history and overdue days are BKI-owned.
+        The source-owned answers (tax regime, employees, the representative's name and authority) stay typed here so that a
+        client write of one is refused as SOURCE_OWNED_FIELDS by the commands rather than as an unknown key.
+    AnswersPatch:
+      properties:
+        version:
+          type: "integer"
+          minimum: 1.0
+          title: "Version"
+        current_stage:
+          type: "integer"
+          maximum: 6.0
+          minimum: 1.0
+          title: "Current Stage"
+        answers:
+          $ref: "#/components/schemas/AnswersInput"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "version"
+        - "current_stage"
+      title: "AnswersPatch"
+    ApproveInput:
+      properties:
+        version:
+          type: "integer"
+          minimum: 1.0
+          title: "Version"
+        reason:
+          type: "string"
+          title: "Reason"
+        amount_rub:
+          type: "integer"
+          maximum: 9000000000000000.0
+          exclusiveMinimum: 0.0
+          title: "Amount Rub"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "version"
+        - "reason"
+        - "amount_rub"
+      title: "ApproveInput"
+      description: "The final amount; its bounds are checked against the persisted, accepted document evidence."
+    AuthorityCheckInput:
+      properties:
+        inn:
+          type: "string"
+          title: "Inn"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "inn"
+      title: "AuthorityCheckInput"
+      description: "The mock Госуслуги check: the ИНН only; the person, role and user come from the fixture and the session."
+    CancelInput:
+      properties:
+        version:
+          type: "integer"
+          minimum: 1.0
+          title: "Version"
+        reason:
+          type: "string"
+          title: "Reason"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "version"
+        - "reason"
+      title: "CancelInput"
+    CollateralAnswer:
+      properties:
+        status:
+          anyOf:
+            -
+              type: "string"
+              enum:
+                - "unknown"
+                - "none"
+                - "declared"
+            -
+              type: "null"
+          title: "Status"
+        type:
+          anyOf:
+            -
+              type: "string"
+              enum:
+                - "real_estate"
+                - "vehicle"
+                - "equipment"
+                - "inventory"
+                - "deposit"
+            -
+              type: "null"
+          title: "Type"
+        declared_value_rub:
+          anyOf:
+            -
+              type: "integer"
+              maximum: 9000000000000000.0
+              exclusiveMinimum: 0.0
+            -
+              type: "null"
+          title: "Declared Value Rub"
+        description:
+          anyOf:
+            -
+              type: "string"
+              maxLength: 500
+            -
+              type: "null"
+          title: "Description"
+        owner_confirmed:
+          anyOf:
+            -
+              type: "boolean"
+            -
+              type: "null"
+          title: "Owner Confirmed"
+        encumbered:
+          anyOf:
+            -
+              type: "boolean"
+            -
+              type: "null"
+          title: "Encumbered"
+      additionalProperties: false
+      type: "object"
+      title: "CollateralAnswer"
+      description: "A partial pledge declaration; it is merged into the saved one key by key."
+    CompanyInput:
+      properties:
+        inn:
+          type: "string"
+          title: "Inn"
+        consents:
+          items:
+            $ref: "#/components/schemas/ConsentInput"
+          type: "array"
+          maxItems: 2
+          title: "Consents"
+        authority_verification_id:
+          anyOf:
+            -
+              type: "string"
+              maxLength: 36
+            -
+              type: "null"
+          title: "Authority Verification Id"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "inn"
+        - "consents"
+      title: "CompanyInput"
+    ConsentInput:
+      properties:
+        code:
+          type: "string"
+          enum:
+            - "ONBOARDING_PROCESSING"
+            - "REGISTRY_LOOKUP"
+          title: "Code"
+        version:
+          type: "string"
+          const: "consent-v2"
+          title: "Version"
+        accepted:
+          type: "boolean"
+          const: true
+          title: "Accepted"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "code"
+        - "version"
+        - "accepted"
+      title: "ConsentInput"
+    CreateInput:
+      properties:
+        company_id:
+          type: "string"
+          maxLength: 36
+          title: "Company Id"
+        product_id:
+          type: "string"
+          maxLength: 80
+          title: "Product Id"
+        recommendation_snapshot_id:
+          type: "string"
+          maxLength: 36
+          title: "Recommendation Snapshot Id"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "company_id"
+        - "product_id"
+        - "recommendation_snapshot_id"
+      title: "CreateInput"
+    LinkInput:
+      properties:
+        application_id:
+          type: "string"
+          maxLength: 36
+          title: "Application Id"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "application_id"
+      title: "LinkInput"
+    LoginInput:
+      properties:
+        email:
+          type: "string"
+          maxLength: 254
+          title: "Email"
+        password:
+          type: "string"
+          maxLength: 128
+          minLength: 10
+          title: "Password"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "email"
+        - "password"
+      title: "LoginInput"
+    NeedInput:
+      properties:
+        requested_amount_rub:
+          type: "integer"
+          exclusiveMinimum: 0.0
+          title: "Requested Amount Rub"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "requested_amount_rub"
+      title: "NeedInput"
+      description: |-
+        The need is the amount alone: purpose, term and collateral are chosen in the questionnaire within the chosen
+        product's bounds. Any whole amount from 1 RUB up to the slider maximum is compared (a product may not take it).
+    PreapproveInput:
+      properties:
+        version:
+          type: "integer"
+          minimum: 1.0
+          title: "Version"
+        reason:
+          type: "string"
+          title: "Reason"
+        amount_rub:
+          type: "integer"
+          maximum: 9000000000000000.0
+          exclusiveMinimum: 0.0
+          title: "Amount Rub"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "version"
+        - "reason"
+        - "amount_rub"
+      title: "PreapproveInput"
+    RegisterInput:
+      properties:
+        email:
+          type: "string"
+          maxLength: 254
+          title: "Email"
+        password:
+          type: "string"
+          maxLength: 128
+          minLength: 10
+          title: "Password"
+        display_name:
+          type: "string"
+          maxLength: 100
+          minLength: 1
+          title: "Display Name"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "email"
+        - "password"
+        - "display_name"
+      title: "RegisterInput"
+    RejectInput:
+      properties:
+        version:
+          type: "integer"
+          minimum: 1.0
+          title: "Version"
+        reason:
+          type: "string"
+          title: "Reason"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "version"
+        - "reason"
+      title: "RejectInput"
+    RequestInfoInput:
+      properties:
+        version:
+          type: "integer"
+          minimum: 1.0
+          title: "Version"
+        reason:
+          type: "string"
+          title: "Reason"
+        requested_fields:
+          items:
+            type: "string"
+          type: "array"
+          maxItems: 27
+          minItems: 1
+          title: "Requested Fields"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "version"
+        - "reason"
+        - "requested_fields"
+      title: "RequestInfoInput"
+      description: "The reason is the question shown to the customer; the fields are distinct questionnaire answer paths."
+    RespondInput:
+      properties:
+        version:
+          type: "integer"
+          minimum: 1.0
+          title: "Version"
+        response:
+          type: "string"
+          title: "Response"
+        answers:
+          $ref: "#/components/schemas/AnswersInput"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "version"
+        - "response"
+      title: "RespondInput"
+      description: |-
+        The owner's answer to a client_answers request: a response text and the requested answers only (same field
+        validators as the questionnaire; credit history and overdue days are never accepted).
+    ReviewInput:
+      properties:
+        version:
+          type: "integer"
+          minimum: 1.0
+          title: "Version"
+        reason:
+          type: "string"
+          title: "Reason"
+        decision:
+          type: "string"
+          enum:
+            - "accept"
+            - "reject"
+          title: "Decision"
+        verified_value_rub:
+          anyOf:
+            -
+              type: "integer"
+              maximum: 9000000000000000.0
+              exclusiveMinimum: 0.0
+            -
+              type: "null"
+          title: "Verified Value Rub"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "version"
+        - "reason"
+        - "decision"
+      title: "ReviewInput"
+      description: |-
+        A document review. `verified_value_rub` belongs only to accepting a COLLATERAL_VALUATION document (checked
+        against the persisted document type).
+    StrictModel:
+      properties: {}
+      additionalProperties: false
+      type: "object"
+      title: "StrictModel"
+    SubmissionConsent:
+      properties:
+        code:
+          type: "string"
+          maxLength: 40
+          title: "Code"
+        version:
+          type: "string"
+          maxLength: 80
+          title: "Version"
+        accepted:
+          type: "boolean"
+          title: "Accepted"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "code"
+        - "version"
+        - "accepted"
+      title: "SubmissionConsent"
+    SubmitInput:
+      properties:
+        version:
+          type: "integer"
+          minimum: 1.0
+          title: "Version"
+        consents:
+          items:
+            $ref: "#/components/schemas/SubmissionConsent"
+          type: "array"
+          maxItems: 10
+          title: "Consents"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "version"
+      title: "SubmitInput"
+    VersionInput:
+      properties:
+        version:
+          type: "integer"
+          minimum: 1.0
+          title: "Version"
+      additionalProperties: false
+      type: "object"
+      required:
+        - "version"
+      title: "VersionInput"
+    Error:
+      type: "object"
+      required:
+        - "error"
+      additionalProperties: false
+      properties:
+        error:
+          type: "object"
+          required:
+            - "code"
+            - "message"
+          properties:
+            code:
+              type: "string"
+              description: "Английский код ошибки"
+              examples:
+                - "VERSION_CONFLICT"
+            message:
+              type: "string"
+              description: "Сообщение на русском языке"
+            fields:
+              type: "object"
+              additionalProperties:
+                type: "string"
+              description: "Сообщения по полям запроса"
+            details:
+              type: "object"
+              description: "Дополнительные данные (например, границы суммы)"
+  parameters:
+    Origin:
+      name: "Origin"
+      in: "header"
+      required: true
+      description: "Адрес интерфейса, точно равный `UI_ORIGIN`"
+      schema:
+        type: "string"
+        example: "http://localhost:5173"
+  securitySchemes:
+    cookieAuth:
+      type: "apiKey"
+      in: "cookie"
+      name: "credit_route_session"
+      description: "Сессия, которую ставят `POST /auth/register` и `POST /auth/login`"
+servers:
+  -
+    url: "http://localhost:5173"
+    description: "Интерфейс (Vite или nginx) с прокси на API: тот же адрес, что и Origin"
+tags:
+  -
+    name: "Аутентификация"
+    description: "Регистрация клиента, вход, выход и текущий пользователь. Сессия — cookie `credit_route_session`."
+  -
+    name: "Госуслуги"
+    description: "Заглушка подтверждения полномочий представителя компании."
+  -
+    name: "Компании"
+    description: "Компании клиента, проверка источников (реестр и обороты), тексты согласий."
+  -
+    name: "Каталог и подбор"
+    description: "Каталог продуктов и неизменяемые снимки подбора на сумму."
+  -
+    name: "Заявки клиента"
+    description: "Черновик, анкета из шести этапов, отправка, повторная проверка, ответ на запрос, отмена, история."
+  -
+    name: "Документы"
+    description: "Перечень документов, загрузка, скачивание, удаление и отправка комплекта."
+  -
+    name: "Кредитный специалист"
+    description: "Очередь, карточка заявки со скорингом, решения и проверка документов (роль CREDIT_OFFICER)."
+  -
+    name: "Интеграции"
+    description: "Локальная страница перехода в Альфа-Бизнес."
+  -
+    name: "Служебные"
+    description: "Проверка работоспособности."
+security:
+  -
+    cookieAuth: []

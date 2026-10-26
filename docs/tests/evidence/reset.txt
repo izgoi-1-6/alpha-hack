@@ -1,4 +1,4 @@
-# Task 13 reset of the development database — 2026-10-26T04:51:59Z, HEAD 77ded11; the local API is stopped (after the Docker check)
+# Reset of the development database to the seed — 2026-10-26; the local API is stopped
 
 $ lsof -nP -iTCP:8000 -sTCP:LISTEN   # nothing serves the database
 exit=1 (1 = nothing listening)

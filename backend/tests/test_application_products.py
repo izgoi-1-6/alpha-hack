@@ -212,7 +212,7 @@ def test_the_sme_register_products_are_the_three_without_a_region_rule():
 
 @pytest.mark.parametrize('product_id', SME_REGISTER_PRODUCTS)
 def test_an_unavailable_registry_waits_for_the_source_instead_of_asking_for_a_correction(client, bki_calls, product_id):
-    """Spec: registry unavailable uses R4 (it is not missing client input). The SME flag is unknown only because the
+    """A registry that is unavailable uses R4 (it is not missing client input). The SME flag is unknown only because the
     source is down, so R1 lets it through; the check waits without a BKI request, and the retry's recovery confirms the
     flag and scores the application against the pinned product."""
     fixture = FIXTURES['registry_unavailable']
@@ -244,7 +244,7 @@ def test_a_failed_fact_still_needs_correction_while_the_registry_is_unavailable(
 
 
 def test_a_recovery_that_fails_eligibility_is_a_mandatory_stop_without_bki(client, bki_calls, monkeypatch):
-    """Controller ruling: after the registry recovers, the check re-evaluates eligibility on the current company data;
+    """After the registry recovers, the check re-evaluates eligibility on the current company data;
     a failed fact rejects (R2, reason ELIGIBILITY_FAILED) before any BKI request, and the application stays submitted."""
     from app import companies
     inn = FIXTURES['registry_unavailable']['inn']

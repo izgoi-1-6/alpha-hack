@@ -22,9 +22,9 @@ import {
   termCard,
 } from "./helpers";
 
-// The user removed every «демо»/«демонстрац…»/«имитац…» wording from the app (binding rule 7). Two checks: what the
+// The user removed every «демо»/«демонстрац…»/«имитац…» wording from the app. Two checks: what the
 // browser renders on the main pages for a client and for an officer, and the frontend source itself. The approved
-// application and the Alfa-Business hand-off page are walked by the A09 journey in documents.spec.ts.
+// application and the Alfa-Business hand-off page are walked by the document journey in documents.spec.ts.
 
 test("no demo wording on the main pages: login, onboarding with the Госуслуги dialog, product choice, every questionnaire stage, status, the officer's queue and review", async ({
   page,

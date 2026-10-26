@@ -1,7 +1,7 @@
 """The six saved questionnaire stages: field contract, server prefill, deep-merged partial saves, the stage-3
 answer/source evidence and the submit-time requirements (R1 corrections, R3 gaps).
 
-Answers are a flat object keyed by the spec's field names; only `collateral` is nested. Paths in `missing_fields`,
+Answers are a flat object keyed by the field names below; only `collateral` is nested. Paths in `missing_fields`,
 InfoRequest.requested_fields and error `fields` are those names (`collateral.<key>` for collateral details).
 
 Stage 2 follows the chosen runtime product: its purposes (a single one preselected), its amount bounds, its term range

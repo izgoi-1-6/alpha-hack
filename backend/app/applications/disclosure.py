@@ -1,4 +1,4 @@
-"""What a client is told about a check result: never the scoring (user request after hand-over).
+"""What a client is told about a check result: never the scoring (docs/application-states.md, «Что видит клиент и что видит специалист»).
 
 Evaluations and history keep the staff reasons unchanged; the customer serializers map them here. A source wait or an
 information request (R3, R4), a known inactive company and a failed eligibility fact keep their own texts. Every other

@@ -1,0 +1,2533 @@
+{
+  "info": {
+    "_postman_id": "b7600be9-b1a1-526a-9c6c-60aed97831f5",
+    "name": "Кредитный маршрут — API",
+    "description": "Сгенерировано из кода командой `backend/.venv/bin/python scripts/export-api-docs.py`. Описание API — docs/api/openapi.yaml.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Сквозной сценарий",
+      "description": "Запросы выполняются по порядку и сохраняют идентификаторы и ревизию в переменных коллекции. Новый клиент добавляет синтетическую компанию «Средний риск», заявка уходит специалисту (MANUAL_REVIEW), специалист берёт её в работу и предварительно одобряет, клиент загружает документы, специалист принимает их и окончательно одобряет, клиент получает ссылку на переход в Альфа-Бизнес. Сессии клиента и специалиста сменяются входом. Нужны запущенные API и интерфейс; рабочая папка Postman — корень репозитория (файлы загрузки лежат в docs/api/samples).",
+      "item": [
+        {
+          "name": "1. Регистрация нового клиента",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{clientEmail}}\",\n  \"password\": \"{{clientPassword}}\",\n  \"display_name\": \"Синтетический клиент\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"clientEmail\", \"client-\" + Date.now() + \"@example.test\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Подтверждение полномочий через Госуслуги",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/identity/gosuslugi/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "identity",
+                "gosuslugi",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inn\": \"{{inn}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set(\"verificationId\", pm.response.json().verification_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Добавление компании",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/companies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "companies"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inn\": \"{{inn}}\",\n  \"consents\": [\n    {\n      \"code\": \"ONBOARDING_PROCESSING\",\n      \"version\": \"consent-v2\",\n      \"accepted\": true\n    },\n    {\n      \"code\": \"REGISTRY_LOOKUP\",\n      \"version\": \"consent-v2\",\n      \"accepted\": true\n    }\n  ],\n  \"authority_verification_id\": \"{{verificationId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set(\"companyId\", pm.response.json().company.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Подбор продуктов на сумму",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/companies/{{companyId}}/recommendations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "companies",
+                "{{companyId}}",
+                "recommendations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requested_amount_rub\": {{amount}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"snapshotId\", body.snapshot_id);",
+                  "const item = body.items.find(function (entry) { return entry.product_id === pm.collectionVariables.get(\"productId\"); });",
+                  "pm.test(\"Продукт можно выбрать\", function () { pm.expect(item.can_apply).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Создание черновика заявки",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_id\": \"{{companyId}}\",\n  \"product_id\": \"{{productId}}\",\n  \"recommendation_snapshot_id\": \"{{snapshotId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set(\"applicationId\", pm.response.json().application.id);",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"version\", body.application.version);",
+                  "pm.test(\"Статус DRAFT\", function () { pm.expect(body.application.status).to.eql(\"DRAFT\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Ответы анкеты",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/answers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "answers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"current_stage\": 6,\n  \"answers\": {\n    \"company_confirmed\": true,\n    \"actual_address\": \"г. Санкт-Петербург, ул. Торговая, д. 2\",\n    \"actual_activity\": \"Оптовая торговля\",\n    \"purpose\": \"working_capital\",\n    \"monthly_debt_payment_rub\": 240000,\n    \"tax_debt_rub\": 0,\n    \"legal_proceedings\": false,\n    \"beneficial_owners_confirmed\": true,\n    \"accuracy_confirmed\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"version\", body.application.version);",
+                  "pm.test(\"Анкета заполнена\", function () { pm.expect(body.application.missing_fields).to.eql([]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Отправка заявки с согласиями",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/submit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "submit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"consents\": [\n    {\n      \"code\": \"APPLICATION_PROCESSING\",\n      \"version\": \"consent-v2\",\n      \"accepted\": true\n    },\n    {\n      \"code\": \"BKI\",\n      \"version\": \"consent-v2\",\n      \"accepted\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"version\", body.application.version);",
+                  "pm.test(\"Статус MANUAL_REVIEW\", function () { pm.expect(body.application.status).to.eql(\"MANUAL_REVIEW\"); });",
+                  "pm.test(\"Клиент не видит скоринг\", function () { pm.expect(\"scored_limit_rub\" in body.application).to.eql(false); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "8. Вход кредитного специалиста",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{officerEmail}}\",\n  \"password\": \"{{officerPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "9. Карточка заявки со скорингом",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/officer/applications/{{applicationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "officer",
+                "applications",
+                "{{applicationId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"version\", body.application.version);",
+                  "pm.test(\"Специалист видит балл\", function () { pm.expect(typeof body.application.latest_evaluation.score).to.eql(\"number\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10. Взять заявку в работу",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/officer/applications/{{applicationId}}/claim",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "officer",
+                "applications",
+                "{{applicationId}}",
+                "claim"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"version\", body.application.version);",
+                  "pm.test(\"Статус MANUAL_REVIEW\", function () { pm.expect(body.application.status).to.eql(\"MANUAL_REVIEW\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11. Предварительное одобрение",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/officer/applications/{{applicationId}}/preapprove",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "officer",
+                "applications",
+                "{{applicationId}}",
+                "preapprove"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"amount_rub\": {{amount}},\n  \"reason\": \"Сведения проверены, условия продукта выполнены.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"version\", body.application.version);",
+                  "pm.test(\"Статус PREAPPROVED\", function () { pm.expect(body.application.status).to.eql(\"PREAPPROVED\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12. Вход клиента",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{clientEmail}}\",\n  \"password\": \"{{clientPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "13. Загрузка банковской выписки",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "documents"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "docs/api/samples/bank-statement.pdf"
+                },
+                {
+                  "key": "document_type",
+                  "value": "BANK_STATEMENT",
+                  "type": "text"
+                },
+                {
+                  "key": "version",
+                  "value": "{{version}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"version\", body.application.version);",
+                  "pm.collectionVariables.set(\"statementDocumentId\", body.document.id);",
+                  "pm.collectionVariables.set(\"documentId\", body.document.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "14. Загрузка финансовой отчётности",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "documents"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "docs/api/samples/financial-report.pdf"
+                },
+                {
+                  "key": "document_type",
+                  "value": "FINANCIAL_REPORT",
+                  "type": "text"
+                },
+                {
+                  "key": "version",
+                  "value": "{{version}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"version\", body.application.version);",
+                  "pm.collectionVariables.set(\"reportDocumentId\", body.document.id);",
+                  "pm.collectionVariables.set(\"documentId\", body.document.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15. Отправка комплекта документов",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/documents/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "documents",
+                "complete"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"version\", body.application.version);",
+                  "pm.test(\"Статус DOCS_UPLOADED\", function () { pm.expect(body.application.status).to.eql(\"DOCS_UPLOADED\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "16. Вход кредитного специалиста",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{officerEmail}}\",\n  \"password\": \"{{officerPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "17. Принять выписку",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/officer/applications/{{applicationId}}/documents/{{statementDocumentId}}/review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "officer",
+                "applications",
+                "{{applicationId}}",
+                "documents",
+                "{{statementDocumentId}}",
+                "review"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"decision\": \"accept\",\n  \"reason\": \"Документ читается и соответствует анкете.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"version\", body.application.version);",
+                  "pm.test(\"Статус DOCS_UPLOADED\", function () { pm.expect(body.application.status).to.eql(\"DOCS_UPLOADED\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "18. Принять отчётность",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/officer/applications/{{applicationId}}/documents/{{reportDocumentId}}/review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "officer",
+                "applications",
+                "{{applicationId}}",
+                "documents",
+                "{{reportDocumentId}}",
+                "review"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"decision\": \"accept\",\n  \"reason\": \"Документ читается и соответствует анкете.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"version\", body.application.version);",
+                  "pm.test(\"Статус DOCS_UPLOADED\", function () { pm.expect(body.application.status).to.eql(\"DOCS_UPLOADED\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "19. Окончательное одобрение",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/officer/applications/{{applicationId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "officer",
+                "applications",
+                "{{applicationId}}",
+                "approve"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"amount_rub\": {{amount}},\n  \"reason\": \"Сведения проверены, условия продукта выполнены.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"version\", body.application.version);",
+                  "pm.test(\"Статус APPROVED\", function () { pm.expect(body.application.status).to.eql(\"APPROVED\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "20. Вход клиента",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{clientEmail}}\",\n  \"password\": \"{{clientPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "21. Ссылка на переход в Альфа-Бизнес",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/integrations/alfa-business/link",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "integrations",
+                "alfa-business",
+                "link"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application_id\": \"{{applicationId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Локальная страница перехода\", function () { pm.expect(pm.response.json().simulated).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Аутентификация",
+      "description": "Регистрация клиента, вход, выход и текущий пользователь. Сессия — cookie `credit_route_session`.",
+      "item": [
+        {
+          "name": "Регистрация клиента",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{clientEmail}}\",\n  \"password\": \"{{clientPassword}}\",\n  \"display_name\": \"Синтетический клиент\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Создаёт пользователя с ролью CLIENT и сразу открывает сессию (cookie `credit_route_session`). Почта приводится к нижнему регистру, пароль — 10–128 символов, имя — 1–100. 201 `{user}`; 409 `EMAIL_EXISTS`."
+          }
+        },
+        {
+          "name": "Вход",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{officerEmail}}\",\n  \"password\": \"{{officerPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Открывает новую сессию на 12 часов. 200 `{user}`; 401 `INVALID_CREDENTIALS`; 429 `LOGIN_RATE_LIMIT` после 10 неудачных попыток за 15 минут для пары «почта + адрес клиента»."
+          }
+        },
+        {
+          "name": "Выход",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Тело — пустой объект `{}`. Отзывает текущую сессию и удаляет cookie; повтор безопасен. 204."
+          }
+        },
+        {
+          "name": "Текущий пользователь",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            },
+            "description": "`{user: {id, email, display_name, role}}`; 401 `AUTH_REQUIRED` без действующей сессии."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Госуслуги",
+      "description": "Заглушка подтверждения полномочий представителя компании.",
+      "item": [
+        {
+          "name": "Подтверждение полномочий через Госуслуги (заглушка)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/identity/gosuslugi/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "identity",
+                "gosuslugi",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inn\": \"{{inn}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Только CLIENT. Для ИНН из синтетического справочника всегда подтверждает представителя: ФИО директора из фикстуры, роль «Генеральный директор» (ООО) или «Индивидуальный предприниматель» (ИП). 201 `{verification_id, inn, person_name, role, verified_at, expires_at}`; подтверждение действует 30 минут и добавляет одну компанию. ИНН вне справочника — 422 `REGISTRY_NOT_FOUND`. Реальные ЕСИА/Госуслуги не вызываются."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Компании",
+      "description": "Компании клиента, проверка источников (реестр и обороты), тексты согласий.",
+      "item": [
+        {
+          "name": "Тексты согласий",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/consents/documents?stage=onboarding",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "consents",
+                "documents"
+              ],
+              "query": [
+                {
+                  "key": "stage",
+                  "value": "onboarding"
+                }
+              ]
+            },
+            "description": "`stage=onboarding` — ONBOARDING_PROCESSING и REGISTRY_LOOKUP, `stage=application` — APPLICATION_PROCESSING и BKI. Версия текстов `consent-v2`. Доступно без входа."
+          }
+        },
+        {
+          "name": "Синтетические компании для выбора",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/demo/fixtures",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "demo",
+                "fixtures"
+              ]
+            },
+            "description": "Только CLIENT. ИНН, название, тип и состояние источников каждой синтетической компании; при `DEMO_MODE=false` — 404."
+          }
+        },
+        {
+          "name": "Компании клиента",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/companies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "companies"
+              ]
+            },
+            "description": "`{items, total}` в порядке добавления."
+          }
+        },
+        {
+          "name": "Добавление компании",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/companies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "companies"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inn\": \"{{inn}}\",\n  \"consents\": [\n    {\n      \"code\": \"ONBOARDING_PROCESSING\",\n      \"version\": \"consent-v2\",\n      \"accepted\": true\n    },\n    {\n      \"code\": \"REGISTRY_LOOKUP\",\n      \"version\": \"consent-v2\",\n      \"accepted\": true\n    }\n  ],\n  \"authority_verification_id\": \"{{verificationId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Тело: `inn`, оба согласия этапа onboarding версии `consent-v2` с `accepted: true` и `authority_verification_id`. Порядок отказов: 422 `REGISTRY_NOT_FOUND` → 403 `AUTHORITY_NOT_VERIFIED` (нет, чужое, другого ИНН, использованное или просроченное подтверждение) → 409 `COMPANY_EXISTS`. 201 `{company, precheck}`: данные реестра и оборотов из синтетических источников."
+          }
+        },
+        {
+          "name": "Последняя проверка источников",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/companies/{{companyId}}/precheck",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "companies",
+                "{{companyId}}",
+                "precheck"
+              ]
+            },
+            "description": "То же, что `GET /companies/{company_id}`."
+          }
+        },
+        {
+          "name": "Компания и последняя проверка источников",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/companies/{{companyId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "companies",
+                "{{companyId}}"
+              ]
+            },
+            "description": "`{company, precheck}`. Чужая или несуществующая компания — 404 `COMPANY_NOT_FOUND`."
+          }
+        },
+        {
+          "name": "Повторная проверка источников",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/companies/{{companyId}}/precheck/retry",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "companies",
+                "{{companyId}}",
+                "precheck",
+                "retry"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Тело `{version}` — текущая версия компании. Добавляет новую проверку по сценарию восстановления фикстуры (реестр или обороты), версия компании +1. БКИ не запрашивается. 409 `VERSION_CONFLICT`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Каталог и подбор",
+      "description": "Каталог продуктов и неизменяемые снимки подбора на сумму.",
+      "item": [
+        {
+          "name": "Каталог продуктов",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/catalog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "catalog"
+              ]
+            },
+            "description": "Версии каталога и правил, ключевая ставка, шкала суммы, 11 продуктов-карточек с действующими условиями и надстройка-бейдж. Доступно без входа."
+          }
+        },
+        {
+          "name": "Подбор продуктов на сумму",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/companies/{{companyId}}/recommendations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "companies",
+                "{{companyId}}",
+                "recommendations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requested_amount_rub\": {{amount}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Тело `{requested_amount_rub}` — целое число от 1 до 2 000 000 000. 201 — неизменяемый снимок `{snapshot_id, catalog_version, rules_version, items, created_at}`: все продукты по рангу со статусом `fits`, `needs_info` или `does_not_fit`, проверками, личной предварительной оценкой и платежом. БКИ не запрашивается, скоринг не считается. Без `Idempotency-Key`: каждый вызов — новый снимок."
+          }
+        },
+        {
+          "name": "Сохранённый снимок подбора",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/companies/{{companyId}}/recommendations/{{snapshotId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "companies",
+                "{{companyId}}",
+                "recommendations",
+                "{{snapshotId}}"
+              ]
+            },
+            "description": "Тот же снимок без пересчёта. 404 `RECOMMENDATION_NOT_FOUND`."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Заявки клиента",
+      "description": "Черновик, анкета из шести этапов, отправка, повторная проверка, ответ на запрос, отмена, история.",
+      "item": [
+        {
+          "name": "Создание черновика заявки",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_id\": \"{{companyId}}\",\n  \"product_id\": \"{{productId}}\",\n  \"recommendation_snapshot_id\": \"{{snapshotId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Тело `{company_id, product_id, recommendation_snapshot_id}`; продукт должен входить в снимок этой компании. 201 — заявка в статусе DRAFT, версия 1. 422 `PRODUCT_NOT_SUPPORTED`, 409 `RECOMMENDATION_STALE` (каталог или правила изменились после подбора)."
+          }
+        },
+        {
+          "name": "Заявки клиента",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/applications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "MANUAL_REVIEW",
+                  "disabled": true
+                },
+                {
+                  "key": "company_id",
+                  "value": "{{companyId}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Фильтры `status` и `company_id`; новые первыми. Перед фильтром применяется ленивое истечение срока."
+          }
+        },
+        {
+          "name": "Заявка",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}"
+              ]
+            },
+            "description": "`{application}`: ответы, суммы, `allowed_actions`, `missing_fields`, открытый запрос сведений, сводка документов. Скоринга нет: ни балла, ни риска, ни факторов, ни рассчитанного лимита."
+          }
+        },
+        {
+          "name": "Анкета из шести этапов",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/dialog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "dialog"
+              ]
+            },
+            "description": "Описания полей с границами выбранного продукта, ответы, незаполненные поля и `field_issues` черновика. Поля из источников (`tax_regime`, `employees`, `representative_name`, `representative_authority_confirmed`) помечены `read_only`."
+          }
+        },
+        {
+          "name": "История заявки",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "history"
+              ]
+            },
+            "description": "Переходы статусов с ролью участника (`client`, `officer`, `system`) и уведомлением в кабинете. Результат автоматической проверки по скорингу показан кодом `CHECK_RESULT` и нейтральным текстом."
+          }
+        },
+        {
+          "name": "Сохранение ответов анкеты",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/answers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "answers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"current_stage\": 6,\n  \"answers\": {\n    \"company_confirmed\": true,\n    \"actual_address\": \"г. Санкт-Петербург, ул. Торговая, д. 2\",\n    \"actual_activity\": \"Оптовая торговля\",\n    \"purpose\": \"working_capital\",\n    \"monthly_debt_payment_rub\": 240000,\n    \"tax_debt_rub\": 0,\n    \"legal_proceedings\": false,\n    \"beneficial_owners_confirmed\": true,\n    \"accuracy_confirmed\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Только DRAFT. Тело `{version, current_stage, answers}`: частичное сохранение, `collateral` объединяется по ключам. Без `Idempotency-Key` — повтор защищает версия. 422 `SOURCE_OWNED_FIELDS` (поле из источника), 409 `VERSION_CONFLICT`, 409 `INVALID_STATUS`."
+          }
+        },
+        {
+          "name": "Отправка заявки",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/submit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "submit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"consents\": [\n    {\n      \"code\": \"APPLICATION_PROCESSING\",\n      \"version\": \"consent-v2\",\n      \"accepted\": true\n    },\n    {\n      \"code\": \"BKI\",\n      \"version\": \"consent-v2\",\n      \"accepted\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Тело `{version, consents}` — согласия APPLICATION_PROCESSING и BKI версии `consent-v2`. Порядок отказов: 409 `VERSION_CONFLICT`, 409 `INVALID_STATUS`, 403 `AUTHORITY_NOT_VERIFIED`, 409 `RECOMMENDATION_STALE`, 409 `DUPLICATE_ACTIVE_APPLICATION`, 422 `CORRECTION_REQUIRED` (R1), 422 `NEED_INFO` (согласия, затем R3). Затем проверка выполняется синхронно — не больше одного запроса в БКИ — и ответ содержит итоговый статус."
+          }
+        },
+        {
+          "name": "Повторная проверка",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/retry-check",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "retry-check"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Из WAIT_EXTERNAL или из NEED_INFO с открытым запросом к источнику; использует сохранённое согласие на БКИ. 409 `INVALID_STATUS`, 409 `CONSENT_REQUIRED`."
+          }
+        },
+        {
+          "name": "Ответ на запрос сведений",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/respond-info",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "respond-info"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"response\": \"Уточнили платежи по кредитам.\",\n  \"answers\": {\n    \"monthly_debt_payment_rub\": 240000\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "NEED_INFO с запросом `client_answers`. Тело `{version, response, answers}` — только запрошенные поля. Заявка возвращается в MANUAL_REVIEW без нового запроса в БКИ. 409 `TRUSTED_SOURCE_REQUIRED`; 422 `NEED_FIELDS_LOCKED`, `SOURCE_OWNED_FIELDS`, `ANSWER_NOT_REQUESTED`, `NEED_INFO`."
+          }
+        },
+        {
+          "name": "Отмена заявки",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"reason\": \"Финансирование больше не нужно.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Тело `{version, reason}` (причина 1–2000 символов). Доступно в DRAFT, WAIT_EXTERNAL, NEED_INFO, MANUAL_REVIEW, PREAPPROVED, DOCS_UPLOADED и DOCS_REWORK."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Документы",
+      "description": "Перечень документов, загрузка, скачивание, удаление и отправка комплекта.",
+      "item": [
+        {
+          "name": "Перечень документов",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "documents"
+              ]
+            },
+            "description": "`{notice, requirements, items}`: обязательные документы заявки с текущим файлом и все версии файлов."
+          }
+        },
+        {
+          "name": "Загрузка документа",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "documents"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "docs/api/samples/bank-statement.pdf"
+                },
+                {
+                  "key": "document_type",
+                  "value": "BANK_STATEMENT",
+                  "type": "text"
+                },
+                {
+                  "key": "version",
+                  "value": "{{version}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "description": "multipart/form-data: `file`, `document_type`, `version`. PDF, JPEG или PNG до 20 МиБ: расширение, MIME-тип, сигнатура и структура файла должны совпадать. Только в PREAPPROVED и DOCS_REWORK. 201 `{document, application}`; 413 `FILE_TOO_LARGE`, 415 `MEDIA_NOT_ALLOWED`, 422 `FILE_INVALID`, 422 `DOCUMENT_TYPE_NOT_ALLOWED`, 409 `DOCUMENT_ACCEPTED`."
+          }
+        },
+        {
+          "name": "Скачивание файла",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/documents/{{documentId}}/download",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "documents",
+                "{{documentId}}",
+                "download"
+              ]
+            },
+            "description": "Владелец заявки или кредитный специалист. `Content-Disposition: attachment`, `Cache-Control: private, no-store`, `Content-Security-Policy: default-src 'none'; sandbox`. 404 `DOCUMENT_NOT_FOUND`."
+          }
+        },
+        {
+          "name": "Удаление файла",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/documents/{{documentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "documents",
+                "{{documentId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Тело `{version}`. Текущий непринятый файл в PREAPPROVED или DOCS_REWORK. 409 `DOCUMENT_ACCEPTED`, 409 `DOCUMENT_NOT_CURRENT`."
+          }
+        },
+        {
+          "name": "Отправка комплекта документов",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/applications/{{applicationId}}/documents/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "applications",
+                "{{applicationId}}",
+                "documents",
+                "complete"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "PREAPPROVED или DOCS_REWORK → DOCS_UPLOADED, когда загружены все обязательные документы и нет отклонённых. 409 `DOCUMENTS_INCOMPLETE` (`details: {missing, rejected}`)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Кредитный специалист",
+      "description": "Очередь, карточка заявки со скорингом, решения и проверка документов (роль CREDIT_OFFICER).",
+      "item": [
+        {
+          "name": "Очередь заявок",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/officer/applications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "officer",
+                "applications"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "MANUAL_REVIEW",
+                  "disabled": true
+                },
+                {
+                  "key": "assignee",
+                  "value": "unassigned",
+                  "disabled": true
+                },
+                {
+                  "key": "company_id",
+                  "value": "{{companyId}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Только CREDIT_OFFICER. Отправленные заявки, давние первыми; фильтры `status`, `assignee=me|unassigned`, `company_id`; `status=DRAFT` показывает черновики."
+          }
+        },
+        {
+          "name": "Карточка заявки для специалиста",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/officer/applications/{{applicationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "officer",
+                "applications",
+                "{{applicationId}}"
+              ]
+            },
+            "description": "Полный скоринг (балл, риск, факторы, рассчитанный лимит, правило), все оценки, данные источников, решения, запросы сведений, история с именами, все версии документов и `requestable_fields`."
+          }
+        },
+        {
+          "name": "Взять заявку в работу",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/officer/applications/{{applicationId}}/claim",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "officer",
+                "applications",
+                "{{applicationId}}",
+                "claim"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Тело `{version}`. Статус не меняется. 409 `ALREADY_ASSIGNED`, 409 `INVALID_STATUS`."
+          }
+        },
+        {
+          "name": "Запрос сведений у клиента",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/officer/applications/{{applicationId}}/request-info",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "officer",
+                "applications",
+                "{{applicationId}}",
+                "request-info"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"reason\": \"Уточните ежемесячные платежи по действующим кредитам.\",\n  \"requested_fields\": [\n    \"monthly_debt_payment_rub\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Назначенный специалист, MANUAL_REVIEW → NEED_INFO. Тело `{version, reason, requested_fields}`. 409 `ASSIGNMENT_REQUIRED`, 409 `INFO_REQUEST_OPEN`; 422 `NEED_FIELDS_LOCKED`, `FIELD_NOT_REQUESTABLE`."
+          }
+        },
+        {
+          "name": "Предварительное одобрение (R12)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/officer/applications/{{applicationId}}/preapprove",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "officer",
+                "applications",
+                "{{applicationId}}",
+                "preapprove"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"amount_rub\": {{amount}},\n  \"reason\": \"Сведения проверены, условия продукта выполнены.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Назначенный специалист, MANUAL_REVIEW → PREAPPROVED. Сумма — от минимума продукта до min(запрошенная сумма, рассчитанный лимит). 409 `MANDATORY_STOP`, 409 `LIMIT_NOT_COMPUTABLE`; 422 `AMOUNT_OUT_OF_BOUNDS`."
+          }
+        },
+        {
+          "name": "Отказ",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/officer/applications/{{applicationId}}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "officer",
+                "applications",
+                "{{applicationId}}",
+                "reject"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"reason\": \"Условия продукта не выполнены.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Назначенный специалист. Из MANUAL_REVIEW — предварительный отказ (R12), из PREAPPROVED, DOCS_UPLOADED или DOCS_REWORK — окончательный. Причина 1–2000 символов."
+          }
+        },
+        {
+          "name": "Проверка документа",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/officer/applications/{{applicationId}}/documents/{{documentId}}/review",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "officer",
+                "applications",
+                "{{applicationId}}",
+                "documents",
+                "{{documentId}}",
+                "review"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"decision\": \"accept\",\n  \"reason\": \"Документ читается и соответствует анкете.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Назначенный специалист, DOCS_UPLOADED. Тело `{version, decision: accept|reject, reason, verified_value_rub?}`; принять отчёт об оценке залога можно только с `verified_value_rub`. Первое отклонение переводит заявку в DOCS_REWORK. 409 `DOCUMENT_NOT_REVIEWABLE`; 422 `VERIFIED_VALUE_REQUIRED`, `VERIFIED_VALUE_NOT_ALLOWED`."
+          }
+        },
+        {
+          "name": "Окончательное одобрение",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/officer/applications/{{applicationId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "officer",
+                "applications",
+                "{{applicationId}}",
+                "approve"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"amount_rub\": {{amount}},\n  \"reason\": \"Сведения проверены, условия продукта выполнены.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Назначенный специалист, DOCS_UPLOADED → APPROVED, когда все обязательные документы приняты. Сумма — от минимума продукта до min(предварительно одобренная сумма, лимит по проверенным данным). 409 `DOCUMENTS_NOT_ACCEPTED`, `LIMIT_NOT_COMPUTABLE`, `COLLATERAL_INSUFFICIENT` (с залогом) или `LIMIT_BELOW_MINIMUM` (без залога); 422 `AMOUNT_OUT_OF_BOUNDS`. Деньги не перечисляются, договор не подписывается."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Интеграции",
+      "description": "Локальная страница перехода в Альфа-Бизнес.",
+      "item": [
+        {
+          "name": "Ссылка на переход в Альфа-Бизнес",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/integrations/alfa-business/link",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "integrations",
+                "alfa-business",
+                "link"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application_id\": \"{{applicationId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Владелец заявки в статусе APPROVED: `{url: \"/alfa-business/{id}\", simulated: true}`. Ничего не меняет и никуда не обращается. 409 `INVALID_STATUS` до окончательного одобрения."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Служебные",
+      "description": "Проверка работоспособности.",
+      "item": [
+        {
+          "name": "Проверка работоспособности",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "`{status: \"ok\", demo_mode}`; выполняет запрос к базе данных."
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5173/api/v1",
+      "type": "string",
+      "description": "Адрес API через интерфейс (Vite или nginx)"
+    },
+    {
+      "key": "origin",
+      "value": "http://localhost:5173",
+      "type": "string",
+      "description": "Значение заголовка Origin = UI_ORIGIN"
+    },
+    {
+      "key": "clientEmail",
+      "value": "",
+      "type": "string",
+      "description": "Почта нового клиента: задаётся в первом запросе сценария"
+    },
+    {
+      "key": "clientPassword",
+      "value": "Synthetic-Pass-2026",
+      "type": "string",
+      "description": "Пароль нового синтетического клиента"
+    },
+    {
+      "key": "officerEmail",
+      "value": "officer@demo.local",
+      "type": "string",
+      "description": "Кредитный специалист из начальных данных"
+    },
+    {
+      "key": "officerPassword",
+      "value": "DemoCredit2026!",
+      "type": "string",
+      "description": "Синтетический пароль начальных учётных записей"
+    },
+    {
+      "key": "inn",
+      "value": "990000000299",
+      "type": "string",
+      "description": "ИНН синтетической компании «Средний риск»"
+    },
+    {
+      "key": "productId",
+      "value": "alfa_revolving_line_unsecured",
+      "type": "string",
+      "description": "Продукт сценария"
+    },
+    {
+      "key": "amount",
+      "value": "500000",
+      "type": "string",
+      "description": "Сумма потребности и решений сценария, ₽"
+    },
+    {
+      "key": "verificationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "companyId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "snapshotId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "applicationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "version",
+      "value": "",
+      "type": "string",
+      "description": "Текущая ревизия заявки"
+    },
+    {
+      "key": "documentId",
+      "value": "",
+      "type": "string",
+      "description": "Последний загруженный документ"
+    },
+    {
+      "key": "statementDocumentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "reportDocumentId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

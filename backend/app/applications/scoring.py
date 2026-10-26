@@ -1,8 +1,8 @@
 """Pure post-submission scoring and the R2-R11 decision. No I/O; integer arithmetic only.
 
-Factors (spec "Scoring and state machine"): business age in completed calendar months, revenue growth (R-P)/P,
+Factors (docs/products-and-scoring.md, «Скоринг»): business age in completed calendar months, revenue growth (R-P)/P,
 monthly debt burden debt/R and the BKI credit history, compared exactly by cross-multiplication. Rules run in the
-spec table's order: `before_bki` covers R2 (known inactive, or a machine eligibility fact of the pinned product that the
+order of the R1–R12 table (docs/application-states.md): `before_bki` covers R2 (known inactive, or a machine eligibility fact of the pinned product that the
 current company data fails — reached after a registry recovery, since R1 refuses it at submission), R3 (a
 client-answerable gap) and R4 (registry or turnover unavailable), so none of them spends a BKI request; `after_bki` covers the report's R4/R2/R3, then the review flags
 (R5), R6, R7 and R8-R11. A check that recovers trusted-source evidence (an open trusted_source request) ends in

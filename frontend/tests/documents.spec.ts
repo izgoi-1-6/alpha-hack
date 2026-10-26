@@ -151,14 +151,14 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
   await expect(deadline).toHaveText(deadlineText);
   expect((await application(page, id)).preapproval_expires_at).toBe(before.preapproval_expires_at);
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: `${artifacts}/task-6b-checklist-desktop.png`, fullPage: true });
+  await page.screenshot({ path: `${artifacts}/checklist-desktop.png`, fullPage: true });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 390, height: 844 });
   await expectNoPageOverflow(page);
   await expectTouchTargets(page);
   await page.evaluate(() => window.scrollTo(0, 0));
   await settle(page);
-  await page.screenshot({ path: `${artifacts}/task-6b-checklist-mobile.png`, fullPage: true });
+  await page.screenshot({ path: `${artifacts}/checklist-mobile.png`, fullPage: true });
   await page.setViewportSize({ width: 1440, height: 1000 });
 
   // Completion is offered only once the packet is whole; the submitted packet is frozen for review.
@@ -194,7 +194,7 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
   await staffReport.getByLabel("Отклонить", { exact: true }).check();
   await staffReport.getByLabel("Причина отклонения").fill("Черновик причины.");
   await staff.scrollIntoViewIfNeeded();
-  await staff.screenshot({ path: `${artifacts}/task-6b-officer-review-form.png` });
+  await staff.screenshot({ path: `${artifacts}/officer-review-form.png` });
   await review(officer, "BANK_STATEMENT", "Принять", "Обороты по выписке совпадают с анкетой.");
   await expect(officer.locator(".officer-live")).toContainText("принят");
   const rejection = "Отчётность за другой период: нужна за период из анкеты.";
@@ -203,7 +203,7 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
   await expect(statusPill(officer)).toHaveText("Замена документов");
   await expect(requirement(staff, "FINANCIAL_REPORT")).toContainText(rejection);
   await staff.scrollIntoViewIfNeeded();
-  await staff.screenshot({ path: `${artifacts}/task-6b-officer-documents.png` });
+  await staff.screenshot({ path: `${artifacts}/officer-documents.png` });
 
   // The customer sees the rework and the reason, cannot replace the accepted statement, and replaces the report.
   await page.reload();
@@ -238,7 +238,7 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
   await decision.getByLabel("Основание решения").fill(approval);
   await decision.getByRole("button", { name: "Одобрить окончательно" }).click();
   await expect(decision.getByRole("group", { name: "Одобрить заявку окончательно?" })).toBeVisible();
-  await decision.screenshot({ path: `${artifacts}/task-6b-final-approve.png` });
+  await decision.screenshot({ path: `${artifacts}/final-approve.png` });
   await decision.getByRole("button", { name: "Да, одобрить" }).click();
   await expect(statusPill(officer)).toHaveText("Одобрена");
   await expect(officer.getByRole("group", { name: "Итоговая сумма" })).toContainText("2 000 000 ₽");
@@ -259,7 +259,7 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
   await expect(final).toContainText("деньги не перечисляются");
   await expect(card.getByRole("button", { name: /Загрузить файл|Заменить файл|Удалить файл/ })).toHaveCount(0);
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: `${artifacts}/task-6b-approved.png`, fullPage: true });
+  await page.screenshot({ path: `${artifacts}/approved.png`, fullPage: true });
   await expectNoDemoWording(page);
 
   await page.getByRole("button", { name: "Перейти в Альфа-Бизнес" }).click();
@@ -271,7 +271,7 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
   await expect(handoff).toContainText("договор не подписывается");
   await expect(handoff).toContainText("2 000 000 ₽");
   await expect(handoff).toContainText("ООО «Сильный бизнес»");
-  await page.screenshot({ path: `${artifacts}/task-6b-handoff.png`, fullPage: true });
+  await page.screenshot({ path: `${artifacts}/handoff.png`, fullPage: true });
   await expectNoDemoWording(page);
   await page.getByRole("button", { name: "Вернуться к заявке" }).click();
   await expect(

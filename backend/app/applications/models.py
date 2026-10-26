@@ -84,7 +84,7 @@ class Evaluation(Base):
 
 
 class InfoRequest(Base):
-    """A gap to close: system-detected (officer_id null) or, from Task 5, officer-authored."""
+    """A gap to close: system-detected (officer_id null) or officer-authored."""
     __tablename__ = 'info_requests'
     __table_args__ = (
         CheckConstraint("kind IN ('client_answers', 'trusted_source')", name='valid_info_request_kind'),

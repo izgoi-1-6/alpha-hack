@@ -13,7 +13,7 @@ from .officer.router import router as officer_router
 from .documents.router import router as documents_router
 from .integrations import router as integrations_router
 
-app=FastAPI(title='Кредитный маршрут',version='0.1.0',dependencies=[Depends(check_origin)])
+app=FastAPI(title='Кредитный маршрут',version='1.0.0',dependencies=[Depends(check_origin)])
 app.state.engine=engine
 app.add_middleware(CORSMiddleware,allow_origins=[settings.ui_origin],allow_credentials=True,allow_methods=['GET','POST','PUT','PATCH','DELETE'],allow_headers=['Content-Type','Idempotency-Key'])
 install_error_handlers(app)

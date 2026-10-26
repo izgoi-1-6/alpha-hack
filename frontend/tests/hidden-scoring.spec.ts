@@ -9,7 +9,7 @@ import {
   termCard,
 } from "./helpers";
 
-// The client never learns the scoring (user request after hand-over): no score, risk band or calculated limit on the
+// The client never learns the scoring (docs/application-states.md): no score, risk band or calculated limit on the
 // status page, in its timeline or in what the API sends the client. The turnover estimate and the requested,
 // preapproved and final amounts stay.
 const SCORING = /балл|риск|скоринг|лимит/i;

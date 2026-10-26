@@ -1,7 +1,14 @@
 # API
 
-FastAPI / SQLAlchemy 2 / PostgreSQL 17. See the [root setup](../README.md) and [successor interfaces](../docs/api/implementation.md).
+FastAPI, SQLAlchemy 2, Alembic, PostgreSQL 17. Устройство модулей описано в [архитектуре](../docs/architecture.md), схема данных — в [модели данных](../docs/data-model.md), правила — в [продуктах и скоринге](../docs/products-and-scoring.md) и [состояниях заявки](../docs/application-states.md).
 
-From the repository root, apply migrations with `backend/.venv/bin/alembic -c backend/alembic.ini upgrade head`, then start with `./scripts/run-api.sh`. OpenAPI lives at `http://127.0.0.1:8000/docs`. Mutations require `Origin: http://localhost:5173` even in integration drivers.
+Команды выполняются из корня репозитория:
 
-Run `.venv/bin/pytest` from this directory. Set `TEST_DATABASE_URL` to a disposable PostgreSQL database ending in `_test` for integration verification. Without it, tests use isolated SQLite memory databases. No live external services are called.
+```sh
+backend/.venv/bin/alembic -c backend/alembic.ini upgrade head   # миграции
+./scripts/run-api.sh                                            # API на http://127.0.0.1:8000
+```
+
+Описание API — `docs/api/openapi.yaml`; интерактивная версия — http://127.0.0.1:8000/docs. После изменения маршрутов выгрузите описание заново: `backend/.venv/bin/python scripts/export-api-docs.py`. Команды POST, PATCH и DELETE требуют заголовок `Origin: http://localhost:5173`, в том числе из скриптов и тестов.
+
+Тесты запускаются из этого каталога командой `.venv/bin/pytest`. Без `TEST_DATABASE_URL` каждый тест работает на изолированной SQLite в памяти. С `TEST_DATABASE_URL`, указывающей на одноразовую базу PostgreSQL с именем на `_test`, выполняются и тесты гонок. Внешние сервисы не вызываются. Подробнее — в [тестовых сценариях](../docs/tests/test-scenarios.md).

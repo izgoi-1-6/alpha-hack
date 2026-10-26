@@ -2,7 +2,7 @@
 
 `ApplicationChange` validates each move against TRANSITIONS, increments the version once per command (however many
 moves it records), and appends a StatusHistory row with its simulated in-app Notification. There is no arbitrary
-status update. Officer and document commands (Tasks 5 and 6) use the same class.
+status update. Officer and document commands use the same class.
 """
 from datetime import datetime, timedelta
 from sqlalchemy import func, select

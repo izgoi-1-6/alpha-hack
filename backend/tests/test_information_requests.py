@@ -2,7 +2,7 @@
 the re-check from the revised answers with the stored BKI evidence (no new BKI request), the return to the same
 officer, trusted-source refusals, the customer's view of officer actions and terminal audit rows.
 
-Scores and limits come from application_oracle and the spec's literal numbers, not from the code under test. The
+Scores and limits come from application_oracle and the literal numbers of docs/tests/test-scenarios.md, not from the code under test. The
 customer's responses carry no scoring, so the re-check's scoring is read from the persisted rows (`scored`).
 """
 import json
@@ -108,7 +108,7 @@ def test_pledge_paths_cannot_be_requested_for_an_application_pinned_unsecured(cl
 
 
 # The stage-2 need (purpose, amount, term) is fixed once submitted: a smaller amount is a smaller preapproval and a
-# different need is a new application (controller ruling; spec: the request is never rewritten).
+# different need is a new application (the request is never rewritten).
 NEED = ['purpose', 'requested_amount_rub', 'term_months']
 
 
@@ -300,7 +300,7 @@ def test_a_response_never_rewrites_the_requested_amount(client, officer):
 
 
 def internal_gap(client, application: dict) -> dict:
-    """The defensive client-answers gap of an internal check (Task 4a): the draft reaches the check without the submit
+    """The defensive client-answers gap of an internal check: the draft reaches the check without the submit
     gate, as a submitted application whose answers still miss required values."""
     from app.applications import checks
     from app.applications.lifecycle import ApplicationChange
@@ -359,7 +359,7 @@ def test_respond_info_needs_an_open_client_answers_request_and_the_current_versi
 
 
 def test_a_response_to_a_system_request_is_queued_unassigned(client, officer, bki_calls):
-    """The defensive client-answers gap of an internal check (Task 4a) closes through respond-info."""
+    """The defensive client-answers gap of an internal check closes through respond-info."""
     application = internal_gap(client, draft(client, 'missing_turnover'))
     assert application['status'] == 'NEED_INFO' and application['allowed_actions'] == ['respond_info', 'cancel']
     answers = {'company_confirmed': True, 'actual_address': 'Синтетический адрес', 'actual_activity': 'Торговля',

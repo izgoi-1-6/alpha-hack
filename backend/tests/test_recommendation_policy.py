@@ -2,7 +2,7 @@
 exact-arithmetic payment oracles.
 
 No HTTP and no database. Inputs are the shipped runtime products, copied and changed per test; expected orders are
-derived by hand from the plan's key (status, known shortfall with unknown capacity counted as the whole request,
+derived by hand from the ranking key of docs/products-and-scoring.md (status, known shortfall with unknown capacity counted as the whole request,
 collateral burden, rate certainty, rate or 0, policy priority, id) and payments come from the exact oracle, never from
 the service under test. A "closed" product (its program no longer accepts applications) is does_not_fit whatever its
 numbers, which isolates the later parts of the key.
@@ -160,8 +160,8 @@ def test_a_preferential_rate_labels_its_payment_with_the_period():
 
 
 def test_the_oracle_is_anchored_to_published_examples():
-    assert annuity_rub(1_000_000, 2350, 12) == 94_318  # acceptance.md: 1m / 12 months / 23.50%
-    assert full_utilization_interest_rub(1_000_000, 2400) == 20_000  # acceptance.md: 1m at 24%
+    assert annuity_rub(1_000_000, 2350, 12) == 94_318  # docs/tests/test-scenarios.md: 1m / 12 months / 23.50%
+    assert full_utilization_interest_rub(1_000_000, 2400) == 20_000  # docs/tests/test-scenarios.md: 1m at 24%
     assert collateral_cap_rub(714_285, 7000) == 499_999 and collateral_cap_rub(714_286, 7000) == 500_000
 
 

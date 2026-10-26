@@ -6,7 +6,7 @@ import {
 } from "../../api";
 import { formatDate, formatTime } from "../applications/format";
 
-const NBSP = " ";
+const NBSP = "\u00a0";
 
 /** The checklist's names, as the server writes them in its notifications. Synthetic evidence, not legal requirements. */
 export const DOCUMENT_TITLE: Record<DocumentType, string> = {

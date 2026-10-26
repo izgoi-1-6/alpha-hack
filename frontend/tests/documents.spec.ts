@@ -134,6 +134,13 @@ test("A09 journey: preapproval → sequential uploads with progress → unsafe f
   expect((await application(page, id)).version).toBe(before.version + 2);
   await expect(statement).toContainText("PDF");
   await expect(report).toContainText("PNG");
+  // A size keeps its number and unit on one line (U+00A0): the padded statement in КБ, the few-pixel PNG in bytes.
+  expect(
+    await statement.locator(".document-file-facts").textContent(),
+  ).toMatch(/^PDF · \d+,\d КБ · /);
+  expect(await report.locator(".document-file-facts").textContent()).toMatch(
+    /^PNG · \d+ Б · /,
+  );
   await expect(card.getByRole("alert")).toHaveCount(0);
 
   // The owner downloads exactly the stored bytes through the authorized API route.
